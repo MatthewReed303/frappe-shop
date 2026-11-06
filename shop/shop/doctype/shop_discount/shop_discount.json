@@ -6,12 +6,12 @@
  "engine": "InnoDB",
  "field_order": ["item_group", "discount_percentage"],
  "fields": [
-  {"fieldname": "item_group", "fieldtype": "Link", "in_list_view": 1, "label": "Product Group", "options": "Item Group", "reqd": 1},
+  {"fieldname": "item_group", "fieldtype": "Link", "in_list_view": 1, "label": "Item Group", "options": "Item Group", "reqd": 1},
   {"fieldname": "discount_percentage", "fieldtype": "Percent", "in_list_view": 1, "label": "Discount %", "reqd": 1}
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-07 11:00:00.000000",
+ "modified": "2026-11-07 11:32:02.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Discount",

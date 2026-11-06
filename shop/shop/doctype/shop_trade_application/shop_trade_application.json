@@ -174,7 +174,7 @@
    "fieldtype": "Link",
    "options": "Price List",
    "label": "Price List",
-   "description": "Optional, advanced: a separate price list. Usually leave empty and use discounts"
+   "description": "Optional, advanced: a separate Price List. Usually leave empty and use Store Discounts"
   },
   {
    "fieldname": "column_break_approval",
@@ -246,12 +246,12 @@
    "fieldname": "discounts",
    "fieldtype": "Table",
    "options": "Shop Discount",
-   "label": "Extra Discounts",
-   "description": "Optional discounts for this customer only, on top of their group's. Copied to the Customer on approval"
+   "label": "Store Discounts",
+   "description": "Optional discounts for this customer only. They override the Customer Group's discount on the same items. Copied to the Customer on approval"
   }
  ],
  "links": [],
- "modified": "2026-11-07 10:00:00.000000",
+ "modified": "2026-11-07 11:33:30.951516",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Trade Application",

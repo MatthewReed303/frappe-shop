@@ -85,12 +85,12 @@ def order_fields() -> dict:
 			 "insert_after": "shop_allow_on_account", "collapsible": 0},
 			{"fieldname": "shop_discounts", "fieldtype": "Table", "options": "Shop Discount", "label": "Store Discounts",
 			 "insert_after": "shop_discounts_section",
-			 "description": "Discount % off a product group for this customer. Overrides their customer group's discount"},
+			 "description": "Discount % off an Item Group for this customer. Overrides their Customer Group's discount on the same items"},
 		],
 		"Customer Group": [
 			{"fieldname": "shop_discounts", "fieldtype": "Table", "options": "Shop Discount", "label": "Store Discounts",
 			 "insert_after": "default_price_list",
-			 "description": "Discount % off a product group for every customer in this group, e.g. HATs 15%"},
+			 "description": "Discount % off an Item Group for every customer in this Customer Group, e.g. HATs 15%"},
 		],
 		"User": [
 			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Store Terms Accepted",

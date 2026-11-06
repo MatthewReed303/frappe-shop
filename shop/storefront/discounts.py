@@ -1,6 +1,6 @@
 """Store discounts: a simple table on a Customer or Customer Group, e.g. "HATs 15%".
 
-Each row is kept as an ERPNext Pricing Rule (discount on that product group, for that customer
+Each row is kept as an ERPNext Pricing Rule (discount on that Item Group, for that customer
 or group), so the same discount applies in the store, on quotes and on orders made in the desk.
 Rules made here are titled "Store discount: ..."; others are left alone. A customer's own
 discounts take priority over their group's.
