@@ -29,6 +29,9 @@ doctype_js = {"Quotation": "public/js/quotation.js"}
 doc_events = {
 	# a bank transfer recorded in the desk pays the order like a card payment does
 	"Payment Entry": {"on_submit": "shop.storefront.payment.on_payment_entry"},
+	# Store Discounts tables become ERPNext pricing rules
+	"Customer": {"on_update": "shop.storefront.discounts.sync"},
+	"Customer Group": {"on_update": "shop.storefront.discounts.sync"},
 }
 
 override_doctype_class = {

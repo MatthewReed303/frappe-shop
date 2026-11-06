@@ -32,6 +32,7 @@
   "allow_on_account",
   "payment_terms",
   "credit_limit",
+  "discounts",
   "decline_reason",
   "links_section",
   "customer",
@@ -166,14 +167,14 @@
    "fieldtype": "Link",
    "options": "Customer Group",
    "label": "Customer Group",
-   "description": "Its default price list sets the trade prices"
+   "description": "Trade customers get the group's Store Discounts"
   },
   {
    "fieldname": "price_list",
    "fieldtype": "Link",
    "options": "Price List",
    "label": "Price List",
-   "description": "Optional: a price list for this customer only"
+   "description": "Optional, advanced: a separate price list. Usually leave empty and use discounts"
   },
   {
    "fieldname": "column_break_approval",
@@ -240,6 +241,13 @@
    "fieldtype": "Datetime",
    "label": "Terms Accepted On",
    "read_only": 1
+  },
+  {
+   "fieldname": "discounts",
+   "fieldtype": "Table",
+   "options": "Shop Discount",
+   "label": "Extra Discounts",
+   "description": "Optional discounts for this customer only, on top of their group's. Copied to the Customer on approval"
   }
  ],
  "links": [],

@@ -172,6 +172,8 @@ def approve_trade(name: str) -> dict:
 	customer.payment_terms = doc.payment_terms or None
 	if customer.meta.has_field("shop_allow_on_account"):
 		customer.shop_allow_on_account = 1 if doc.allow_on_account else 0
+	if customer.meta.has_field("shop_discounts") and doc.get("discounts"):
+		customer.set("shop_discounts", [{"item_group": r.item_group, "discount_percentage": r.discount_percentage} for r in doc.discounts])
 	company = frappe.get_cached_doc("Shop Settings").company
 	customer.credit_limits = [row for row in customer.get("credit_limits") or [] if row.company != company]
 	if flt(doc.credit_limit):

@@ -1,4 +1,5 @@
 import frappe
+from frappe.utils import flt
 
 from shop.storefront import pricing, stock
 
@@ -31,6 +32,8 @@ def get_product(slug: str) -> dict:
 		payload.update(variant_details(doc.item, doc.compare_at_price))
 	else:
 		price = pricing.get_price(doc.item) or {}
+		if price.get("retail"):  # a trade or customer price: show the store price struck through
+			payload["compare_at_price"] = max(flt(doc.compare_at_price), flt(price["retail"]))
 		payload.update(
 			{
 				"price": price.get("rate"),
