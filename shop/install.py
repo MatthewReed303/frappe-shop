@@ -81,6 +81,16 @@ def order_fields() -> dict:
 			{"fieldname": "shop_allow_on_account", "fieldtype": "Check", "label": "Pay on Account at the Store",
 			 "insert_after": "payment_terms",
 			 "description": "Can order online and pay by invoice under their payment terms and credit limit"},
+			{"fieldname": "shop_discounts_section", "fieldtype": "Section Break", "label": "Store Discounts",
+			 "insert_after": "shop_allow_on_account", "collapsible": 0},
+			{"fieldname": "shop_discounts", "fieldtype": "Table", "options": "Shop Discount", "label": "Store Discounts",
+			 "insert_after": "shop_discounts_section",
+			 "description": "Discount % off a product group for this customer. Overrides their customer group's discount"},
+		],
+		"Customer Group": [
+			{"fieldname": "shop_discounts", "fieldtype": "Table", "options": "Shop Discount", "label": "Store Discounts",
+			 "insert_after": "default_price_list",
+			 "description": "Discount % off a product group for every customer in this group, e.g. HATs 15%"},
 		],
 		"User": [
 			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Store Terms Accepted",

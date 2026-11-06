@@ -174,3 +174,51 @@ class TestTradeAccounts(IntegrationTestCase):
 		self.assertGreater(fee, 0)
 		factor = 1 + (totals.included_tax_rate() / 100 if self.settings.prices_include_tax else 0)
 		self.assertAlmostEqual(fee / factor, 0.0265 * (total + fee) + 0.3, delta=0.01)
+
+
+class TestStoreDiscounts(IntegrationTestCase):
+	def setUp(self):
+		for name in ("shop_session_customer", "shop_customer_rates"):
+			if hasattr(frappe.local, name):
+				delattr(frappe.local, name)
+		self.parent = ensure("Item Group", "_Test Store Hardware", {"item_group_name": "_Test Store Hardware",
+																	"parent_item_group": "All Item Groups", "is_group": 1})
+		self.child = ensure("Item Group", "_Test Store HATs", {"item_group_name": "_Test Store HATs",
+															   "parent_item_group": "_Test Store Hardware"})
+		self.item = "_Test Store HAT Item"
+		if not frappe.db.exists("Item", self.item):
+			frappe.get_doc({"doctype": "Item", "item_code": self.item, "item_name": self.item, "item_group": self.child,
+							"stock_uom": "Nos", "is_stock_item": 0}).insert(ignore_permissions=True)
+		settings = frappe.get_doc("Shop Settings")
+		if not frappe.db.exists("Item Price", {"item_code": self.item, "price_list": settings.price_list}):
+			frappe.get_doc({"doctype": "Item Price", "item_code": self.item, "price_list": settings.price_list,
+							"price_list_rate": 100}).insert(ignore_permissions=True)
+		self.group = ensure("Customer Group", "_Test Discount Group", {"customer_group_name": "_Test Discount Group",
+																	  "parent_customer_group": "All Customer Groups"})
+		self.customer = ensure("Customer", "_Test Discount Customer", {"customer_name": "_Test Discount Customer",
+																	   "customer_group": "_Test Discount Group"})
+
+	def rate(self):
+		frappe.local.shop_customer_rates = {}
+		return pricing.customer_rate(self.item, self.customer, frappe.get_cached_doc("Shop Settings").price_list, 1)
+
+	def test_group_discount_reaches_sub_groups_and_customer_overrides_it(self):
+		group = frappe.get_doc("Customer Group", self.group)
+		group.set("shop_discounts", [{"item_group": self.parent, "discount_percentage": 15}])
+		group.save()
+		self.assertEqual(self.rate(), 85)
+		customer = frappe.get_doc("Customer", self.customer)
+		customer.set("shop_discounts", [{"item_group": self.child, "discount_percentage": 25}])
+		customer.save()
+		self.assertEqual(self.rate(), 75)
+		customer.set("shop_discounts", [])
+		customer.save()
+		self.assertEqual(self.rate(), 85)
+		self.assertFalse(frappe.db.exists("Pricing Rule", {"title": f"Store discount: {self.customer} / {self.child}"}))
+
+	def test_same_group_twice_is_refused(self):
+		customer = frappe.get_doc("Customer", self.customer)
+		customer.set("shop_discounts", [{"item_group": self.child, "discount_percentage": 5},
+										{"item_group": self.child, "discount_percentage": 10}])
+		with self.assertRaises(frappe.ValidationError):
+			customer.save()

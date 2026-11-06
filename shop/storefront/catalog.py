@@ -138,6 +138,8 @@ def decorate(products: list) -> None:
 		price = prices.get(product.item, {})
 		product.price = price.get("rate")
 		product.formatted_price = price.get("formatted")
+		if price.get("retail"):
+			product.compare_at_price = max(flt(product.get("compare_at_price")), flt(price["retail"]))
 		product.in_stock = availability.get(product.item, False)
 		apply_compare_at(product, product.price)
 		rating = ratings.get(product.name)
