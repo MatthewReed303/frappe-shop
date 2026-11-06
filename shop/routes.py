@@ -30,6 +30,8 @@ STOREFRONT_SEGMENTS = frozenset(
 		"faq",
 		"about",
 		"contact",
+		"terms",
+		"quote",
 		HOME_ROUTE,
 	}
 )

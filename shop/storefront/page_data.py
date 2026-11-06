@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.utils import cint
 
 from shop.routes import store_url
@@ -215,7 +216,117 @@ def order_confirmation() -> dict:
 
 @frappe.whitelist()
 def account_orders() -> dict:
-	return {"store": store_details(), "orders": orders.get_orders()}
+	from shop.storefront import accounts
+
+	customers = orders.session_customers()
+	return {
+		"store": store_details(),
+		"orders": orders.get_orders(),
+		"account_html": account_html(customers),
+		"trade": accounts.trade_status(),
+	}
+
+
+def account_html(customers: list[str]) -> str:
+	"""Invoices and quotes as ready-made HTML for the account page."""
+	from shop.storefront import accounts
+
+	esc = frappe.utils.escape_html
+	html = ""
+	trade = accounts.trade_status()
+	if trade and trade.get("trade"):
+		note = _("Trade account: you see your trade prices across the store.")
+		if trade.get("on_account"):
+			note += " " + _("You can pay on account ({0}).").format(trade.get("payment_terms"))
+		html += f'<div class="account-note">{esc(note)}</div>'
+	elif trade and trade.get("status") == "Pending":
+		html += f'<div class="account-note">{esc(_("Your trade account application is being reviewed."))}</div>'
+	else:
+		html += (
+			f'<div class="account-note">{esc(_("Buying for a business?"))} '
+			f'<a href="{store_url("account/trade")}">{esc(_("Apply for a trade account"))}</a></div>'
+		)
+	rows = accounts.invoices(customers)
+	if rows:
+		html += f"<h2>{esc(_('Invoices'))}</h2><div class='account-table'>"
+		for row in rows:
+			owing = (
+				f"{esc(_('Owing'))} {esc(row.formatted_outstanding)}, {esc(_('due'))} {esc(frappe.utils.formatdate(row.due_date))}"
+				if frappe.utils.flt(row.outstanding_amount) > 0
+				else esc(_("Paid"))
+			)
+			html += (
+				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.posting_date))}</span>'
+				f"<span>{esc(row.formatted_total)}</span><span>{owing}</span>"
+				f'<a href="{row.pdf_url}">{esc(_("PDF"))}</a></div>'
+			)
+		html += "</div>"
+	quotes = frappe.get_all(
+		"Quotation",
+		filters={"party_name": ["in", customers or [""]], "quotation_to": "Customer", "docstatus": ["<", 2]},
+		fields=["name", "transaction_date", "grand_total", "currency", "docstatus", "status", "shop_access_token"],
+		order_by="creation desc",
+		limit=20,
+	) if customers and frappe.get_meta("Quotation").has_field("shop_access_token") else []
+	if quotes:
+		html += f"<h2>{esc(_('Quotes'))}</h2><div class='account-table'>"
+		for row in quotes:
+			state = _("Being prepared") if row.docstatus == 0 else (_("Ordered") if row.status == "Ordered" else _("Ready to accept"))
+			link = store_url(f"quote/{row.name}?token={row.shop_access_token}") if row.docstatus == 1 else ""
+			html += (
+				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.transaction_date))}</span>'
+				f"<span>{esc(frappe.utils.fmt_money(row.grand_total, currency=row.currency))}</span><span>{esc(state)}</span>"
+				+ (f'<a href="{link}">{esc(_("View"))}</a>' if link else "<span></span>")
+				+ "</div>"
+			)
+		html += "</div>"
+	return html
+
+
+@frappe.whitelist(allow_guest=True)
+def register_page() -> dict:
+	from shop.storefront import checkout
+
+	return {"store": store_details(), "terms": checkout.terms_details(), "signed_in": "true" if frappe.session.user != "Guest" else None}
+
+
+@frappe.whitelist(allow_guest=True)
+def trade_page() -> dict:
+	from shop.storefront import accounts, checkout
+
+	return {
+		"store": store_details(),
+		"terms": checkout.terms_details(),
+		"countries": checkout.countries(),
+		"default_country": checkout.totals.company_country(),
+		"prefill": checkout.checkout_prefill(),
+		"trade": accounts.trade_status(),
+	}
+
+
+@frappe.whitelist(allow_guest=True)
+def quote_page() -> dict:
+	from shop.storefront import checkout, quotes
+
+	form = frappe.form_dict
+	try:
+		quote = quotes.quote_summary(form.get("quote_id"), form.get("token"))
+	except (frappe.PermissionError, frappe.DoesNotExistError):
+		frappe.clear_messages()
+		quote = None
+	return {"store": store_details(), "quote": quote, "terms": checkout.terms_details()}
+
+
+@frappe.whitelist(allow_guest=True)
+def terms_page() -> dict:
+	from frappe.utils.html_utils import sanitize_html
+
+	settings = frappe.get_cached_doc("Shop Settings")
+	return {
+		"store": store_details(),
+		"terms_html": sanitize_html(settings.get("terms_text") or ""),
+		"terms_version": settings.get("terms_version") or "",
+	}
 
 
 def store_details() -> dict:
@@ -230,4 +341,5 @@ def store_details() -> dict:
 		"account_url": store_url("account/orders")
 		if signed_in
 		else "/login?redirect-to=" + store_url("account/orders"),
+		"register_url": None if signed_in else store_url("account/register"),
 	}

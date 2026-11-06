@@ -25,8 +25,13 @@ def setup():
 
 
 def enable_customer_signup():
-	"""Shoppers need accounts to track orders, so the store cannot ship with signup off."""
-	if frappe.db.get_single_value("Website Settings", "disable_signup"):
+	"""Shoppers need accounts to track orders, so the store cannot ship with signup off.
+
+	When the store requires its terms, accounts are made on the store's own sign-up page,
+	which asks for them, so the site's generic sign-up stays off."""
+	if frappe.db.get_single_value("Shop Settings", "require_terms"):
+		frappe.db.set_single_value("Website Settings", "disable_signup", 1)
+	elif frappe.db.get_single_value("Website Settings", "disable_signup"):
 		frappe.db.set_single_value("Website Settings", "disable_signup", 0)
 
 
@@ -59,7 +64,30 @@ def order_fields() -> dict:
 			{"fieldname": "shop_business_buyer", "fieldtype": "Check", "label": "Business Buyer",
 			 "read_only": 1, "insert_after": "shop_terms_accepted_on",
 			 "description": "Confirmed at checkout that they are buying for business purposes"},
-		]
+			{"fieldname": "shop_access_token", "fieldtype": "Data", "label": "Access Token", "hidden": 1,
+			 "read_only": 1, "no_copy": 1, "insert_after": "shop_business_buyer"},
+		],
+		"Quotation": [
+			{"fieldname": "shop_section", "fieldtype": "Section Break", "label": "Online Store",
+			 "insert_after": "terms", "collapsible": 1},
+			{"fieldname": "shop_request_message", "fieldtype": "Small Text", "label": "Customer's Request",
+			 "read_only": 1, "insert_after": "shop_section"},
+			{"fieldname": "shop_shipping_option", "fieldtype": "Small Text", "label": "Shipping Chosen",
+			 "read_only": 1, "insert_after": "shop_request_message"},
+			{"fieldname": "shop_access_token", "fieldtype": "Data", "label": "Access Token", "hidden": 1,
+			 "read_only": 1, "no_copy": 1, "insert_after": "shop_shipping_option"},
+		],
+		"Customer": [
+			{"fieldname": "shop_allow_on_account", "fieldtype": "Check", "label": "Pay on Account at the Store",
+			 "insert_after": "payment_terms",
+			 "description": "Can order online and pay by invoice under their payment terms and credit limit"},
+		],
+		"User": [
+			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Store Terms Accepted",
+			 "read_only": 1, "insert_after": "user_type"},
+			{"fieldname": "shop_terms_accepted_on", "fieldtype": "Datetime", "label": "Store Terms Accepted On",
+			 "read_only": 1, "insert_after": "shop_terms_version"},
+		],
 	}
 
 
