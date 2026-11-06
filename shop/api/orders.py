@@ -189,7 +189,7 @@ def mark_paid(name: str, mode_of_payment: str | None = None) -> dict:
 @frappe.whitelist(methods=["POST"])
 def fulfill(name: str) -> dict:
 	only_managers()
-	from erpnext.selling.doctype.sales_order.mapper import make_delivery_note
+	from shop.compat import make_delivery_note
 
 	order = frappe.get_doc("Sales Order", name)
 	if order.docstatus != 1:
