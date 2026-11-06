@@ -12,8 +12,13 @@ class ShopPaymentRequest(PaymentRequest):
 		if status not in AUTHORIZED_STATUSES:
 			return None
 		self.flags.ignore_permissions = True
-		if self.status != "Paid":
+		newly_paid = self.status != "Paid"
+		if newly_paid:
 			self.set_as_paid()
+		if self.reference_doctype == "Sales Order" and newly_paid:
+			from shop.storefront.checkout import send_confirmation
+
+			send_confirmation(self.reference_name)
 		if self.reference_doctype == "Sales Order":
 			from shop.fulfillment.service import auto_send
 

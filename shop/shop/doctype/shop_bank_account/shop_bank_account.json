@@ -1,0 +1,57 @@
+{
+ "actions": [],
+ "creation": "2026-11-07 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "currency",
+  "label",
+  "conversion_fee_percent",
+  "account_details"
+ ],
+ "fields": [
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Currency",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "description": "Shown to the customer, e.g. \"US dollars (ACH)\""
+  },
+  {
+   "default": "0",
+   "fieldname": "conversion_fee_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Conversion Fee %",
+   "description": "Added to orders in this currency to cover converting the money"
+  },
+  {
+   "fieldname": "account_details",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Account Details",
+   "reqd": 1,
+   "description": "One line each, e.g. \"Account name: ...\""
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-07 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Shop",
+ "name": "Shop Bank Account",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

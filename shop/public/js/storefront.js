@@ -271,9 +271,113 @@
 		}
 	}
 
+	// ---- checkout -------------------------------------------------------------
+	// A theme opts in by placing these hooks in the checkout form:
+	// [data-shop="shipping-options"], [data-shop="checkout-totals"], [data-shop="bank-currency"],
+	// [data-shop="payment-fee"][data-method], and inputs named accept_terms / business_buyer.
+	const checkout = { quote: null, timer: null, seq: 0 };
+	const ADDRESS_FIELDS = ["address_line1", "address_line2", "city", "state", "country", "pincode"];
+
+	function checkoutForm() {
+		return document.querySelector('[data-shop="checkout-form"]');
+	}
+
+	function formAddress(form) {
+		const data = new FormData(form);
+		const address = {};
+		ADDRESS_FIELDS.forEach((field) => (address[field] = (data.get(field) || "").trim()));
+		return address;
+	}
+
+	function checkoutChoice(form) {
+		const data = new FormData(form);
+		const currency = form.querySelector('select[name="currency"]');
+		return {
+			shipping_option: data.get("shipping_option") || undefined,
+			payment_method: data.get("payment_method") || undefined,
+			// until the shopper picks one, the store suggests their own currency
+			currency: currency && currency.dataset.chosen ? data.get("currency") : undefined,
+		};
+	}
+
+	function scheduleQuote(delay) {
+		const form = checkoutForm();
+		if (!form || !document.querySelector('[data-shop="checkout-totals"]')) return;
+		clearTimeout(checkout.timer);
+		checkout.timer = setTimeout(() => requestQuote(form), delay == null ? 450 : delay);
+	}
+
+	async function requestQuote(form) {
+		const seq = ++checkout.seq;
+		const totalsBox = document.querySelector('[data-shop="checkout-totals"]');
+		totalsBox && totalsBox.setAttribute("aria-busy", "true");
+		try {
+			const quote = await call("shop.storefront.checkout.quote", { address: formAddress(form), ...checkoutChoice(form) });
+			if (seq !== checkout.seq) return;
+			checkout.quote = quote;
+			renderQuote(form, quote);
+		} catch (error) {
+			if (seq === checkout.seq) showError(error.message);
+		} finally {
+			totalsBox && totalsBox.removeAttribute("aria-busy");
+		}
+	}
+
+	function renderQuote(form, quote) {
+		const options = form.querySelector('[data-shop="shipping-options"]');
+		if (options) {
+			if (quote.shipping_pending) {
+				options.innerHTML = `<p class="checkout-hint">Enter your address to see shipping options.</p>`;
+			} else if (!quote.shipping_options.length) {
+				const reasons = (quote.shipping_messages || []).map((m) => `<p>${esc(m)}</p>`).join("");
+				options.innerHTML = `<div class="checkout-warning" role="alert">${reasons || "<p>We can't ship to this address. Check it, or contact us.</p>"}</div>`;
+			} else {
+				options.innerHTML = quote.shipping_options
+					.map(
+						(option) => `<label class="checkout-option"><input type="radio" name="shipping_option" value="${esc(option.id)}"${option.selected ? " checked" : ""}>
+						<span class="checkout-option-label">${esc(option.label)}${option.eta ? ` <small>${esc(option.eta)}</small>` : ""}</span>
+						<span class="checkout-option-price">${esc(option.formatted)}</span></label>`
+					)
+					.join("") + (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
+			}
+		}
+		form.querySelectorAll('[data-shop="payment-fee"]').forEach((note) => {
+			const method = (quote.payment_methods || []).find((m) => m.method === note.dataset.method);
+			note.textContent = (method && method.fee_note) || "";
+		});
+		const bank = form.querySelector('[data-shop="bank-currency"]');
+		if (bank) {
+			const select = bank.querySelector("select");
+			if (select && !select.options.length) {
+				select.innerHTML = (quote.bank_currencies || [])
+					.map((c) => `<option value="${esc(c.currency)}">${esc(c.label)}</option>`)
+					.join("");
+			}
+			if (select && quote.currency && quote.payment_method === "bank") select.value = quote.currency;
+			bank.hidden = quote.payment_method !== "bank" || (quote.bank_currencies || []).length < 2;
+		}
+		const totalsBox = document.querySelector('[data-shop="checkout-totals"]');
+		if (totalsBox) {
+			const lines = quote.lines
+				.map((line) => `<div class="checkout-line" data-kind="${esc(line.kind)}"><span>${esc(line.label)}</span><span>${esc(line.formatted)}</span></div>`)
+				.join("");
+			const notes = (quote.notes || []).map((note) => `<p class="checkout-note">${esc(note)}</p>`).join("");
+			totalsBox.innerHTML = `${lines}<div class="checkout-line checkout-total"><span>Total</span><span data-shop="checkout-total">${esc(quote.formatted_total)} ${esc(quote.currency)}</span></div>${notes}`;
+		}
+		const submit = form.querySelector('[type="submit"]');
+		if (submit) submit.disabled = !quote.can_ship;
+		syncPaymentUI();
+	}
+
 	async function submitCheckout(form) {
 		const data = new FormData(form);
 		const submit = form.querySelector('[type="submit"]');
+		const terms = form.querySelector('[name="accept_terms"]');
+		if (terms && !terms.checked) {
+			showError("Please accept the terms and conditions.");
+			terms.focus();
+			return;
+		}
 		if (submit) submit.disabled = true;
 		try {
 			const result = await call("shop.storefront.checkout.place_order", {
@@ -282,21 +386,39 @@
 					full_name: data.get("full_name"),
 					phone: data.get("phone"),
 				},
-				address: {
-					address_line1: data.get("address_line1"),
-					address_line2: data.get("address_line2"),
-					city: data.get("city"),
-					state: data.get("state"),
-					country: data.get("country"),
-					pincode: data.get("pincode"),
-				},
+				address: formAddress(form),
 				payment_method: data.get("payment_method") || "cod",
+				...checkoutChoice(form),
+				accept_terms: terms && terms.checked ? 1 : 0,
+				business_buyer: data.get("business_buyer") ? 1 : 0,
+				expected_total: checkout.quote ? checkout.quote.total : undefined,
 			});
 			window.location.href = result.payment_url || result.confirmation_url;
 		} catch (error) {
 			showError(error.message);
 			if (submit) submit.disabled = false;
+			scheduleQuote(0);
 		}
+	}
+
+	function initCheckout() {
+		const form = checkoutForm();
+		if (!form) return;
+		const country = form.querySelector('select[name="country"]');
+		if (country) {
+			const pageData = window.page_data || {};
+			const wanted = (pageData.prefill && pageData.prefill.country) || pageData.default_country;
+			if (wanted) country.value = wanted;
+		}
+		form.addEventListener("input", (event) => {
+			if (ADDRESS_FIELDS.includes(event.target.name)) scheduleQuote();
+		});
+		form.addEventListener("change", (event) => {
+			const name = event.target.name;
+			if (name === "currency") event.target.dataset.chosen = "1";
+			if (["shipping_option", "payment_method", "currency", "country"].includes(name)) scheduleQuote(0);
+		});
+		scheduleQuote(0);
 	}
 
 	document.addEventListener("click", (event) => {
@@ -434,10 +556,10 @@
 	function syncPaymentUI() {
 		const chosen = document.querySelector('input[name="payment_method"]:checked');
 		const submit = document.querySelector('[data-shop="checkout-form"] [type="submit"]');
-		if (submit && chosen)
-			submit.textContent = chosen.value === "gateway" ? "Pay now" : "Place order";
+		const online = chosen && (chosen.value === "gateway" || chosen.value === "card");
+		if (submit && chosen) submit.textContent = online ? "Continue to payment" : "Place order";
 		const note = document.querySelector('[data-shop="gateway-note"]');
-		if (note) note.hidden = chosen?.value !== "gateway";
+		if (note) note.hidden = !online;
 	}
 
 	function preselectPayment() {
@@ -503,6 +625,11 @@
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));
 		const picker = document.querySelector('[data-shop="address-picker"]');
-		if (picker) picker.addEventListener("change", () => applySavedAddress(picker));
+		if (picker)
+			picker.addEventListener("change", () => {
+				applySavedAddress(picker);
+				scheduleQuote(0);
+			});
+		initCheckout();
 	});
 })();

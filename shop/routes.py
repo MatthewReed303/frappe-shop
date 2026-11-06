@@ -120,9 +120,24 @@ def rewrite_html(html: str | None, prefix: str, old_prefix: str = "") -> str | N
 	)
 
 
+def theme_components() -> set[str]:
+	"""Builder Components whose links belong to the storefront: Shop's theme components plus
+	those other apps register in the `shop_theme_components` hook. Every other component (a
+	site's own header or footer, say) keeps its links as they are."""
+	from shop.themes import theme_component_names
+
+	return set(theme_component_names()) | set(frappe.get_hooks("shop_theme_components") or [])
+
+
+def foreign_component(node: dict, ours: set[str]) -> bool:
+	component = node.get("extendedFromComponent") or node.get("isChildOfComponent")
+	return bool(component) and component not in ours
+
+
 def rewrite_blocks(blocks, prefix: str, old_prefix: str = ""):
 	"""Rewrite storefront links in a Builder block tree (JSON string, list or dict).
 
+	Links inside components that are not storefront components are left alone.
 	Returns the same type it was given; a JSON string comes back untouched (same object)
 	when no link changed, so callers can compare before saving.
 	"""
@@ -131,6 +146,7 @@ def rewrite_blocks(blocks, prefix: str, old_prefix: str = ""):
 	as_string = isinstance(blocks, str)
 	tree = json.loads(blocks) if as_string else blocks
 	changed = False
+	ours = theme_components()
 
 	def walk(node):
 		nonlocal changed
@@ -138,6 +154,8 @@ def rewrite_blocks(blocks, prefix: str, old_prefix: str = ""):
 			for item in node:
 				walk(item)
 		elif isinstance(node, dict):
+			if foreign_component(node, ours):
+				return
 			attributes = node.get("attributes")
 			if isinstance(attributes, dict):
 				for key in LINK_ATTRIBUTES:

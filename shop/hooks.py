@@ -21,7 +21,13 @@ add_to_apps_screen = [
 
 website_route_rules = [
 	{"from_route": "/shop/<path:app_path>", "to_route": "shop"},
+	{"from_route": "/pay/<order_id>", "to_route": "pay"},
 ]
+
+doc_events = {
+	# a bank transfer recorded in the desk pays the order like a card payment does
+	"Payment Entry": {"on_submit": "shop.storefront.payment.on_payment_entry"},
+}
 
 override_doctype_class = {
 	"Payment Request": "shop.overrides.payment_request.ShopPaymentRequest",
@@ -46,6 +52,7 @@ shop_carrier_tracking_urls = {
 scheduler_events = {
 	"daily": [
 		"shop.storefront.cart.cleanup_carts",
+		"shop.storefront.payment.cancel_overdue_orders",
 	],
 	"hourly": [
 		"shop.fulfillment.service.sync_open_shipments",
@@ -53,6 +60,13 @@ scheduler_events = {
 }
 
 before_tests = "shop.install.before_tests"
+
+# Apps add live shipping rates at checkout here; see shop.storefront.shipping
+shop_shipping_rate_providers = []
+
+# Apps with their own storefront theme list its Builder Component ids here, so storefront links
+# in them follow the route prefix. Other components (a site's own header) are left alone.
+shop_theme_components = []
 
 export_python_type_annotations = True
 require_type_annotated_api_methods = True
