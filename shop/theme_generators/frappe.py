@@ -1605,8 +1605,10 @@ def pdp_details(refs):
 			component_ref("shop-delivery-card"),
 			component_ref("shop-trust-row"),
 			block(
-				"p",
+				"div",
 				text="",
+				name="Product Description",
+				classes=["product-description"],
 				visibilityCondition={"key": "product.description_text", "comesFrom": "dataScript"},
 				styles={
 					"color": refs["muted"],
@@ -1615,7 +1617,7 @@ def pdp_details(refs):
 					"lineHeight": "1.7",
 					"width": "100%",
 				},
-				dynamicValues=[dv("product.description_text", "innerHTML")],
+				dynamicValues=[dv("product.description_html", "innerHTML")],
 			),
 		],
 	)

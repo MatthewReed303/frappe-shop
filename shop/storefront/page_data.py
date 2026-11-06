@@ -138,6 +138,10 @@ def product_page() -> dict:
 	detail["image"] = detail["images"][0]["image"] if detail["images"] else None
 	detail["buy_item_code"] = detail.get("default_item_code") or detail["item"]
 	detail["description_text"] = frappe.utils.strip_html(detail.get("description") or "")
+	# the description as safe HTML, so lists, headings and spec tables keep their layout
+	from frappe.utils.html_utils import sanitize_html
+
+	detail["description_html"] = sanitize_html(detail.get("description") or "")
 	detail["attribute_options"] = [
 		{
 			"attribute": option["attribute"],

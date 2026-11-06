@@ -258,7 +258,9 @@ def theme_component_names() -> list[str]:
 
 def relink_components(prefix: str, old_prefix: str = ""):
 	"""Rewrite storefront links in the theme components (navbar, footer, cart drawer)."""
-	for name in theme_component_names():
+	from shop.routes import theme_components
+
+	for name in sorted(theme_components()):
 		if not frappe.db.exists("Builder Component", name):
 			continue
 		block = frappe.db.get_value("Builder Component", name, "block")

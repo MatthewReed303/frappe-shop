@@ -110,6 +110,14 @@ def set_stock(item_code: str, qty: float) -> dict:
 		}
 	)
 	reconciliation.flags.ignore_permissions = True
-	reconciliation.insert(ignore_permissions=True)
+	from erpnext.stock.doctype.stock_reconciliation.stock_reconciliation import (
+		EmptyStockReconciliationItemsError,
+	)
+
+	try:
+		reconciliation.insert(ignore_permissions=True)
+	except EmptyStockReconciliationItemsError:
+		frappe.clear_messages()  # already at that quantity and value: nothing to change
+		return {"item_code": item_code, "stock": flt(qty)}
 	reconciliation.submit()
 	return {"item_code": item_code, "stock": flt(qty)}

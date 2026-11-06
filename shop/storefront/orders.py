@@ -30,7 +30,7 @@ def get_orders(start: int = 0, limit: int = 20) -> list[dict]:
 		limit=min(cint(limit) or 20, 50),
 	)
 	for order in orders:
-		order.formatted_total = pricing.format_amount(order.grand_total)
+		order.formatted_total = frappe.utils.fmt_money(order.grand_total, currency=order.currency)
 		order.display_status = STATUS_LABELS.get(order.status, order.status)
 		order.formatted_date = frappe.utils.formatdate(order.transaction_date, "d MMM yyyy")
 		order.url = store_url(f"order-confirmation/{order.name}")
@@ -61,54 +61,169 @@ def can_view(name: str, token: str | None) -> bool:
 
 
 def order_summary(order) -> dict:
-	from shop.storefront import returns
+	from shop.storefront import payment, returns, totals
 
 	shipment = shipment_summary(order.name)
+
+	def fmt(amount):
+		return frappe.utils.fmt_money(amount, currency=order.currency)
+
+	products = [row for row in order.items if not totals.is_charge_item(row.item_code)]
+	charges = [row for row in order.items if totals.is_charge_item(row.item_code)]
+	included = sum(frappe.utils.flt(tax.tax_amount_after_discount_amount) for tax in order.taxes if tax.included_in_print_rate)
+	product_total = sum(frappe.utils.flt(row.amount) for row in products)
+	paid = payment.is_paid(order)
+	method = payment.method(order)
+	token = frappe.form_dict.get("token")
 	return {
 		"returns": returns.summary(order.name),
 		"name": order.name,
 		"status": order.status,
-		"display_status": STATUS_LABELS.get(order.status, order.status),
+		"display_status": display_status(order, paid),
 		"progress": order_progress(order, shipment),
 		"shipment": shipment,
 		"awaiting_shipment": None if shipment else "true",
 		"transaction_date": str(order.transaction_date),
-		"total": order.total,
-		"formatted_total": pricing.format_amount(order.total),
-		"formatted_shipping": shipping_label(order),
+		"currency": order.currency,
+		"total": product_total,
+		"formatted_total": fmt(product_total),
+		"formatted_shipping": shipping_label(order, charges),
 		"discount_amount": order.discount_amount or None,
-		"formatted_discount": pricing.format_amount(order.discount_amount)
-		if order.discount_amount
-		else None,
+		"formatted_discount": fmt(order.discount_amount) if order.discount_amount else None,
 		"grand_total": order.grand_total,
-		"formatted_grand_total": pricing.format_amount(order.grand_total),
-		"taxes": [
-			{"description": tax.description, "amount": tax.tax_amount, "formatted_amount": pricing.format_amount(tax.tax_amount)}
-			for tax in order.taxes
+		"formatted_grand_total": fmt(order.grand_total),
+		"charges": [
+			{"label": row.description or row.item_name, "formatted_amount": fmt(row.amount)} for row in charges
 		],
+		"taxes": [
+			{"description": tax.description, "amount": tax.tax_amount, "formatted_amount": fmt(tax.tax_amount)}
+			for tax in order.taxes
+			if not tax.included_in_print_rate and tax.tax_amount
+		],
+		"tax_note": _("Includes {0} GST").format(fmt(included)) if included else None,
+		"payment_method": method,
+		"paid": "true" if paid else None,
+		"unpaid": None if paid or order.docstatus == 2 else "true",
+		"bank_transfer": None if paid or order.docstatus == 2 else payment.bank_instructions(order),
+		"pay_url": pay_url(order, token) if not paid and method == totals.CARD and order.docstatus == 1 else None,
+		"totals_html": totals_html(order, products, charges, included),
+		"payment_html": payment_html(order, paid, method, token),
 		"items": [
 			{
 				"item_code": row.item_code,
 				"item_name": row.item_name,
 				"qty": cart_module.display_qty(row.qty),
 				"rate": row.rate,
-				"formatted_rate": pricing.format_amount(row.rate),
+				"formatted_rate": fmt(row.rate),
 				"amount": row.amount,
-				"formatted_amount": pricing.format_amount(row.amount),
+				"formatted_amount": fmt(row.amount),
 				"image": row.image,
 			}
-			for row in order.items
+			for row in products
 		],
 	}
+
+
+def totals_html(order, products, charges, included) -> str:
+	"""The order's money lines as ready-made HTML, so every theme shows the same breakdown."""
+	esc = frappe.utils.escape_html
+
+	def fmt(amount):
+		return frappe.utils.fmt_money(amount, currency=order.currency)
+
+	def line(label, amount, kind=""):
+		return f'<div class="order-line {kind}"><span>{esc(label)}</span><span>{esc(amount)}</span></div>'
+
+	html = line(_("Subtotal"), fmt(sum(frappe.utils.flt(row.amount) for row in products)))
+	if order.discount_amount:
+		html += line(_("Discount"), "-" + fmt(order.discount_amount), "discount")
+	if not any(row.item_code == frappe.get_cached_doc("Shop Settings").get("shipping_item") for row in charges):
+		html += line(_("Shipping"), shipping_label(order, charges))
+	for row in charges:
+		html += line(row.description or row.item_name, fmt(row.amount))
+	for tax in order.taxes:
+		if not tax.included_in_print_rate and tax.tax_amount:
+			html += line(tax.description, fmt(tax.tax_amount))
+	html += line(_("Total"), f"{fmt(order.grand_total)} {order.currency}", "total")
+	if included:
+		html += f'<p class="order-note">{esc(_("Includes {0} GST").format(fmt(included)))}</p>'
+	return html
+
+
+def payment_html(order, paid: bool, method: str | None, token: str | None) -> str:
+	from shop.storefront import payment, totals
+
+	esc = frappe.utils.escape_html
+	if order.docstatus == 2:
+		return f'<div class="order-payment cancelled"><p>{esc(_("This order has been cancelled."))}</p></div>'
+	if paid:
+		return f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p></div>'
+	if method == totals.BANK:
+		info = payment.bank_instructions(order)
+		if not info:
+			return ""
+		details = "".join(f"<div>{esc(line)}</div>" for line in info["details"])
+		due = f'<p>{esc(_("Please pay by {0}. Unpaid orders are cancelled after that date.").format(info["due"]))}</p>' if info["due"] else ""
+		return (
+			f'<div class="order-payment bank"><h3>{esc(_("Pay by bank transfer"))}</h3>'
+			f'<p>{esc(_("Amount"))}: <b>{esc(info["amount"])} {esc(info["currency"])}</b><br>'
+			f'{esc(_("Reference"))}: <b>{esc(info["reference"])}</b></p>'
+			f'<div class="bank-details">{details}</div>{due}'
+			f'<p>{esc(_("We send your order as soon as the payment arrives."))}</p></div>'
+		)
+	url = pay_url(order, token) if method == totals.CARD else None
+	if url:
+		return (
+			f'<div class="order-payment card"><p>{esc(_("This order is waiting for payment."))}</p>'
+			f'<a class="order-pay-button" href="{esc(url)}">{esc(_("Pay now"))}</a></div>'
+		)
+	return ""
+
+
+def display_status(order, paid: bool) -> str:
+	from shop.storefront import totals
+
+	if order.docstatus == 2:
+		return _("Cancelled")
+	if not paid and order.get("shop_payment_method") in (totals.BANK, totals.CARD):
+		return _("Awaiting payment")
+	shipment = shipment_summary(order.name)
+	if shipment and shipment.status in ("Pending", "Accepted"):
+		return _("Preparing your order")
+	if shipment and shipment.status == "Shipped":
+		return _("Shipped")
+	if shipment and shipment.status == "Delivered":
+		return _("Delivered")
+	return STATUS_LABELS.get(order.status, order.status)
+
+
+def pay_url(order, token: str | None) -> str | None:
+	from shop.payments import stripe_checkout
+
+	if not token or not stripe_checkout.is_stripe():
+		return None
+	return stripe_checkout.pay_url(order.name, token)
 
 
 def order_progress(order, shipment: dict | None) -> list[dict]:
 	if order.docstatus == 2:
 		return [{"label": _("Cancelled"), "done": "true"}]
-	paid = bool(order.advance_paid) or has_payment(order.name)
-	shipped = bool(shipment and shipment.get("shipped_on")) or (order.per_delivered or 0) >= 100
+	from shop.storefront import payment, totals
+
+	paid = bool(order.advance_paid) or has_payment(order.name) or payment.is_paid(order)
+	# with a fulfilment, "shipped" means the courier has it, not that the stock was delivered
+	if shipment:
+		shipped = bool(shipment.get("shipped_on")) or shipment.get("status") in ("Shipped", "Delivered")
+	else:
+		shipped = (order.per_delivered or 0) >= 100
 	delivered = bool(shipment and shipment.get("status") == "Delivered")
-	payment_label = _("Paid") if paid or expects_online_payment(order.name) else _("Payment on delivery")
+	method = order.get("shop_payment_method")
+	if paid:
+		payment_label = _("Paid")
+	elif method in (totals.BANK, totals.CARD) or expects_online_payment(order.name):
+		payment_label = _("Awaiting payment")
+	else:
+		payment_label = _("Payment on delivery")
 	stages = [
 		(_("Order placed"), True),
 		(payment_label, paid),
@@ -152,11 +267,19 @@ def shipment_summary(order_name: str) -> dict | None:
 	return shipment
 
 
-def shipping_label(order) -> str:
-	charge = sum(
-		tax.tax_amount for tax in order.taxes if (tax.description or "").strip().lower() == "shipping"
+def shipping_label(order, charges=None) -> str:
+	from shop.storefront import totals
+
+	shipping_item = frappe.get_cached_doc("Shop Settings").get("shipping_item")
+	charge = sum(row.amount for row in (charges or []) if shipping_item and row.item_code == shipping_item)
+	shipping_account = frappe.get_cached_doc("Shop Settings").get("shipping_account")
+	charge += sum(
+		tax.tax_amount
+		for tax in order.taxes
+		if (shipping_account and tax.account_head == shipping_account and tax.charge_type == "Actual")
+		or (tax.description or "").strip().lower() == "shipping"
 	)
-	return pricing.format_amount(charge) if charge else "Free"
+	return frappe.utils.fmt_money(charge, currency=order.currency) if charge else _("Free")
 
 
 def session_customers() -> list[str]:

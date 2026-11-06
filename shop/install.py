@@ -15,6 +15,7 @@ def after_migrate():
 
 def setup():
 	create_shop_manager_role()
+	create_order_fields()
 	sync_templates()
 	apply_default_theme()
 	apply_route_prefix()
@@ -33,6 +34,39 @@ def sync_agent():
 	from shop.agent.setup import sync
 
 	sync()
+
+
+def order_fields() -> dict:
+	"""What the store records on each Sales Order: how it is paid and what was agreed at checkout."""
+	return {
+		"Sales Order": [
+			{"fieldname": "shop_section", "fieldtype": "Section Break", "label": "Online Store",
+			 "insert_after": "terms", "collapsible": 1},
+			{"fieldname": "shop_payment_method", "fieldtype": "Data", "label": "Payment Method",
+			 "read_only": 1, "insert_after": "shop_section", "allow_on_submit": 1},
+			{"fieldname": "shop_payment_due", "fieldtype": "Date", "label": "Payment Due",
+			 "insert_after": "shop_payment_method", "allow_on_submit": 1,
+			 "description": "Unpaid store orders are cancelled after this date"},
+			{"fieldname": "shop_payment_reference", "fieldtype": "Data", "label": "Payment Reference",
+			 "read_only": 1, "insert_after": "shop_payment_due", "allow_on_submit": 1},
+			{"fieldname": "shop_shipping_option", "fieldtype": "Small Text", "label": "Shipping Chosen",
+			 "read_only": 1, "insert_after": "shop_payment_reference"},
+			{"fieldname": "shop_column", "fieldtype": "Column Break", "insert_after": "shop_shipping_option"},
+			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Terms Accepted",
+			 "read_only": 1, "insert_after": "shop_column"},
+			{"fieldname": "shop_terms_accepted_on", "fieldtype": "Datetime", "label": "Terms Accepted On",
+			 "read_only": 1, "insert_after": "shop_terms_version"},
+			{"fieldname": "shop_business_buyer", "fieldtype": "Check", "label": "Business Buyer",
+			 "read_only": 1, "insert_after": "shop_terms_accepted_on",
+			 "description": "Confirmed at checkout that they are buying for business purposes"},
+		]
+	}
+
+
+def create_order_fields():
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	create_custom_fields(order_fields(), ignore_validate=True)
 
 
 def create_shop_manager_role():

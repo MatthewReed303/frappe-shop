@@ -123,16 +123,24 @@ def upsert_page(
 	return page
 
 
+def variable_doctype() -> tuple[str, str]:
+	"""Builder renamed Builder Token to Builder Variable; support both (Builder v1.36 has Tokens)."""
+	if frappe.db.exists("DocType", "Builder Variable"):
+		return "Builder Variable", "variable_name"
+	return "Builder Token", "token_name"
+
+
 def upsert_variables(group: str, palette: dict[str, tuple[str, str | None]]) -> dict[str, str]:
 	"""palette: {variable_name: (value, dark_value)} -> {variable_name: css var() reference}"""
+	doctype, name_field = variable_doctype()
 	refs = {}
 	for variable_name, (value, dark_value) in palette.items():
-		name = frappe.db.exists("Builder Variable", {"variable_name": variable_name, "group": group})
+		name = frappe.db.exists(doctype, {name_field: variable_name, "group": group})
 		if name:
-			doc = frappe.get_doc("Builder Variable", name)
+			doc = frappe.get_doc(doctype, name)
 		else:
-			doc = frappe.new_doc("Builder Variable")
-			doc.variable_name = variable_name
+			doc = frappe.new_doc(doctype)
+			doc.set(name_field, variable_name)
 		doc.type = "Color"
 		doc.value = value
 		doc.dark_value = dark_value

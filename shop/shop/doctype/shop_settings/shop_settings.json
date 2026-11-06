@@ -28,11 +28,33 @@
   "low_stock_threshold",
   "fulfillment_provider",
   "auto_send_to_fulfillment",
+  "shipping_item",
+  "export_tax_template",
   "payments_section",
   "enable_cod",
   "column_break_payments",
   "payment_gateway_account",
   "tax_template",
+  "stripe_webhook_secret",
+  "card_fee_section",
+  "card_fee_item",
+  "card_fee_percent",
+  "card_fee_fixed",
+  "column_break_card_fee",
+  "card_fee_percent_international",
+  "card_fee_fixed_international",
+  "bank_transfer_section",
+  "enable_bank_transfer",
+  "bank_transfer_days",
+  "column_break_bank_transfer",
+  "conversion_fee_item",
+  "bank_accounts",
+  "terms_section",
+  "require_terms",
+  "terms_url",
+  "terms_version",
+  "column_break_terms",
+  "business_buyer_label",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -215,11 +237,143 @@
    "label": "Theme Pages",
    "options": "Shop Theme Page",
    "read_only": 1
+  },
+  {
+   "fieldname": "shipping_item",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Shipping Item",
+   "description": "When set, shipping is charged as a line with this item, so the order's taxes apply to it"
+  },
+  {
+   "fieldname": "export_tax_template",
+   "fieldtype": "Link",
+   "options": "Sales Taxes and Charges Template",
+   "label": "Export Tax Template",
+   "description": "Used for orders shipped outside the company's country. Tax included in prices is taken off"
+  },
+  {
+   "fieldname": "card_fee_section",
+   "fieldtype": "Section Break",
+   "label": "Card Fee",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "card_fee_item",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Card Fee Item",
+   "description": "Adds the payment provider's fee to card orders as a line with this item. Leave empty for no card fee"
+  },
+  {
+   "fieldname": "card_fee_percent",
+   "fieldtype": "Percent",
+   "label": "Fee % (domestic)"
+  },
+  {
+   "fieldname": "card_fee_fixed",
+   "fieldtype": "Currency",
+   "options": "currency",
+   "label": "Fixed Fee (domestic)"
+  },
+  {
+   "fieldname": "column_break_card_fee",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "card_fee_percent_international",
+   "fieldtype": "Percent",
+   "label": "Fee % (international)",
+   "description": "Used when the order ships outside the company's country"
+  },
+  {
+   "fieldname": "card_fee_fixed_international",
+   "fieldtype": "Currency",
+   "options": "currency",
+   "label": "Fixed Fee (international)"
+  },
+  {
+   "fieldname": "bank_transfer_section",
+   "fieldtype": "Section Break",
+   "label": "Bank Transfer",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "enable_bank_transfer",
+   "fieldtype": "Check",
+   "label": "Enable Bank Transfer",
+   "default": "0"
+  },
+  {
+   "fieldname": "bank_transfer_days",
+   "fieldtype": "Int",
+   "label": "Days to Pay",
+   "default": "7",
+   "description": "Unpaid bank transfer orders are cancelled after this many days"
+  },
+  {
+   "fieldname": "column_break_bank_transfer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "conversion_fee_item",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Currency Conversion Item",
+   "description": "Charges the account's conversion fee on orders paid in another currency"
+  },
+  {
+   "fieldname": "bank_accounts",
+   "fieldtype": "Table",
+   "options": "Shop Bank Account",
+   "label": "Bank Accounts"
+  },
+  {
+   "fieldname": "terms_section",
+   "fieldtype": "Section Break",
+   "label": "Terms",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "require_terms",
+   "fieldtype": "Check",
+   "label": "Require Terms Acceptance",
+   "default": "0"
+  },
+  {
+   "fieldname": "terms_url",
+   "fieldtype": "Data",
+   "label": "Terms URL",
+   "depends_on": "require_terms"
+  },
+  {
+   "fieldname": "terms_version",
+   "fieldtype": "Data",
+   "label": "Terms Version",
+   "depends_on": "require_terms",
+   "description": "Saved on every order with the time the terms were accepted"
+  },
+  {
+   "fieldname": "column_break_terms",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "business_buyer_label",
+   "fieldtype": "Small Text",
+   "label": "Business Buyer Statement",
+   "depends_on": "require_terms",
+   "description": "Optional second checkbox for business buyers, e.g. that consumer law does not apply"
+  },
+  {
+   "fieldname": "stripe_webhook_secret",
+   "fieldtype": "Password",
+   "label": "Stripe Webhook Secret",
+   "description": "Signing secret of the Stripe webhook for payment_intent.succeeded, pointed at /api/method/shop.payments.stripe_checkout.webhook"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-06 19:00:00.000000",
+ "modified": "2026-11-07 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",
