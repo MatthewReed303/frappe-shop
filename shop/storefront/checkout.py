@@ -16,7 +16,7 @@ def get_checkout_summary() -> dict:
 	cart = cart_module.resolve_cart()
 	settings = frappe.get_cached_doc("Shop Settings")
 	return {
-		"cart": cart_module.cart_payload(cart),
+		"cart": cart_module.cart_payload(cart, money=pricing.store_amount),
 		"payment_methods": totals.payment_methods(),
 		"currency": settings.currency,
 		"prefill": checkout_prefill(),

@@ -291,6 +291,69 @@ class TestCheckoutTotals(IntegrationTestCase):
 		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank")
 		self.assertEqual(quote.currency, self.foreign if self.other == "United States" else self.company_currency)
 
+	def with_currency_cookie(self, currency):
+		from werkzeug.test import EnvironBuilder
+		from werkzeug.wrappers import Request
+
+		builder = EnvironBuilder(path="/store/products", headers={"Cookie": f"shop_currency={currency}"})
+		frappe.local.request = Request(builder.get_environ())
+		self.addCleanup(lambda: delattr(frappe.local, "request") if hasattr(frappe.local, "request") else None)
+		for name in ("shop_display_rates",):
+			if hasattr(frappe.local, name):
+				delattr(frappe.local, name)
+
+	def test_prices_show_the_store_currency_by_default(self):
+		from shop.storefront import pricing
+
+		self.assertEqual(pricing.display_currencies(), [self.company_currency, self.foreign])
+		self.assertTrue(pricing.display_amount(100).endswith(f" {self.company_currency}"))
+		self.assertNotIn("≈", pricing.display_amount(100))
+
+	def test_picked_currency_shows_approximate_prices_and_leads_bank_transfer(self):
+		from shop.storefront import pricing
+
+		basket = self.basket(1)
+		self.with_currency_cookie(self.foreign)
+		shown = pricing.display_amount(100)
+		self.assertTrue(shown.startswith("≈ ") and shown.endswith(f" {self.foreign}"), shown)
+		# checkout charges the real amounts: bank transfer starts in the picked currency
+		quote = totals.compute(basket, self.home_address, None, "bank")
+		self.assertEqual(quote.currency, self.foreign)
+		card = totals.payload(totals.compute(basket, self.home_address, None, "card"))
+		self.assertEqual(card["currency"], self.company_currency)
+		self.assertTrue(any(self.foreign in note for note in card["notes"]))
+
+	def test_unknown_currency_cookie_is_ignored(self):
+		from shop.storefront import pricing
+
+		self.with_currency_cookie("XYZ")
+		self.assertEqual(pricing.display_currency(), self.company_currency)
+		with self.assertRaises(frappe.ValidationError):
+			pricing.set_currency("XYZ")
+
+	def test_signed_in_customer_keeps_the_currency_as_billing_currency(self):
+		from shop.storefront import accounts, pricing
+
+		email = "currency.keeper@example.com"
+		if not frappe.db.exists("User", email):
+			accounts.register(full_name="Currency Keeper", email=email, accept_terms=1)
+		customer = frappe.db.get_value("Contact", {"email_id": email}, "name")
+		frappe.set_user(email)
+		try:
+			for name in ("shop_session_customer",):
+				if hasattr(frappe.local, name):
+					delattr(frappe.local, name)
+			frappe.local.cookie_manager = frappe.auth.CookieManager()
+			pricing.set_currency(self.foreign)
+			party = pricing.session_customer()
+			self.assertEqual(frappe.db.get_value("Customer", party, "default_currency"), self.foreign)
+			self.assertEqual(frappe.local.cookie_manager.cookies["shop_currency"]["value"], self.foreign)
+			# without the cookie (another browser) the Billing Currency still applies
+			frappe.clear_cache(doctype="Customer")
+			self.assertEqual(pricing.display_currency(), self.foreign)
+		finally:
+			frappe.set_user("Administrator")
+
 	def test_charge_lines_are_not_products(self):
 		self.assertTrue(totals.is_charge_item("TEST-CARD-FEE"))
 		self.assertFalse(totals.is_charge_item(ITEM))

@@ -137,7 +137,7 @@ def decorate(products: list) -> None:
 		product.image = images.get(product.name)
 		price = prices.get(product.item, {})
 		product.price = price.get("rate")
-		product.formatted_price = price.get("formatted")
+		product.formatted_price = price.get("display")
 		if price.get("retail"):
 			product.compare_at_price = max(flt(product.get("compare_at_price")), flt(price["retail"]))
 		product.in_stock = availability.get(product.item, False)
@@ -153,9 +153,9 @@ def apply_compare_at(target, price) -> None:
 	if not price or compare_at <= flt(price):
 		target["compare_at_price"] = None
 		return
-	target["formatted_compare_at"] = pricing.format_amount(compare_at)
+	target["formatted_compare_at"] = pricing.display_amount(compare_at)
 	target["discount_pct"] = round((compare_at - flt(price)) * 100 / compare_at)
-	target["formatted_savings"] = pricing.format_amount(compare_at - flt(price))
+	target["formatted_savings"] = pricing.display_amount(compare_at - flt(price))
 
 
 def star_string(average: float) -> str:
@@ -185,7 +185,7 @@ def display_prices(products: list) -> dict:
 	for template, codes in variants_by_template(templates).items():
 		rates = [p["rate"] for code, p in pricing.get_prices(codes).items()]
 		if rates:
-			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates))}
+			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), "display": pricing.display_amount(min(rates))}
 	return prices
 
 

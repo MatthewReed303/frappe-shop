@@ -125,18 +125,21 @@ def refresh_rates(cart):
 		row.rate = prices.get(row.item_code, {}).get("rate", 0)
 
 
-def cart_payload(cart) -> dict:
+def cart_payload(cart, money=None) -> dict:
+	"""The cart for display. Amounts are shown in the shopper's chosen currency (approximate),
+	or with money=pricing.store_amount exactly in the store currency, as checkout does."""
+	money = money or pricing.display_amount
 	if not cart or not cart.items:
 		return {
 			"items": [],
 			"item_count": 0,
 			"is_empty": True,
 			"subtotal": 0,
-			"formatted_subtotal": pricing.format_amount(0),
+			"formatted_subtotal": money(0),
 			"coupon": None,
 			"discount": 0,
 			"total": 0,
-			"formatted_total": pricing.format_amount(0),
+			"formatted_total": money(0),
 		}
 	products = product_details(cart)
 	items = []
@@ -149,9 +152,9 @@ def cart_payload(cart) -> dict:
 				"item_code": row.item_code,
 				"qty": display_qty(row.qty),
 				"rate": row.rate,
-				"formatted_rate": pricing.format_amount(row.rate),
+				"formatted_rate": money(row.rate),
 				"amount": amount,
-				"formatted_amount": pricing.format_amount(amount),
+				"formatted_amount": money(amount),
 				**products.get(row.shop_product, {}),
 			}
 		)
@@ -163,14 +166,14 @@ def cart_payload(cart) -> dict:
 		"item_count": display_qty(sum(flt(row.qty) for row in cart.items)),
 		"is_empty": False,
 		"subtotal": subtotal,
-		"formatted_subtotal": pricing.format_amount(subtotal),
+		"formatted_subtotal": money(subtotal),
 		"coupon": coupon,
 		"discount": discount,
-		"formatted_discount": pricing.format_amount(discount),
+		"formatted_discount": money(discount),
 		"shipping": shipping,
-		"formatted_shipping": pricing.format_amount(shipping) if shipping else "Free",
+		"formatted_shipping": money(shipping) if shipping else "Free",
 		"total": total,
-		"formatted_total": pricing.format_amount(total),
+		"formatted_total": money(total),
 	}
 
 
@@ -206,7 +209,7 @@ def applied_discount(cart, subtotal: float):
 	except Exception:
 		forget_coupon(cart)
 		return None, 0.0
-	return {"code": coupon.code, "formatted_discount": pricing.format_amount(discount)}, discount
+	return {"code": coupon.code, "formatted_discount": pricing.display_amount(discount)}, discount
 
 
 def display_qty(qty: float) -> float | int:

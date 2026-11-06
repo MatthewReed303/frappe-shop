@@ -1715,11 +1715,20 @@ def pdp_price_block(refs):
 			inline_text(refs, [(False, "You save "), (True, "product.formatted_savings")], size="13px", color=refs["success"], weight="600"),
 		],
 	)
+	note = block(
+		"p",
+		text="",
+		name="Price Note",
+		attrs={"data-shop": "pdp-price-note"},
+		visibilityCondition={"key": "product.price_note", "comesFrom": "dataScript"},
+		styles={"color": refs["muted"], "fontSize": "13px", "height": "fit-content", "width": "100%"},
+		dynamicValues=[dv("product.price_note", "innerHTML")],
+	)
 	return block(
 		"div",
 		name="Price",
 		styles={"display": "flex", "flexDirection": "column", "gap": "6px", "width": "100%"},
-		children=[price_row, savings],
+		children=[price_row, savings, note],
 	)
 
 

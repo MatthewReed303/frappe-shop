@@ -44,7 +44,7 @@ def resolve(code: str) -> dict:
 def discount_for(coupon: dict, subtotal: float) -> float:
 	if coupon.min_amt and subtotal < coupon.min_amt:
 		frappe.throw(
-			_("Add items worth {0} to use this coupon").format(pricing.format_amount(coupon.min_amt))
+			_("Add items worth {0} to use this coupon").format(pricing.display_amount(coupon.min_amt))
 		)
 	if coupon.rate_or_discount == "Discount Percentage":
 		return flt(subtotal * coupon.discount_percentage / 100, 2)

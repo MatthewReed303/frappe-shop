@@ -169,6 +169,15 @@ def suggested_currency(address: frappe._dict | None) -> str:
 	return company_currency()
 
 
+def preferred_bank_currency(address: frappe._dict | None) -> str:
+	"""The currency the shopper picked for prices, when the store takes bank transfers in it;
+	otherwise the currency of where the order is going."""
+	from shop.storefront import pricing
+
+	chosen = pricing.chosen_currency()
+	return chosen if chosen in bank_currencies() else suggested_currency(address)
+
+
 def exchange_rate(from_currency: str, to_currency: str) -> float:
 	if from_currency == to_currency:
 		return 1.0
@@ -205,7 +214,7 @@ def compute(
 	method = normalize_method(payment_method)
 	base_currency = company_currency()
 	if method == BANK and not currency:
-		currency = suggested_currency(address)
+		currency = preferred_bank_currency(address)
 	currency = currency if method == BANK and currency in bank_currencies() else base_currency
 	if method == BANK and currency not in bank_currencies() and bank_currencies():
 		currency = base_currency if base_currency in bank_currencies() else bank_currencies()[0]
@@ -350,6 +359,17 @@ def payload(quote: frappe._dict) -> dict:
 	elif quote.export and quote.tax_label:
 		notes.append(_("No New Zealand GST: the order is shipped overseas") if company_country() == "New Zealand"
 					 else _("Tax-free export"))
+	if quote.payment_method == CARD:
+		from shop.storefront import pricing
+
+		shown = pricing.display_currency()
+		if shown != quote.company_currency:
+			notes.append(
+				_("Cards are charged in {0}. Your card provider converts it to {1}, usually at a small cost. "
+				  "To pay in {1}, choose bank transfer.").format(quote.company_currency, shown)
+				if shown in bank_currencies()
+				else _("Cards are charged in {0}. Your card provider converts it.").format(quote.company_currency)
+			)
 	if quote.currency != quote.company_currency:
 		notes.append(
 			_("Converted from {0} at {1}").format(

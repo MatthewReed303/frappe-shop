@@ -3,7 +3,7 @@ from frappe import _
 from frappe.utils import cint
 
 from shop.routes import store_url
-from shop.storefront import cart, catalog, checkout, orders, product
+from shop.storefront import cart, catalog, checkout, orders, pricing, product
 
 PAGE_SIZE = 24
 
@@ -80,6 +80,29 @@ def parse_price_bucket(bucket: str | None):
 	return None, None
 
 
+def useful_price_buckets(form) -> list:
+	"""The price ranges that have products in them. With fewer than two, a price filter can't
+	narrow anything down and is left out (unless the shopper already chose a range)."""
+	settings = frappe.get_cached_doc("Shop Settings")
+	items = frappe.get_all("Shop Product", filters={"published": 1}, pluck="item")
+	rates = [
+		row.price_list_rate
+		for row in frappe.get_all(
+			"Item Price",
+			filters={"item_code": ["in", items or [""]], "price_list": settings.price_list},
+			fields=["price_list_rate"],
+		)
+	]
+	buckets = [
+		bucket
+		for bucket in PRICE_BUCKETS
+		if any((bucket[2][0] or 0) <= rate and (bucket[2][1] is None or rate < bucket[2][1]) for rate in rates)
+	]
+	if len(buckets) < 2 and not form.get("price"):
+		return []
+	return buckets
+
+
 def listing_filters(form, collections) -> list[dict]:
 	def option(label, param, value):
 		current = form.get(param)
@@ -89,7 +112,8 @@ def listing_filters(form, collections) -> list[dict]:
 	from frappe.utils import fmt_money
 
 	currency = frappe.get_cached_doc("Shop Settings").currency
-	money = lambda amount: fmt_money(amount, currency=currency, precision=0)
+	money = lambda amount: f"{fmt_money(amount, currency=currency, precision=0)} {currency}"
+	buckets = useful_price_buckets(form)
 	return [
 		{
 			"label": "Collection",
@@ -98,16 +122,22 @@ def listing_filters(form, collections) -> list[dict]:
 				*[option(row.title, "collection", row.slug) for row in collections],
 			],
 		},
-		{
-			"label": "Price",
-			"options": [
-				option("Any price", "price", None),
-				*[
-					option(label.format(money(low or high), money(high or low)), "price", key)
-					for key, label, (low, high) in PRICE_BUCKETS
-				],
-			],
-		},
+		*(
+			[
+				{
+					"label": "Price",
+					"options": [
+						option("Any price", "price", None),
+						*[
+							option(label.format(money(low or high), money(high or low)), "price", key)
+							for key, label, (low, high) in buckets
+						],
+					],
+				}
+			]
+			if buckets
+			else []
+		),
 		{
 			"label": "Availability",
 			"options": [option("All", "stock", None), option("In stock", "stock", "in")],
@@ -348,4 +378,6 @@ def store_details() -> dict:
 		if signed_in
 		else "/login?redirect-to=" + store_url("account/orders"),
 		"register_url": None if signed_in else store_url("account/register"),
+		"display_currency": pricing.display_currency(),
+		"currency_picker_html": pricing.currency_picker_html(),
 	}

@@ -700,7 +700,24 @@
 		).observe(anchor);
 	}
 
+	function initCurrencyPicker() {
+		// the shopper picks the currency prices are shown in; the page is redrawn with it
+		document.querySelectorAll('[data-shop="currency-picker"]').forEach((select) =>
+			select.addEventListener("change", async () => {
+				select.disabled = true;
+				try {
+					await call("shop.storefront.pricing.set_currency", { currency: select.value });
+					window.location.reload();
+				} catch (error) {
+					select.disabled = false;
+					window.alert(error.message);
+				}
+			})
+		);
+	}
+
 	function init() {
+		initCurrencyPicker();
 		initGallery();
 		initVariantPicker();
 		refreshCartCount();
