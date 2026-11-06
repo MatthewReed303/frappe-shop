@@ -28,6 +28,14 @@ def check_terms(accept_terms) -> None:
 # --- sign-up ---------------------------------------------------------------------
 
 
+@frappe.whitelist(allow_guest=True)
+def signup_url() -> str | None:
+	"""The store's sign-up page, when it replaces the site's own sign-up."""
+	if not frappe.db.get_single_value("Website Settings", "disable_signup"):
+		return None
+	return store_url("account/register")
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=5, seconds=60 * 10)
 def register(full_name: str, email: str, accept_terms: int = 0) -> dict:
