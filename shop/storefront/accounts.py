@@ -292,17 +292,29 @@ def invoices(customers: list[str]) -> list[dict]:
 	return rows
 
 
-@frappe.whitelist()
-def invoice_pdf(name: str):
-	"""The signed-in customer's own invoice as a PDF."""
-	from shop.storefront.orders import session_customers
+@frappe.whitelist(allow_guest=True)
+def invoice_pdf(name: str, order: str | None = None, token: str | None = None):
+	"""A customer's invoice as a PDF: their own when signed in, or with the order's private link."""
+	from shop.storefront.orders import session_customers, valid_token
 
-	if frappe.db.get_value("Sales Invoice", name, "customer") not in session_customers():
+	customer = frappe.db.get_value("Sales Invoice", {"name": name, "docstatus": 1}, "customer")
+	if not customer:
+		raise frappe.PermissionError
+	from_order = bool(
+		order
+		and token
+		and valid_token(order, token)
+		and frappe.db.exists("Sales Invoice Item", {"parent": name, "sales_order": order})
+	)
+	if not from_order and customer not in session_customers():
 		raise frappe.PermissionError
 	from shop.storefront.checkout import elevated
 
 	with elevated():
-		pdf = frappe.get_print("Sales Invoice", name, as_pdf=True)
+		# name the print format, as the desk does: without it Frappe renders the default format
+		# with the site's PDF generator instead of the one the format is built for
+		print_format = frappe.get_meta("Sales Invoice").default_print_format or None
+		pdf = frappe.get_print("Sales Invoice", name, print_format=print_format, as_pdf=True)
 	frappe.local.response.filename = f"{name}.pdf"
 	frappe.local.response.filecontent = pdf
 	frappe.local.response.type = "pdf"

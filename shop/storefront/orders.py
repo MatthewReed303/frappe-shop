@@ -167,6 +167,16 @@ def totals_html(order, products, charges, included) -> str:
 	return html
 
 
+def invoice_url(invoice: str, order_name: str, token: str | None) -> str:
+	"""The invoice PDF link; the order's private token lets guests open it without signing in."""
+	from urllib.parse import urlencode
+
+	params = {"name": invoice}
+	if token:
+		params.update(order=order_name, token=token)
+	return "/api/method/shop.storefront.accounts.invoice_pdf?" + urlencode(params)
+
+
 def payment_html(order, paid: bool, method: str | None, token: str | None) -> str:
 	from shop.storefront import payment, totals
 
@@ -174,7 +184,13 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 	if order.docstatus == 2:
 		return f'<div class="order-payment cancelled"><p>{esc(_("This order has been cancelled."))}</p></div>'
 	if paid:
-		return f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p></div>'
+		invoice = payment.order_invoice(order.name)
+		button = (
+			f'<a class="order-pay-button" href="{esc(invoice_url(invoice, order.name, token))}">{esc(_("Download invoice"))}</a>'
+			if invoice
+			else ""
+		)
+		return f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p>{button}</div>'
 	if method == totals.ACCOUNT:
 		invoice = frappe.db.get_value("Sales Invoice Item", {"sales_order": order.name, "docstatus": 1}, "parent")
 		if not invoice:
@@ -182,7 +198,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 		due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
 		return (
 			f'<div class="order-payment account"><p>{esc(_("On account: invoice {0}, due {1}.").format(invoice, frappe.utils.formatdate(due)))}</p>'
-			f'<a class="order-pay-button" href="/api/method/shop.storefront.accounts.invoice_pdf?name={esc(invoice)}">{esc(_("Download invoice"))}</a></div>'
+			f'<a class="order-pay-button" href="{esc(invoice_url(invoice, order.name, token))}">{esc(_("Download invoice"))}</a></div>'
 		)
 	if method == totals.BANK:
 		info = payment.bank_instructions(order)

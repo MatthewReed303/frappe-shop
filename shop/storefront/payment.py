@@ -85,6 +85,7 @@ def on_payment_entry(doc, method=None) -> None:
 		order = frappe.get_doc("Sales Order", row.reference_name)
 		if order.docstatus != 1 or amount_due(order) > 0.009:
 			continue
+		invoice_paid_order(order)
 		if order.shop_payment_method == totals.BANK:
 			order.add_comment("Info", _("Bank transfer received ({0}).").format(doc.name))
 			notify_paid(order)
@@ -96,15 +97,67 @@ def on_payment_entry(doc, method=None) -> None:
 def notify_paid(order) -> None:
 	if not order.contact_email:
 		return
+	invoice = order_invoice(order.name)
+	message = _("<p>Thank you, we've received your payment for order {0}. We'll let you know when it ships.</p>").format(
+		order.name
+	)
+	if invoice:
+		message += _("<p>Your invoice {0} is attached.</p>").format(invoice)
 	send_email(
 		recipients=[order.contact_email],
 		subject=_("Payment received for order {0}").format(order.name),
-		message=_("<p>Thank you, we've received your payment for order {0}. We'll let you know when it ships.</p>").format(
-			order.name
-		),
+		message=message,
+		attachments=invoice_attachments(invoice),
 		reference_doctype="Sales Order",
 		reference_name=order.name,
 	)
+
+
+def order_invoice(order_name: str) -> str | None:
+	"""The submitted Sales Invoice made from this order, if there is one."""
+	return frappe.db.get_value("Sales Invoice Item", {"sales_order": order_name, "docstatus": 1}, "parent")
+
+
+def invoice_paid_order(order) -> str | None:
+	"""Invoice a store order once it is paid in full, with the payment set against the invoice.
+
+	ERPNext's own Sales Invoice is made from the Sales Order, and its Allocate Advances
+	Automatically option takes the payment already recorded against the order. Orders paid on
+	account are invoiced when they are placed. A failure is logged and never blocks the payment."""
+	if order.get("shop_payment_method") not in (totals.CARD, totals.BANK, totals.COD):
+		return None
+	existing = order_invoice(order.name)
+	if existing or flt(order.per_billed) >= 100:
+		return existing
+	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+
+	frappe.db.savepoint("shop_invoice")
+	try:
+		invoice = make_sales_invoice(order.name)
+		invoice.allocate_advances_automatically = 1
+		invoice.only_include_allocated_payments = 1
+		invoice.set_advances()
+		invoice.flags.ignore_permissions = True
+		invoice.insert(ignore_permissions=True)
+		invoice.submit()
+	except Exception:
+		frappe.db.rollback(save_point="shop_invoice")
+		frappe.log_error(title=f"Could not invoice paid order {order.name}")
+		order.add_comment("Info", _("The order is paid but could not be invoiced automatically. Make the invoice from the order."))
+		return None
+	order.add_comment("Info", _("Paid and invoiced: {0}.").format(invoice.name))
+	return invoice.name
+
+
+def invoice_attachments(invoice: str | None) -> list:
+	if not invoice:
+		return []
+	try:
+		return [frappe.attach_print("Sales Invoice", invoice, file_name=invoice)]
+	except Exception:
+		# the email still goes out; the invoice is on the customer's account and order page
+		frappe.log_error(title=f"Could not attach invoice {invoice}")
+		return []
 
 
 def cancel_overdue_orders() -> None:

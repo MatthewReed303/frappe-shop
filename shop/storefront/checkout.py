@@ -257,15 +257,7 @@ def queue_confirmation_email(sales_order, email: str, confirmation_url: str):
 		from shop.storefront import payment
 
 		bank = payment.method(sales_order) == totals.BANK and not payment.is_paid(sales_order)
-		attachments = []
-		if payment.method(sales_order) == totals.ACCOUNT:
-			invoice = frappe.db.get_value("Sales Invoice Item", {"sales_order": sales_order.name, "docstatus": 1}, "parent")
-			if invoice:
-				try:
-					attachments.append(frappe.attach_print("Sales Invoice", invoice, file_name=invoice))
-				except Exception:
-					# the email still goes out; the invoice is on the customer's account page
-					frappe.log_error(title=f"Could not attach invoice {invoice} to the order email")
+		attachments = payment.invoice_attachments(payment.order_invoice(sales_order.name))
 		frappe.sendmail(
 			recipients=[email],
 			attachments=attachments,
@@ -318,6 +310,8 @@ def confirmation_email_html(sales_order, confirmation_url: str) -> str:
 		if invoice:
 			due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
 			pay = f"<p>{esc(_('Invoice {0} is attached, due {1}.').format(invoice, frappe.utils.formatdate(due)))}</p>"
+	elif payment.is_paid(sales_order) and payment.order_invoice(sales_order.name):
+		pay = f"<p>{esc(_('Paid. Your invoice {0} is attached.').format(payment.order_invoice(sales_order.name)))}</p>"
 	if sales_order.get("shop_payment_method") == totals.CARD and not payment.is_paid(sales_order):
 		token = frappe.db.get_value("Shop Cart", {"sales_order": sales_order.name}, "token")
 		from shop.payments import stripe_checkout

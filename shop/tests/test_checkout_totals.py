@@ -237,6 +237,56 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertTrue(payment.is_paid(order))
 		self.assertFalse(payment.cancel_if_unpaid(name))
 
+	def pay(self, name, amount=None):
+		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+		entry = get_payment_entry("Sales Order", name, party_amount=amount)
+		entry.reference_no, entry.reference_date = "TEST", nowdate()
+		entry.insert(ignore_permissions=True)
+		entry.submit()
+		return entry
+
+	def test_paid_order_is_invoiced_with_the_payment_set_against_it(self):
+		self.basket(1)
+		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
+		self.assertFalse(payment.order_invoice(name))  # not invoiced before payment
+		with patch("frappe.sendmail"):
+			entry = self.pay(name)
+		invoice = frappe.get_doc("Sales Invoice", payment.order_invoice(name))
+		self.assertEqual(invoice.docstatus, 1)
+		self.assertEqual(flt(invoice.outstanding_amount), 0)
+		self.assertEqual(invoice.status, "Paid")
+		self.assertEqual([a.reference_name for a in invoice.advances], [entry.name])
+
+	def test_part_paid_order_is_not_invoiced(self):
+		self.basket(1)
+		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
+		with patch("frappe.sendmail"):
+			self.pay(name, amount=1)
+		self.assertFalse(payment.order_invoice(name))
+
+	def test_invoice_pdf_needs_the_customer_or_the_order_link(self):
+		from shop.storefront import accounts
+
+		self.basket(1)
+		result = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")
+		name = result["sales_order"]
+		with patch("frappe.sendmail"):
+			self.pay(name)
+		invoice = payment.order_invoice(name)
+		token = frappe.db.get_value("Shop Cart", {"sales_order": name}, "token")
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				accounts.invoice_pdf(invoice)
+			with self.assertRaises(frappe.PermissionError):
+				accounts.invoice_pdf(invoice, order=name, token="wrong")
+			with patch("frappe.get_print", return_value=b"%PDF") as get_print:
+				accounts.invoice_pdf(invoice, order=name, token=token)
+			self.assertEqual(get_print.call_args.kwargs["print_format"], frappe.get_meta("Sales Invoice").default_print_format or None)
+		finally:
+			frappe.set_user("Administrator")
+
 	def test_overseas_bank_transfer_suggests_the_buyers_currency(self):
 		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank")
 		self.assertEqual(quote.currency, self.foreign if self.other == "United States" else self.company_currency)
