@@ -24,6 +24,8 @@ website_route_rules = [
 	{"from_route": "/pay/<order_id>", "to_route": "pay"},
 ]
 
+web_include_js = ["/assets/shop/js/login_signup.js"]
+
 doctype_js = {"Quotation": "public/js/quotation.js"}
 
 doc_events = {
