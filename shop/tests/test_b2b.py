@@ -222,3 +222,47 @@ class TestStoreDiscounts(IntegrationTestCase):
 										{"item_group": self.child, "discount_percentage": 10}])
 		with self.assertRaises(frappe.ValidationError):
 			customer.save()
+
+
+class TestStatements(IntegrationTestCase):
+	GROUP, OTHER, RUN = "_Test Statement Group", "_Test Other Group", "_Test Statement Run"
+
+	def setUp(self):
+		for group in (self.GROUP, self.OTHER):
+			ensure("Customer Group", group, {"customer_group_name": group, "parent_customer_group": "All Customer Groups"})
+		if not frappe.db.exists("Process Statement Of Accounts", self.RUN):
+			run = frappe.new_doc("Process Statement Of Accounts")
+			run.update({"__newname": self.RUN, "company": frappe.get_cached_doc("Shop Settings").company,
+						"report": "General Ledger", "customer_collection": "Customer Group", "collection_name": self.GROUP,
+						"enable_auto_email": 1, "frequency": "Monthly", "primary_mandatory": 1,
+						"from_date": "2026-01-01", "to_date": "2026-01-31"})
+			run.flags.ignore_validate = run.flags.ignore_mandatory = True
+			run.insert(ignore_permissions=True)
+
+	def rows(self):
+		return frappe.get_all("Process Statement Of Accounts Customer", filters={"parent": self.RUN}, fields=["customer", "primary_email"])
+
+	def test_store_customer_gets_a_primary_contact_and_email(self):
+		customer = accounts.ensure_customer("statement.one@example.com", "Statement One")
+		values = frappe.db.get_value("Customer", customer, ["customer_primary_contact", "email_id"], as_dict=True)
+		self.assertTrue(values.customer_primary_contact)
+		self.assertEqual(values.email_id, "statement.one@example.com")
+
+	def test_customer_joins_and_leaves_the_statement_run_with_their_group(self):
+		customer = frappe.get_doc("Customer", accounts.ensure_customer("statement.two@example.com", "Statement Two"))
+		customer.customer_group = self.GROUP
+		customer.save(ignore_permissions=True)
+		self.assertIn({"customer": customer.name, "primary_email": "statement.two@example.com"}, [dict(r) for r in self.rows()])
+		customer.customer_group = self.OTHER
+		customer.save(ignore_permissions=True)
+		self.assertNotIn(customer.name, [r.customer for r in self.rows()])
+
+	def test_statement_needs_a_signed_in_customer(self):
+		from shop.storefront import statements
+
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				statements.statement_pdf()
+		finally:
+			frappe.set_user("Administrator")

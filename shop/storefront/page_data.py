@@ -247,6 +247,12 @@ def account_html(customers: list[str]) -> str:
 			f'<a href="{store_url("account/trade")}">{esc(_("Apply for a trade account"))}</a></div>'
 		)
 	rows = accounts.invoices(customers)
+	if customers and frappe.db.exists("GL Entry", {"party_type": "Customer", "party": ["in", customers], "is_cancelled": 0}):
+		html += (
+			f'<div class="account-actions"><a class="account-statement" '
+			f'href="/api/method/shop.storefront.statements.statement_pdf">{esc(_("Download statement"))}</a> '
+			f'<span>{esc(_("Your invoices and payments for the last 12 months."))}</span></div>'
+		)
 	if rows:
 		html += f"<h2>{esc(_('Invoices'))}</h2><div class='account-table'>"
 		for row in rows:

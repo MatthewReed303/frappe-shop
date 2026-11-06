@@ -32,7 +32,8 @@ doc_events = {
 	# a bank transfer recorded in the desk pays the order like a card payment does
 	"Payment Entry": {"on_submit": "shop.storefront.payment.on_payment_entry"},
 	# Store Discounts tables become ERPNext pricing rules
-	"Customer": {"on_update": "shop.storefront.discounts.sync"},
+	# Store Discounts become pricing rules; statement runs follow the Customer Group
+	"Customer": {"on_update": ["shop.storefront.discounts.sync", "shop.storefront.statements.sync_customer"]},
 	"Customer Group": {"on_update": "shop.storefront.discounts.sync"},
 }
 

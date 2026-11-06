@@ -431,6 +431,24 @@ def create_contact(party: str, customer: dict, email: str):
 	if customer.get("phone"):
 		contact.add_phone(customer["phone"], is_primary_mobile_no=True)
 	contact.insert(ignore_permissions=True)
+	set_primary_contact(party, contact)
+
+
+def set_primary_contact(party: str, contact) -> None:
+	"""Make the first contact the customer's Customer Primary Contact, as the desk would.
+
+	ERPNext reads the customer's email from it, for statements and other emails."""
+	if frappe.db.get_value("Customer", party, "customer_primary_contact"):
+		return
+	frappe.db.set_value(
+		"Customer",
+		party,
+		{
+			"customer_primary_contact": contact.name,
+			"email_id": contact.email_id,
+			"mobile_no": contact.mobile_no,
+		},
+	)
 
 
 def create_address(party: str, customer: dict, address: dict):
