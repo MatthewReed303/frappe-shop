@@ -5,6 +5,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import add_days, flt, nowdate, validate_email_address
 
+from shop.routes import store_url
 from shop.storefront import cart as cart_module
 from shop.storefront import pricing, stock
 
@@ -135,7 +136,7 @@ def place_order(customer: dict, address: dict, payment_method: str = "cod") -> d
 		shipping_address = create_address(party, customer, address)
 		sales_order = create_sales_order(cart, party, shipping_address)
 		convert_cart(cart, sales_order)
-		confirmation_url = f"/order-confirmation/{sales_order.name}?token={cart.token}"
+		confirmation_url = store_url(f"order-confirmation/{sales_order.name}?token={cart.token}")
 		queue_confirmation_email(sales_order, customer["email"], confirmation_url)
 		response = {
 			"sales_order": sales_order.name,

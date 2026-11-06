@@ -130,6 +130,7 @@ import LucideTrash2 from '~icons/lucide/trash-2'
 
 import CatalogListState from '@/components/CatalogListState.vue'
 import CatalogPagination from '@/components/CatalogPagination.vue'
+import { storefrontPath } from '@/utils/storefront'
 
 interface ProductRow {
 	name: string
@@ -185,7 +186,7 @@ function rowActions(row: ProductRow) {
 		{
 			label: 'View on storefront',
 			icon: LucideExternalLink,
-			onClick: () => window.open(`/product/${row.slug}`, '_blank'),
+			onClick: () => window.open(storefrontPath(`product/${row.slug}`), '_blank'),
 		},
 		{ label: 'Delete', icon: LucideTrash2, theme: 'red', onClick: () => confirmDelete(row) },
 	]

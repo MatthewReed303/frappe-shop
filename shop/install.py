@@ -17,6 +17,7 @@ def setup():
 	create_shop_manager_role()
 	sync_templates()
 	apply_default_theme()
+	apply_route_prefix()
 	sync_agent()
 	enable_customer_signup()
 	warn_if_server_scripts_disabled()
@@ -57,6 +58,18 @@ def apply_default_theme():
 	from shop.themes import ensure_default_theme
 
 	ensure_default_theme()
+
+
+def apply_route_prefix():
+	"""Keep the live storefront on the configured route prefix.
+
+	Migrate re-imports theme components with root links, so this runs every time.
+	"""
+	if not frappe.db.get_single_value("Shop Settings", "active_theme"):
+		return
+	from shop.themes import apply_route_prefix as apply
+
+	apply()
 
 
 def warn_if_server_scripts_disabled():

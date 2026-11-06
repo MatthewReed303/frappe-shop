@@ -1,6 +1,7 @@
 import frappe
 from frappe.utils import cint, flt
 
+from shop.routes import store_url
 from shop.storefront import pricing, stock
 
 MAX_PAGE_SIZE = 60
@@ -79,7 +80,7 @@ def get_collections() -> list[dict]:
 	)
 	counts = collection_counts([c.name for c in collections])
 	for row in collections:
-		row.route = f"/collection/{row.slug}"
+		row.route = store_url(f"collection/{row.slug}")
 		row.product_count = counts.get(row.name, 0)
 		row.image_css = tile_background(row.image)
 	return collections
@@ -132,7 +133,7 @@ def decorate(products: list) -> None:
 	availability = display_stock(products)
 	ratings = reviews.summaries([p.name for p in products])
 	for product in products:
-		product.route = f"/product/{product.slug}"
+		product.route = store_url(f"product/{product.slug}")
 		product.image = images.get(product.name)
 		price = prices.get(product.item, {})
 		product.price = price.get("rate")

@@ -1,6 +1,8 @@
 import frappe
 from erpnext.accounts.doctype.payment_request.payment_request import PaymentRequest
 
+from shop.routes import store_url
+
 AUTHORIZED_STATUSES = ("Authorized", "Verified", "Completed")
 
 
@@ -23,5 +25,5 @@ class ShopPaymentRequest(PaymentRequest):
 			return None
 		token = frappe.db.get_value("Shop Cart", {"sales_order": self.reference_name}, "token")
 		if token:
-			return f"/order-confirmation/{self.reference_name}?token={token}"
-		return "/account/orders"
+			return store_url(f"order-confirmation/{self.reference_name}?token={token}")
+		return store_url("account/orders")

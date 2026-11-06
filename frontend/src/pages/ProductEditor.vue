@@ -179,6 +179,7 @@ import CatalogProductSkeleton from '@/components/CatalogProductSkeleton.vue'
 import CatalogSection from '@/components/CatalogSection.vue'
 import CatalogStockControl from '@/components/CatalogStockControl.vue'
 import CatalogVariantsPanel from '@/components/CatalogVariantsPanel.vue'
+import { storefrontPath } from '@/utils/storefront'
 
 interface Option {
 	label: string
@@ -235,7 +236,7 @@ const title = computed(() => {
 })
 
 const storefrontUrl = computed(() =>
-	isEdit.value && detail.value?.slug ? `/product/${detail.value.slug}` : undefined,
+	isEdit.value && detail.value?.slug ? storefrontPath(`product/${detail.value.slug}`) : undefined,
 )
 
 const slugHint = computed(() => `Storefront URL: /product/${form.slug || detail.value?.slug || ''}`)

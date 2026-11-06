@@ -1,6 +1,7 @@
 import frappe
 from frappe.utils import cint
 
+from shop.routes import store_url
 from shop.storefront import cart, catalog, checkout, orders, product
 
 PAGE_SIZE = 24
@@ -128,7 +129,7 @@ def filter_url(form, changes: dict) -> str:
 			params[key] = value
 		else:
 			params.pop(key, None)
-	return "/products" + (f"?{urlencode(params)}" if params else "")
+	return store_url("products") + (f"?{urlencode(params)}" if params else "")
 
 
 @frappe.whitelist(allow_guest=True)
@@ -222,5 +223,7 @@ def store_details() -> dict:
 		"currency": settings.currency,
 		"enable_cod": settings.enable_cod,
 		"account_label": frappe._("Account") if signed_in else frappe._("Sign in"),
-		"account_url": "/account/orders" if signed_in else "/login?redirect-to=/account/orders",
+		"account_url": store_url("account/orders")
+		if signed_in
+		else "/login?redirect-to=" + store_url("account/orders"),
 	}

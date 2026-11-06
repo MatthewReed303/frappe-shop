@@ -1,4 +1,6 @@
 (function () {
+	// Set by Shop when the storefront is served under a route prefix, e.g. "/store".
+	const base = window.shop_route_prefix || "";
 	const state = {
 		product: window.page_data && window.page_data.product,
 		selection: {},
@@ -128,7 +130,7 @@
 			<div class="drawer-item">
 				<img class="drawer-thumb" src="${esc(item.image || "")}" alt="" loading="lazy">
 				<div class="drawer-info">
-					<a class="drawer-name" href="/product/${esc(item.slug || "")}">${esc(item.product_name || item.item_code)}</a>
+					<a class="drawer-name" href="${base}/product/${esc(item.slug || "")}">${esc(item.product_name || item.item_code)}</a>
 					<span class="drawer-rate">${esc(item.formatted_rate || "")}</span>
 					<div class="drawer-qty">
 						<button type="button" data-drawer-step="-1" data-item-code="${esc(item.item_code)}" aria-label="Decrease quantity">&minus;</button>
@@ -262,7 +264,7 @@
 		button.disabled = true;
 		try {
 			await call("shop.storefront.cart.add_item", { item_code: itemCode });
-			window.location.href = "/checkout";
+			window.location.href = base + "/checkout";
 		} catch (error) {
 			showError(error.message);
 			button.disabled = false;
@@ -343,7 +345,7 @@
 		} else if (form.dataset.shop === "search-form") {
 			event.preventDefault();
 			const term = form.querySelector('[name="search"]');
-			window.location.href = "/products?search=" + encodeURIComponent(term ? term.value : "");
+			window.location.href = base + "/products?search=" + encodeURIComponent(term ? term.value : "");
 		}
 	});
 

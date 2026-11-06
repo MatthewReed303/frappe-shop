@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from shop.routes import store_url
 from shop.storefront import cart as cart_module
 from shop.storefront import pricing
 
@@ -32,7 +33,7 @@ def get_orders(start: int = 0, limit: int = 20) -> list[dict]:
 		order.formatted_total = pricing.format_amount(order.grand_total)
 		order.display_status = STATUS_LABELS.get(order.status, order.status)
 		order.formatted_date = frappe.utils.formatdate(order.transaction_date, "d MMM yyyy")
-		order.url = f"/order-confirmation/{order.name}"
+		order.url = store_url(f"order-confirmation/{order.name}")
 	return orders
 
 
