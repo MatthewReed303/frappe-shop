@@ -116,7 +116,11 @@ def save_cart(cart):
 
 
 def refresh_rates(cart):
-	prices = pricing.get_prices([row.item_code for row in cart.items])
+	qtys = {}
+	for row in cart.items:
+		qtys[row.item_code] = qtys.get(row.item_code, 0) + flt(row.qty)
+	# the shopper's own prices, with quantity breaks
+	prices = pricing.get_prices([row.item_code for row in cart.items], qtys=qtys)
 	for row in cart.items:
 		row.rate = prices.get(row.item_code, {}).get("rate", 0)
 

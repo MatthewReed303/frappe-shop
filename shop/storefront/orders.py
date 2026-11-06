@@ -31,7 +31,11 @@ def get_orders(start: int = 0, limit: int = 20) -> list[dict]:
 	)
 	for order in orders:
 		order.formatted_total = frappe.utils.fmt_money(order.grand_total, currency=order.currency)
-		order.display_status = STATUS_LABELS.get(order.status, order.status)
+		# the same status the order page shows: awaiting payment, preparing, shipped...
+		from shop.storefront import payment
+
+		doc = frappe.get_doc("Sales Order", order.name)
+		order.display_status = display_status(doc, payment.is_paid(doc))
 		order.formatted_date = frappe.utils.formatdate(order.transaction_date, "d MMM yyyy")
 		order.url = store_url(f"order-confirmation/{order.name}")
 	return orders
@@ -52,9 +56,22 @@ def get_order_summary(name: str, token: str | None = None) -> dict:
 	return order_summary(frappe.get_doc("Sales Order", name))
 
 
+def valid_token(name: str, token: str | None) -> bool:
+	"""The cart token of the checkout that placed the order, or the order's own access token
+	(orders made from an accepted quote)."""
+	if not token or not name:
+		return False
+	if frappe.db.exists("Shop Cart", {"token": token, "sales_order": name}):
+		return True
+	return bool(
+		frappe.get_meta("Sales Order").has_field("shop_access_token")
+		and frappe.db.get_value("Sales Order", name, "shop_access_token") == token
+	)
+
+
 def can_view(name: str, token: str | None) -> bool:
 	"""The cart token doubles as the guest secret; the signed-in owner needs no token."""
-	if token and frappe.db.exists("Shop Cart", {"token": token, "sales_order": name}):
+	if valid_token(name, token):
 		return True
 	customers = session_customers()
 	return bool(customers) and frappe.db.get_value("Sales Order", name, "customer") in customers
@@ -158,6 +175,15 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 		return f'<div class="order-payment cancelled"><p>{esc(_("This order has been cancelled."))}</p></div>'
 	if paid:
 		return f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p></div>'
+	if method == totals.ACCOUNT:
+		invoice = frappe.db.get_value("Sales Invoice Item", {"sales_order": order.name, "docstatus": 1}, "parent")
+		if not invoice:
+			return ""
+		due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
+		return (
+			f'<div class="order-payment account"><p>{esc(_("On account: invoice {0}, due {1}.").format(invoice, frappe.utils.formatdate(due)))}</p>'
+			f'<a class="order-pay-button" href="/api/method/shop.storefront.accounts.invoice_pdf?name={esc(invoice)}">{esc(_("Download invoice"))}</a></div>'
+		)
 	if method == totals.BANK:
 		info = payment.bank_instructions(order)
 		if not info:
@@ -218,7 +244,9 @@ def order_progress(order, shipment: dict | None) -> list[dict]:
 		shipped = (order.per_delivered or 0) >= 100
 	delivered = bool(shipment and shipment.get("status") == "Delivered")
 	method = order.get("shop_payment_method")
-	if paid:
+	if method == totals.ACCOUNT and not paid:
+		payment_label, paid = _("Invoiced"), True
+	elif paid:
 		payment_label = _("Paid")
 	elif method in (totals.BANK, totals.CARD) or expects_online_payment(order.name):
 		payment_label = _("Awaiting payment")
@@ -282,11 +310,12 @@ def shipping_label(order, charges=None) -> str:
 	return frappe.utils.fmt_money(charge, currency=order.currency) if charge else _("Free")
 
 
-def session_customers() -> list[str]:
-	if frappe.session.user in ("Guest", None):
+def session_customers(user: str | None = None) -> list[str]:
+	user = user or getattr(frappe.local, "shop_shopper", None) or frappe.session.user
+	if user in ("Guest", None):
 		return []
 	contacts = frappe.get_all(
-		"Contact Email", filters={"email_id": frappe.session.user}, pluck="parent"
+		"Contact Email", filters={"email_id": user}, pluck="parent"
 	)
 	if not contacts:
 		return []

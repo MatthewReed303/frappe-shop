@@ -24,6 +24,8 @@ website_route_rules = [
 	{"from_route": "/pay/<order_id>", "to_route": "pay"},
 ]
 
+doctype_js = {"Quotation": "public/js/quotation.js"}
+
 doc_events = {
 	# a bank transfer recorded in the desk pays the order like a card payment does
 	"Payment Entry": {"on_submit": "shop.storefront.payment.on_payment_entry"},

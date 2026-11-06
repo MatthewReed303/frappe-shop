@@ -23,6 +23,7 @@ from shop.storefront import shipping as shipping_module
 
 CARD = "card"
 BANK = "bank"
+ACCOUNT = "account"
 COD = "cod"
 # Shop's original name for the online gateway method
 GATEWAY = "gateway"
@@ -85,7 +86,21 @@ def payment_methods(export: bool = False) -> list[dict]:
 		methods.append({"method": BANK, "label": _("Bank transfer"), "fee_note": ""})
 	if s.enable_cod:
 		methods.append({"method": COD, "label": _("Cash on Delivery"), "fee_note": ""})
+	terms = on_account_terms()
+	if terms:
+		methods.insert(0, {"method": ACCOUNT, "label": _("Pay on account (invoice)"), "fee_note": terms})
 	return methods
+
+
+def on_account_terms() -> str | None:
+	"""The signed-in customer's payment terms, when they may pay on account."""
+	from shop.storefront.pricing import session_customer
+
+	customer = session_customer()
+	if not customer or not frappe.get_meta("Customer").has_field("shop_allow_on_account"):
+		return None
+	allowed, terms = frappe.db.get_value("Customer", customer, ["shop_allow_on_account", "payment_terms"])
+	return terms if allowed and terms else None
 
 
 def normalize_method(method: str | None) -> str | None:
@@ -99,6 +114,17 @@ def card_fee_rates(export: bool) -> tuple[float, float]:
 	if export and (s.get("card_fee_percent_international") or s.get("card_fee_fixed_international")):
 		return flt(s.card_fee_percent_international) / 100, flt(s.card_fee_fixed_international)
 	return flt(s.get("card_fee_percent")) / 100, flt(s.get("card_fee_fixed"))
+
+
+def card_fee_for(total: float, export: bool) -> float:
+	"""The card fee for an order whose total (with tax) is already fixed, e.g. an accepted quote."""
+	s = settings()
+	percent, fixed = card_fee_rates(export)
+	if not (percent or fixed):
+		return 0.0
+	tax_factor = 1 + (included_tax_rate() / 100 if s.prices_include_tax and not export else 0)
+	fee_ex_tax = (percent * flt(total) + fixed) / (1 - percent * tax_factor)
+	return round_up(fee_ex_tax * tax_factor)
 
 
 def card_fee_note(export: bool) -> str:

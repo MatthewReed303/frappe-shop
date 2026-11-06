@@ -401,6 +401,73 @@
 		}
 	}
 
+	async function submitAccountForm(form, method, collect) {
+		const submit = form.querySelector('[type="submit"]');
+		const done = form.parentElement.querySelector('[data-shop="form-done"]');
+		if (submit) submit.disabled = true;
+		try {
+			const result = await call(method, collect(new FormData(form)));
+			form.hidden = true;
+			if (done) {
+				done.textContent = result.message;
+				done.hidden = false;
+			}
+		} catch (error) {
+			showError(error.message);
+			if (submit) submit.disabled = false;
+		}
+	}
+
+	async function acceptQuote(form) {
+		const data = new FormData(form);
+		const submit = form.querySelector('[type="submit"]');
+		if (submit) submit.disabled = true;
+		try {
+			const result = await call("shop.storefront.quotes.accept_quote", {
+				name: form.dataset.quote,
+				token: form.dataset.token,
+				payment_method: data.get("payment_method"),
+				accept_terms: data.get("accept_terms") ? 1 : 0,
+			});
+			window.location.href = result.redirect;
+		} catch (error) {
+			showError(error.message);
+			if (submit) submit.disabled = false;
+		}
+	}
+
+	async function submitQuoteRequest(button) {
+		const form = checkoutForm();
+		if (!form) return;
+		// a quote needs contact and address details, not the terms (those come with the order)
+		const missing = [...form.querySelectorAll("[required]")].find(
+			(input) => input.name !== "accept_terms" && !input.checkValidity()
+		);
+		if (missing) {
+			missing.reportValidity();
+			return;
+		}
+		const data = new FormData(form);
+		button.disabled = true;
+		try {
+			const result = await call("shop.storefront.quotes.request_quote", {
+				customer: { email: data.get("email"), full_name: data.get("full_name"), phone: data.get("phone") },
+				address: formAddress(form),
+				shipping_option: data.get("shipping_option") || undefined,
+				message: data.get("quote_message") || "",
+			});
+			const done = document.querySelector('[data-shop="quote-done"]');
+			if (done) {
+				done.textContent = result.message + " (" + result.quote + ")";
+				done.hidden = false;
+			}
+			button.hidden = true;
+		} catch (error) {
+			showError(error.message);
+			button.disabled = false;
+		}
+	}
+
 	function initCheckout() {
 		const form = checkoutForm();
 		if (!form) return;
@@ -443,6 +510,7 @@
 		else if (action === "qty-inc") setQty(target.dataset.itemCode, rowQty(target.dataset.itemCode) + 1);
 		else if (action === "qty-dec") setQty(target.dataset.itemCode, rowQty(target.dataset.itemCode) - 1);
 		else if (action === "remove") setQty(target.dataset.itemCode, 0);
+		else if (action === "request-quote") submitQuoteRequest(target);
 	});
 
 	document.addEventListener("keydown", (event) => {
@@ -455,6 +523,26 @@
 		if (form.dataset.shop === "checkout-form") {
 			event.preventDefault();
 			submitCheckout(form);
+		} else if (form.dataset.shop === "register-form") {
+			event.preventDefault();
+			submitAccountForm(form, "shop.storefront.accounts.register", (data) => ({
+				full_name: data.get("full_name"),
+				email: data.get("email"),
+				accept_terms: data.get("accept_terms") ? 1 : 0,
+			}));
+		} else if (form.dataset.shop === "trade-form") {
+			event.preventDefault();
+			submitAccountForm(form, "shop.storefront.accounts.apply_trade", (data) => ({
+				application: Object.fromEntries(
+					["company_name", "company_number", "tax_id", "business_type", "website", "country", "message",
+					 "contact_name", "email", "phone", "address_line1", "address_line2", "city", "state", "pincode"]
+						.map((key) => [key, data.get(key) || ""])
+				),
+				accept_terms: data.get("accept_terms") ? 1 : 0,
+			}));
+		} else if (form.dataset.shop === "quote-form") {
+			event.preventDefault();
+			acceptQuote(form);
 		} else if (form.dataset.shop === "review-form") {
 			event.preventDefault();
 			submitReview(form);
@@ -612,7 +700,7 @@
 		).observe(anchor);
 	}
 
-	document.addEventListener("DOMContentLoaded", () => {
+	function init() {
 		initGallery();
 		initVariantPicker();
 		refreshCartCount();
@@ -631,5 +719,10 @@
 				scheduleQuote(0);
 			});
 		initCheckout();
-	});
+		window.shop_storefront_ready = true;
+	}
+
+	// the script may run after the page has loaded (deferred, or added after load)
+	if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+	else init();
 })();

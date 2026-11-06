@@ -38,10 +38,11 @@ def terms_details() -> dict | None:
 	settings = frappe.get_cached_doc("Shop Settings")
 	if not settings.get("require_terms"):
 		return None
+	url = settings.get("terms_url") or (store_url("terms") if settings.get("terms_text") else "")
 	return {
-		"url": settings.get("terms_url") or "",
+		"url": url,
 		"version": settings.get("terms_version") or "",
-		"business_label": settings.get("business_buyer_label") or "",
+		"business_label": settings.get("business_buyer_label") or None,
 	}
 
 
@@ -200,14 +201,37 @@ def place_order(
 			# the confirmation goes out once the card payment succeeds (ShopPaymentRequest)
 			response["payment_url"] = create_payment_request(sales_order, customer, cart.token)
 		else:
-			queue_confirmation_email(sales_order, customer["email"], confirmation_url)
+			send_confirmation_for(sales_order, confirmation_url)
 	return response
+
+
+def send_confirmation_for(sales_order, confirmation_url: str) -> None:
+	"""Orders not paid by card: invoice on-account orders, then email the confirmation."""
+	if sales_order.get("shop_payment_method") == totals.ACCOUNT:
+		invoice_on_account(sales_order)
+	queue_confirmation_email(sales_order, sales_order.contact_email, confirmation_url)
+
+
+def invoice_on_account(sales_order) -> str:
+	"""Invoice an order paid on account and send it to fulfilment straight away."""
+	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+
+	from shop.fulfillment.service import auto_send
+
+	invoice = make_sales_invoice(sales_order.name)
+	invoice.flags.ignore_permissions = True
+	invoice.insert(ignore_permissions=True)
+	invoice.submit()
+	sales_order.add_comment("Info", _("Invoiced on account: {0}.").format(invoice.name))
+	auto_send(sales_order.name)
+	return invoice.name
 
 
 def send_confirmation(order_name: str) -> None:
 	"""Email the order confirmation for an order placed through the store."""
 	token = frappe.db.get_value("Shop Cart", {"sales_order": order_name}, "token")
 	email = frappe.db.get_value("Sales Order", order_name, "contact_email")
+	token = token or frappe.db.get_value("Sales Order", order_name, "shop_access_token")
 	if not token or not email:
 		return
 	confirmation_url = store_url(f"order-confirmation/{order_name}?token={token}")
@@ -233,8 +257,18 @@ def queue_confirmation_email(sales_order, email: str, confirmation_url: str):
 		from shop.storefront import payment
 
 		bank = payment.method(sales_order) == totals.BANK and not payment.is_paid(sales_order)
+		attachments = []
+		if payment.method(sales_order) == totals.ACCOUNT:
+			invoice = frappe.db.get_value("Sales Invoice Item", {"sales_order": sales_order.name, "docstatus": 1}, "parent")
+			if invoice:
+				try:
+					attachments.append(frappe.attach_print("Sales Invoice", invoice, file_name=invoice))
+				except Exception:
+					# the email still goes out; the invoice is on the customer's account page
+					frappe.log_error(title=f"Could not attach invoice {invoice} to the order email")
 		frappe.sendmail(
 			recipients=[email],
+			attachments=attachments,
 			subject=(
 				_("Your order {0}: how to pay").format(sales_order.name)
 				if bank
@@ -277,6 +311,13 @@ def confirmation_email_html(sales_order, confirmation_url: str) -> str:
 	included = sum(frappe.utils.flt(t.tax_amount_after_discount_amount) for t in sales_order.taxes if t.included_in_print_rate)
 	tax_note = f"<p style='color:#666;font-size:13px'>{esc(_('Includes {0} GST').format(fmt(included)))}</p>" if included else ""
 	pay = ""
+	if sales_order.get("shop_payment_method") == totals.ACCOUNT:
+		invoice = frappe.db.get_value(
+			"Sales Invoice Item", {"sales_order": sales_order.name, "docstatus": 1}, "parent"
+		)
+		if invoice:
+			due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
+			pay = f"<p>{esc(_('Invoice {0} is attached, due {1}.').format(invoice, frappe.utils.formatdate(due)))}</p>"
 	if sales_order.get("shop_payment_method") == totals.CARD and not payment.is_paid(sales_order):
 		token = frappe.db.get_value("Shop Cart", {"sales_order": sales_order.name}, "token")
 		from shop.payments import stripe_checkout
@@ -312,10 +353,14 @@ def elevated():
 	# or the response reissues a broken sid cookie and logs the shopper out.
 	session = frappe.local.session
 	original = (session.user, session.sid, session.data)
+	# remember who is shopping, so their prices and accounts still apply while elevated
+	outer = getattr(frappe.local, "shop_shopper", None)
+	frappe.local.shop_shopper = outer or session.user
 	frappe.set_user("Administrator")
 	try:
 		yield
 	finally:
+		frappe.local.shop_shopper = outer
 		session.user, session.sid, session.data = original
 		frappe.local.cache = {}
 		frappe.local.role_permissions = {}
@@ -349,6 +394,9 @@ def validate_stock(cart):
 
 
 def get_or_create_customer(customer: dict) -> str:
+	signed_in = pricing.session_customer()
+	if signed_in:
+		return signed_in  # a signed-in shopper always orders on their own account
 	email = customer["email"].strip().lower()
 	existing = find_customer_by_email(email)
 	if existing:
@@ -457,7 +505,7 @@ def create_sales_order(
 			"customer": party,
 			"order_type": "Sales",
 			"delivery_date": add_days(nowdate(), 3),
-			"selling_price_list": settings.price_list,
+			"selling_price_list": pricing.customer_price_list(party),
 			"currency": currency,
 			"conversion_rate": totals.exchange_rate(currency, company_currency),
 			"plc_conversion_rate": 1,

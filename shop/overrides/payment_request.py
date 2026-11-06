@@ -28,7 +28,9 @@ class ShopPaymentRequest(PaymentRequest):
 	def confirmation_url(self) -> str | None:
 		if self.reference_doctype != "Sales Order":
 			return None
-		token = frappe.db.get_value("Shop Cart", {"sales_order": self.reference_name}, "token")
+		token = frappe.db.get_value("Shop Cart", {"sales_order": self.reference_name}, "token") or frappe.db.get_value(
+			"Sales Order", self.reference_name, "shop_access_token"
+		)
 		if token:
 			return store_url(f"order-confirmation/{self.reference_name}?token={token}")
 		return store_url("account/orders")

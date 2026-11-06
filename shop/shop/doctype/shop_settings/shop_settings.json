@@ -55,6 +55,7 @@
   "terms_version",
   "column_break_terms",
   "business_buyer_label",
+  "terms_text",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -369,6 +370,13 @@
    "fieldtype": "Password",
    "label": "Stripe Webhook Secret",
    "description": "Signing secret of the Stripe webhook for payment_intent.succeeded, pointed at /api/method/shop.payments.stripe_checkout.webhook"
+  },
+  {
+   "fieldname": "terms_text",
+   "fieldtype": "Text Editor",
+   "label": "Terms Text",
+   "depends_on": "require_terms",
+   "description": "Shown on the store's terms page (/terms under the store). Leave empty to link to Terms URL only"
   }
  ],
  "issingle": 1,

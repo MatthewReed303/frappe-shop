@@ -75,8 +75,9 @@ def load_order(order_name: str, token: str | None):
 	"""The order, when the cart token proves the visitor placed it."""
 	if not order_name or not token:
 		raise frappe.PermissionError
-	cart_order = frappe.db.get_value("Shop Cart", {"token": token}, "sales_order")
-	if cart_order != order_name:
+	from shop.storefront.orders import valid_token
+
+	if not valid_token(order_name, token):
 		raise frappe.PermissionError
 	order = frappe.get_doc("Sales Order", order_name)
 	if order.docstatus != 1:
