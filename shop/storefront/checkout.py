@@ -365,10 +365,10 @@ def create_sales_order(cart, party: str, shipping_address):
 def apply_taxes(sales_order, settings):
 	if not settings.tax_template:
 		return
-	from erpnext.accounts.services.taxes import get_taxes_and_charges
+	from shop.compat import get_sales_taxes
 
 	sales_order.taxes_and_charges = settings.tax_template
-	for tax in get_taxes_and_charges("Sales Taxes and Charges Template", settings.tax_template) or []:
+	for tax in get_sales_taxes(settings.tax_template):
 		sales_order.append("taxes", tax)
 
 

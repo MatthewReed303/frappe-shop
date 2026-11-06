@@ -31,6 +31,22 @@ class TestCheckout(IntegrationTestCase):
 		customer = frappe.db.get_value("Customer", sales_order.customer, "customer_name")
 		self.assertEqual(customer, "Jane Doe")
 
+	def test_tax_template_is_applied_to_the_order(self):
+		settings = frappe.get_doc("Shop Settings")
+		template = frappe.db.get_value("Sales Taxes and Charges Template", {"company": settings.company})
+		if not template:
+			self.skipTest("no sales tax template for the shop company")
+		frappe.db.set_single_value("Shop Settings", "tax_template", template)
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "tax_template", settings.tax_template)
+
+		cart.add_item("SHOP-DEMO-003")
+		result = checkout.place_order(customer=BUYER, address=ADDRESS)
+
+		sales_order = frappe.get_doc("Sales Order", result["sales_order"])
+		self.assertEqual(sales_order.taxes_and_charges, template)
+		self.assertTrue(sales_order.taxes)
+		self.assertGreater(sales_order.total_taxes_and_charges, 0)
+
 	def test_customer_reused_on_second_order(self):
 		cart.add_item("SHOP-DEMO-003")
 		first = checkout.place_order(customer=BUYER, address=ADDRESS)
