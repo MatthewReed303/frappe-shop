@@ -13,6 +13,16 @@
 			</div>
 		</div>
 
+		<div
+			v-if="onboarding.data?.has_sample_products"
+			class="mt-6 flex items-center justify-between gap-4 rounded-lg border border-outline-gray-1 bg-surface-gray-1 p-4"
+		>
+			<p class="text-p-sm text-ink-gray-7">
+				Your store has the sample products and collections. Remove them when you add your own.
+			</p>
+			<Button @click="confirmRemoveSamples">Remove sample products</Button>
+		</div>
+
 		<div class="mt-6 flex items-center justify-between gap-4">
 			<FormControl
 				v-model="search"
@@ -156,6 +166,23 @@ const statusTabs = [
 	{ label: 'Published', value: 'published' },
 	{ label: 'Draft', value: 'draft' },
 ]
+
+const onboarding = createResource({ url: 'shop.api.onboarding.get_state', auto: true })
+
+function confirmRemoveSamples() {
+	dialog.confirm({
+		title: 'Remove sample products',
+		message: 'Delete the sample products and collections, with their prices and stock? Your own products are kept.',
+		theme: 'red',
+		confirmLabel: 'Remove',
+		onConfirm: async () => {
+			await call('shop.api.onboarding.remove_demo_data')
+			toast.success('Sample products removed')
+			onboarding.reload()
+			products.reload()
+		},
+	})
+}
 
 const products = createResource({
 	url: 'shop.api.products.get_products',

@@ -14,6 +14,7 @@ def get_state() -> dict:
 		"active_theme": settings.active_theme,
 		"themes": themes.list_themes(),
 		"has_demo_data": bool(frappe.db.count("Shop Product")),
+		"has_sample_products": has_sample_products(),
 		"enable_cod": settings.enable_cod,
 		"payment_gateway_account": settings.payment_gateway_account,
 		"gateway_accounts": gateway_accounts(),
@@ -51,6 +52,21 @@ def setup_store(store_name: str, store_logo: str | None = None) -> None:
 def load_demo_data() -> None:
 	frappe.only_for(("Shop Manager", "System Manager"))
 	frappe.enqueue("shop.demo.setup", queue="long", job_id="shop-demo-setup")
+
+
+def has_sample_products() -> bool:
+	from shop.demo import DEMO_PREFIX
+
+	return bool(frappe.db.exists("Shop Product", {"item": ["like", f"{DEMO_PREFIX}%"]}))
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_demo_data() -> None:
+	"""Take the sample products, their collections, prices and stock out of the store."""
+	from shop.demo import teardown
+
+	frappe.only_for(("Shop Manager", "System Manager"))
+	teardown()
 
 
 @frappe.whitelist(methods=["POST"])

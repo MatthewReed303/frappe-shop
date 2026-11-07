@@ -143,6 +143,15 @@ class TestAdminApi(IntegrationTestCase):
 		self.assertEqual((item.item_name, item.is_stock_item, item.is_sales_item), ("Test Card Fee", 0, 1))
 		self.assertIn(name, settings.get_settings()["service_items"])
 
+	def test_setup_guide_covers_taxes_shipping_and_email(self):
+		from shop.api import admin
+
+		steps = {step["key"]: step for step in admin.get_setup_guide()}
+		self.assertTrue({"taxes", "shipping", "email"} <= set(steps))
+		self.assertEqual(
+			steps["email"]["done"], bool(frappe.db.exists("Email Account", {"enable_outgoing": 1}))
+		)
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

@@ -52,13 +52,14 @@
 			<div v-else-if="step === 2">
 				<h1 class="text-xl font-semibold text-ink-gray-9">Add your first products</h1>
 				<p class="mt-1 text-p-base text-ink-gray-6">
-					Products are what you sell. Start with samples to see your store come to life.
+					Products are what you sell. Add your own from the Products page, or load samples to try the store
+					out first.
 				</p>
 				<div class="mt-6 rounded-lg border border-outline-gray-1 p-4">
 					<Switch
 						v-model="loadSamples"
 						label="Load sample products"
-						description="Adds a small catalog with images and prices so your storefront isn't empty."
+						description="Adds a small demo catalog, published on your storefront. You can remove it from the Products page."
 					/>
 				</div>
 				<p class="mt-3 text-p-sm text-ink-gray-5">
@@ -129,7 +130,7 @@ const stepLabels = ['Store details', 'Add products', 'Payments']
 
 const step = ref(1)
 const storeName = ref('')
-const loadSamples = ref(true)
+const loadSamples = ref(false)
 const enableCod = ref(true)
 const gatewayAccount = ref('')
 const gatewayAccounts = ref<GatewayAccount[]>([])
@@ -139,7 +140,6 @@ const finishing = ref(false)
 
 fetchOnboardingState().then((state) => {
 	storeName.value = state.store_name || ''
-	loadSamples.value = !state.has_demo_data
 	enableCod.value = state.enable_cod !== 0
 	gatewayAccounts.value = state.gateway_accounts
 	gatewayAccount.value =

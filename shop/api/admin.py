@@ -42,12 +42,36 @@ def get_setup_guide() -> list[dict]:
 			"route": "/settings",
 		},
 		{
+			"key": "taxes",
+			"label": "Choose your taxes",
+			"done": bool(settings.tax_template),
+			"route": "/settings",
+		},
+		{
+			"key": "shipping",
+			"label": "Set up shipping: a flat rate or a carrier",
+			"done": shipping_set_up(settings),
+			"route": "/settings",
+		},
+		{
+			"key": "email",
+			"label": "Set up email, so customers get their order emails",
+			"done": bool(frappe.db.exists("Email Account", {"enable_outgoing": 1})),
+			"href": "/app/email-account",
+		},
+		{
 			"key": "order",
 			"label": "Place a test order",
 			"done": bool(frappe.db.count("Sales Order", {"docstatus": 1})),
 			"href": "/",
 		},
 	]
+
+
+def shipping_set_up(settings) -> bool:
+	from shop.storefront.shipping import flat_rate_option
+
+	return bool(flat_rate_option(0)) or settings.get("fulfillment_provider") not in (None, "", "manual")
 
 
 def storefront_customized() -> bool:
