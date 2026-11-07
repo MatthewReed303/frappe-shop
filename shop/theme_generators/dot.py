@@ -2197,6 +2197,7 @@ def review_form_panel(refs):
 		attrs={"data-shop": "review-form"},
 		styles={"display": "none", "flexDirection": "column", "gap": "10px", "maxWidth": "520px", "width": "100%"},
 		children=[
+			form_error(),
 			block(
 				"div",
 				name="Rating Stars",
@@ -2802,7 +2803,8 @@ def checkout_blocks(refs):
 			"width": "100%",
 		},
 		mobile={"gap": "12px", "gridTemplateColumns": "minmax(0, 1fr)"},
-		children=[panel(refs, [form], name="Section · Checkout Form"), summary],
+		# on a phone the order summary and total come before the form and Place order
+		children=[panel(refs, [form], name="Section · Checkout Form"), {**summary, "mobileStyles": {**summary.get("mobileStyles", {}), "order": "-1"}}],
 	)
 	return shell(
 		refs,
@@ -3062,6 +3064,7 @@ def returns_panel(refs):
 		visibilityCondition={"key": "order.returns.eligible", "comesFrom": "dataScript"},
 		styles={"display": "flex", "flexDirection": "column", "gap": "10px", "width": "100%"},
 		children=[
+			form_error(),
 			block(
 				"p",
 				text="Something not right? You have 14 days from shipping to ask for a return or a replacement.",
@@ -3418,7 +3421,7 @@ FAQS = [
 	("How long does delivery take?", "Orders are dispatched within 48 hours and usually arrive in 3 to 5 working days."),
 	(
 		"Can I return a product?",
-		"Yes, within 14 days of delivery, unused and in its original packaging. Ask for a return from your order page and we will arrange a pickup.",
+		"Yes, unused and in its original packaging, within the return window shown on your order page. Ask for a return from your order page once it has shipped.",
 	),
 	("How do sizes run?", "True to size with a modern fit. If you are between sizes, size up for a relaxed fit."),
 	("How do I pay?", "Online by card, by bank transfer, or cash on delivery, whichever the store offers at checkout."),

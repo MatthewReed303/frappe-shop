@@ -228,13 +228,13 @@ def lines_html(doc) -> str:
 	def fmt(amount):
 		return frappe.utils.fmt_money(amount, currency=doc.currency)
 
+	lines, notes, factor = totals.shown_lines(doc)
 	rows = "".join(
 		f'<div class="order-item"><span>{esc(row.item_name)}</span>'
-		f'<span class="order-qty">{cart_module.display_qty(row.qty)}</span><span class="order-amount">{esc(fmt(row.amount))}</span></div>'
+		f'<span class="order-qty">{cart_module.display_qty(row.qty)}</span><span class="order-amount">{esc(fmt(flt(row.amount) * factor))}</span></div>'
 		for row in doc.items
 		if not totals.is_charge_item(row.item_code)
 	)
-	lines, notes = totals.summary_lines(doc)
 	rows += "".join(
 		f'<div class="order-line"><span>{esc(line["label"])}</span><span>{esc(fmt(line["amount"]))}</span></div>'
 		for line in lines[1:]

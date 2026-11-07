@@ -2241,6 +2241,7 @@ def review_form_section(refs):
 			"width": "100%",
 		},
 		children=[
+			form_error(),
 			block(
 				"div",
 				name="Rating Stars",
@@ -3086,7 +3087,8 @@ def checkout_blocks(refs):
 					"width": "100%",
 				},
 				mobile={"gridTemplateColumns": "minmax(0, 1fr)", "gap": "24px"},
-				children=[form, summary],
+				# on a phone the order summary and total come before the form and Place order
+				children=[form, {**summary, "mobileStyles": {**summary.get("mobileStyles", {}), "order": "-1"}}],
 			),
 		],
 		styles={"maxWidth": "1040px", "padding": "52px 40px 88px"},
@@ -3431,6 +3433,7 @@ def returns_section(refs):
 		visibilityCondition={"key": "order.returns.eligible", "comesFrom": "dataScript"},
 		styles={"display": "flex", "flexDirection": "column", "gap": "10px", "width": "100%"},
 		children=[
+			form_error(),
 			block(
 				"p",
 				text="Need to return or replace something? You have 14 days from shipping.",
@@ -3878,7 +3881,7 @@ FAQS = [
 	),
 	(
 		"Can I return a product?",
-		"Yes, within 14 days of delivery, unused and in its original packaging. Write to us and we will arrange a pickup.",
+		"Yes, unused and in its original packaging, within the return window shown on your order page. Ask for a return from your order page once it has shipped.",
 	),
 	(
 		"How do sizes run?",

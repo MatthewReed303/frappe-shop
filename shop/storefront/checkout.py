@@ -311,12 +311,12 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 			f"<td style='{style};text-align:right'>{esc(amount)}</td></tr>"
 		)
 
+	lines, notes, factor = totals.shown_lines(sales_order)
 	rows = "".join(
-		row(f"{line.item_name} × {cart_module.display_qty(line.qty)}", fmt(line.amount))
+		row(f"{line.item_name} × {cart_module.display_qty(line.qty)}", fmt(flt(line.amount) * factor))
 		for line in sales_order.items
 		if not totals.is_charge_item(line.item_code)
 	)
-	lines, notes = totals.summary_lines(sales_order)
 	rows += "".join(row(line["label"], fmt(line["amount"])) for line in lines[1:])
 	rows += row(_("Total"), f"{fmt(totals.order_total(sales_order))} {sales_order.currency}", bold=True)
 	tax_note = "".join(f"<p style='color:#666;font-size:13px'>{esc(note)}</p>" for note in notes)

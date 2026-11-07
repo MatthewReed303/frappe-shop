@@ -653,6 +653,20 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(totals.order_total(invoice), quote.total)
 		self.assertEqual(flt(invoice.outstanding_amount), 0)
 
+	def test_a_coupon_shown_with_tax_is_the_discount_erpnext_gives(self):
+		self.without_tax()
+		self.set(show_prices_with_tax=1)
+		self.basket(1, "SHOP-DEMO-011")
+		cart.apply_coupon("WELCOME10")
+		quote = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
+		lines = totals.payload(quote)["lines"]
+		discount = next(line for line in lines if line["kind"] == "discount")
+		expected = flt(quote.order.discount_amount)
+		if quote.order.apply_discount_on == "Net Total":
+			expected = expected * flt(quote.order.grand_total) / flt(quote.order.net_total)
+		self.assertAlmostEqual(-discount["amount"], expected, delta=0.02)
+		self.assertAlmostEqual(sum(line["amount"] for line in lines), quote.total, delta=0.001)
+
 	def test_lines_can_be_shown_with_tax(self):
 		self.without_tax()
 		self.set(show_prices_with_tax=1)

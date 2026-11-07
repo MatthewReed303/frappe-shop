@@ -101,7 +101,7 @@ def order_summary(order, token: str | None = None) -> dict:
 
 	products = [row for row in order.items if not totals.is_charge_item(row.item_code)]
 	charges = [row for row in order.items if totals.is_charge_item(row.item_code)]
-	lines, notes = totals.summary_lines(order)
+	lines, notes, factor = totals.shown_lines(order)
 	product_total = sum(frappe.utils.flt(row.amount) for row in products)
 	paid = payment.is_paid(order)
 	method = payment.method(order)
@@ -155,7 +155,7 @@ def order_summary(order, token: str | None = None) -> dict:
 				"rate": row.rate,
 				"formatted_rate": fmt(row.rate),
 				"amount": row.amount,
-				"formatted_amount": fmt(row.amount),
+				"formatted_amount": fmt(frappe.utils.flt(row.amount) * factor),
 				"image": row.image,
 			}
 			for row in products

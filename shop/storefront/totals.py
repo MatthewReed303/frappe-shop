@@ -206,13 +206,13 @@ def bank_routes(currency: str, tax_factor: float = 1) -> list[dict]:
 	(with tax when prices are shown with tax)."""
 	routes = []
 	for method, label in (
-		(BANK, _("Local {0} transfer").format(currency)),
-		(SWIFT, _("International (Swift)")),
+		(BANK, _("Local transfer")),
+		(SWIFT, _("Swift transfer")),
 	):
 		account = bank_account(currency, method)
 		if account:
 			if account.transfer_fee:
-				label = _("{0}, fee {1}").format(label, money(account.transfer_fee * tax_factor, currency))
+				label = _("{0} +{1}").format(label, money(account.transfer_fee * tax_factor, currency))
 			routes.append({"method": method, "label": label})
 	return routes
 
@@ -648,18 +648,52 @@ def shown_with_tax(lines: list[dict], order) -> list[dict]:
 	"""Lines with the tax added on top spread into them, for stores that show prices with tax; the
 	subtotal takes any rounding difference so the lines still add up to the total."""
 	added = sum(line["amount"] for line in lines if line["kind"] == "tax")
-	net = sum(line["amount"] for line in lines if line["kind"] not in ("tax", "rounding"))
-	if not added or not net:
+	# the tax is on what is left after a discount, so the rate comes from the order's net total
+	if not added or not flt(order.net_total):
 		return lines
-	factor = 1 + added / net
+	factor = 1 + added / flt(order.net_total)
+	# a discount on the Grand Total includes the tax already
+	discount_has_tax = order.apply_discount_on == "Grand Total"
 	shown = [dict(line) for line in lines if line["kind"] != "tax"]
 	for line in shown[1:]:
-		if line["kind"] != "rounding":
-			line["amount"] = flt(line["amount"] * factor, order.precision("grand_total"))
+		if line["kind"] == "rounding" or (line["kind"] == "discount" and discount_has_tax):
+			continue
+		line["amount"] = flt(line["amount"] * factor, order.precision("grand_total"))
 	shown[0]["amount"] = flt(
 		order_total(order) - sum(line["amount"] for line in shown[1:]), order.precision("grand_total")
 	)
 	return shown
+
+
+def shown_lines(order, export: bool = False) -> tuple[list[dict], list[str], float]:
+	"""An order's lines as the shopper sees them everywhere (checkout, order page, emails, quotes):
+	with the tax spread into them when the store shows prices with tax, rounding part of the
+	subtotal. Also the factor that turns a product's amount into its shown amount."""
+	lines, notes = summary_lines(order)
+	if order.get("coupon_code"):
+		code = frappe.db.get_value("Coupon Code", order.coupon_code, "coupon_code")
+		for line in lines:
+			if line["kind"] == "discount":
+				line["label"] = _("Discount ({0})").format(code)
+	taxes_added = [line for line in lines if line["kind"] == "tax"]
+	factor = 1
+	if settings().get("show_prices_with_tax") and taxes_added and not export:
+		lines = shown_with_tax(lines, order)
+		factor = 1 + sum(line["amount"] for line in taxes_added) / flt(order.net_total)
+		notes.insert(
+			0,
+			_("Includes {0}: {1}").format(
+				", ".join(tax_name(line["label"]) or line["label"] for line in taxes_added),
+				money(sum(line["amount"] for line in taxes_added), order.currency),
+			),
+		)
+	elif export and order.taxes_and_charges != settings().tax_template:
+		notes.append(_("Tax-free export"))
+	# rounding to the payable total is part of the subtotal for the shopper
+	for rounding in [line for line in lines if line["kind"] == "rounding"]:
+		lines.remove(rounding)
+		lines[0]["amount"] = flt(lines[0]["amount"] + rounding["amount"], order.precision("grand_total"))
+	return lines, notes, factor
 
 
 def payload(quote: frappe._dict) -> dict:
@@ -668,28 +702,7 @@ def payload(quote: frappe._dict) -> dict:
 
 	order = quote.order
 	currency = quote.currency
-	lines, notes = summary_lines(order)
-	if quote.coupon:
-		for line in lines:
-			if line["kind"] == "discount":
-				line["label"] = _("Discount ({0})").format(quote.coupon["code"])
-	taxes_added = [line for line in lines if line["kind"] == "tax"]
-	with_tax = bool(settings().get("show_prices_with_tax") and taxes_added and not quote.export)
-	if with_tax:
-		lines = shown_with_tax(lines, order)
-		notes.insert(
-			0,
-			_("Includes {0}: {1}").format(
-				", ".join(tax_name(line["label"]) or line["label"] for line in taxes_added),
-				money(sum(line["amount"] for line in taxes_added), currency),
-			),
-		)
-	elif quote.export and order.taxes_and_charges != settings().tax_template:
-		notes.append(_("Tax-free export"))
-	# rounding to the payable total is part of the subtotal for the shopper
-	for rounding in [line for line in lines if line["kind"] == "rounding"]:
-		lines.remove(rounding)
-		lines[0]["amount"] = flt(lines[0]["amount"] + rounding["amount"], order.precision("grand_total"))
+	lines, notes, factor = shown_lines(order, quote.export)
 	for line in lines:
 		line["formatted"] = money(line["amount"], currency) if line["amount"] else _("Free")
 	if quote.payment_method == GATEWAY:
@@ -715,13 +728,10 @@ def payload(quote: frappe._dict) -> dict:
 
 	def option_amount(option):
 		amount = option["customer_amount"]
-		if with_tax and amount:
-			amount = flt(
-				amount * (1 + added_rate(order.taxes_and_charges) / 100), order.precision("grand_total")
-			)
+		if factor != 1 and amount:
+			amount = flt(amount * factor, order.precision("grand_total"))
 		return money(amount, currency) if amount else _("Free")
 
-	factor = 1 + added_rate(order.taxes_and_charges) / 100 if with_tax else 1
 	return {
 		"currency": currency,
 		"export": quote.export,

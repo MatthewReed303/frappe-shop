@@ -740,7 +740,11 @@
 			form.querySelectorAll(`[name="${name}"]`).forEach((field) => {
 				if (field.type === "radio") field.checked = field.value === value;
 				else if (field.type === "checkbox") field.checked = !!value;
-				else field.value = value;
+				else if (field.tagName === "SELECT" && !field.options.length) {
+					// filled from the quote: hold the choice until the quote fills it
+					field.innerHTML = `<option value="${esc(value)}"></option>`;
+					field.value = value;
+				} else field.value = value;
 				if (name === "currency" || name === "bank_route") field.dataset.chosen = "1";
 			});
 		});
@@ -819,7 +823,7 @@
 			});
 			window.location.reload();
 		} catch (error) {
-			showError(error.message);
+			showError(error.message, form);
 			if (submit) submit.disabled = false;
 		}
 	}

@@ -64,8 +64,10 @@ def pager(page: int, total: int) -> dict | None:
 			query["page"] = number
 		return f"{request_path}?{urlencode(query)}" if query else request_path
 
+	last = max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
 	links = {
-		"prev_url": url(page - 1) if page > 1 else None,
+		# past the end, back to the last page there is
+		"prev_url": url(min(page - 1, last)) if page > 1 else None,
 		"next_url": url(page + 1) if page * PAGE_SIZE < total else None,
 	}
 	return links if any(links.values()) else None
