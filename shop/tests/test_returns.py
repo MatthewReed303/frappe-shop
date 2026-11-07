@@ -1,5 +1,8 @@
+from unittest.mock import MagicMock, patch
+
 import frappe
 from frappe.tests import IntegrationTestCase
+from frappe.utils import flt
 
 from shop.api import fulfillment as fulfillment_api
 from shop.api import returns as returns_api
@@ -104,3 +107,67 @@ class TestReturns(IntegrationTestCase):
 		self.assertEqual(summary["requests"][0]["resolution_note"], "Pickup on Friday")
 		listed = returns_api.get_requests(status="Approved")
 		self.assertIn(created["name"], [row.name for row in listed["requests"]])
+
+	def test_completed_return_puts_stock_back_credits_and_refunds_the_card(self):
+		from shop.api import orders as orders_api
+		from shop.storefront import payment
+
+		cart.add_item("SHOP-DEMO-003", qty=2)
+		order = checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
+		token = frappe.db.get_value("Shop Cart", {"sales_order": order}, "token")
+		orders_api.mark_paid(order)
+		payment.invoice_paid_order(frappe.get_doc("Sales Order", order))
+		name = service.send(order, "manual")
+		fulfillment_api.mark_shipped(name, carrier="Delhivery", tracking_number="RTN-3")
+		created = returns.create_request(
+			order=order, item_code="SHOP-DEMO-003", request_type="Return", reason="Broken", qty=1, token=token
+		)
+		returns_api.set_status(created["name"], "Approved")
+
+		# a card payment: the order's gateway refunds it
+		gateway = MagicMock()
+		gateway.refund.return_value = "re_test_refund"
+		paid_request = frappe._dict(name="PR-TEST", payment_gateway="Stripe", payment_account=None)
+		real_get_doc = frappe.get_doc
+
+		def get_doc(*args, **kwargs):
+			if args and args[0] == "Payment Request":
+				return paid_request
+			if args and args[0] == "Payment Gateway":
+				return frappe._dict(gateway_settings="Stripe Settings", gateway_controller="Test")
+			if args and args[0] == "Stripe Settings":
+				return gateway
+			return real_get_doc(*args, **kwargs)
+
+		with (
+			patch(
+				"frappe.db.get_value",
+				side_effect=lambda *a, **k: "PR-TEST"
+				if a and a[0] == "Payment Request"
+				else real_get_value(*a, **k),
+			),
+			patch("frappe.get_doc", side_effect=get_doc),
+			patch("frappe.sendmail") as sendmail,
+		):
+			result = returns_api.set_status(created["name"], "Completed")
+
+		self.assertEqual(frappe.db.get_value("Delivery Note", result["return_delivery_note"], "is_return"), 1)
+		self.assertEqual(
+			frappe.db.get_value("Delivery Note Item", {"parent": result["return_delivery_note"]}, "qty"), -1
+		)
+		credit_note = frappe.get_doc("Sales Invoice", result["credit_note"])
+		self.assertTrue(credit_note.is_return)
+		self.assertEqual(credit_note.items[0].qty, -1)
+		self.assertEqual(
+			gateway.refund.call_args.args[:3],
+			("Payment Request", "PR-TEST", abs(flt(credit_note.grand_total))),
+		)
+		self.assertEqual(
+			frappe.db.get_value("Payment Entry", result["refund"], "reference_no"), "re_test_refund"
+		)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", credit_note.name, "outstanding_amount"), 0)
+		subjects = [call.kwargs["subject"] for call in sendmail.call_args_list]
+		self.assertIn(f"Your return for order {order} is complete", subjects)
+
+
+real_get_value = frappe.db.get_value

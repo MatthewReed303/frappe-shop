@@ -3464,6 +3464,11 @@ def returns_section(refs):
 							block("option", text="Replacement", attrs={"value": "Replacement"}),
 						],
 					),
+					block(
+						"input",
+						attrs={"type": "number", "name": "qty", "min": "1", "step": "1", "value": "1", "aria-label": "Quantity", "required": "required"},
+						styles=dict(field_styles),
+					),
 				],
 			),
 			block(

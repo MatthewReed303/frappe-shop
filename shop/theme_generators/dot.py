@@ -3081,6 +3081,11 @@ def returns_panel(refs):
 							block("option", text="Replacement", attrs={"value": "Replacement"}),
 						],
 					),
+					block(
+						"input",
+						attrs={"type": "number", "name": "qty", "min": "1", "step": "1", "value": "1", "aria-label": "Quantity", "required": "required"},
+						styles=field_styles(refs),
+					),
 				],
 			),
 			block(

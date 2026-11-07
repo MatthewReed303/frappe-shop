@@ -56,6 +56,46 @@ TEMPLATES = {
 		"<p>Please send the rest with the same reference. We'll send your order once it is paid in full.</p>"
 		"{{ payment_html }}",
 	),
+	"return_requested": (
+		"Shop: Return Requested",
+		ORDER,
+		"We've received your request for order {{ doc.name }}",
+		"<p>We've received your {{ request_type|lower }} request for {{ qty }} × {{ item_name }} from order "
+		"{{ doc.name }}. We'll reply once we've looked at it.</p>",
+	),
+	"return_staff": (
+		"Shop: Return Requested (Staff)",
+		ORDER,
+		"{{ request_type }} requested for order {{ doc.name }}",
+		"<p>{{ doc.customer_name }} asked for a {{ request_type|lower }} of {{ qty }} × {{ item_name }} from order "
+		"{{ doc.name }}.</p><p>Reason: {{ reason }}</p><p>Review it in the store admin under Returns.</p>",
+	),
+	"return_approved": (
+		"Shop: Return Approved",
+		ORDER,
+		"Your {{ request_type|lower }} for order {{ doc.name }} is approved",
+		"<p>We've approved your {{ request_type|lower }} of {{ qty }} × {{ item_name }} from order {{ doc.name }}.</p>"
+		"{% if note %}<p>{{ note }}</p>{% endif %}"
+		"<p>Please send the item back with your order number, {{ doc.name }}. Reply to this email if you need our "
+		"return address.</p>",
+	),
+	"return_rejected": (
+		"Shop: Return Declined",
+		ORDER,
+		"Your {{ request_type|lower }} request for order {{ doc.name }}",
+		"<p>We're sorry, we can't accept the {{ request_type|lower }} of {{ item_name }} from order {{ doc.name }}.</p>"
+		"{% if note %}<p>{{ note }}</p>{% endif %}<p>Reply to this email if you'd like to talk about it.</p>",
+	),
+	"return_completed": (
+		"Shop: Return Completed",
+		ORDER,
+		"Your {{ request_type|lower }} for order {{ doc.name }} is complete",
+		"<p>We've received {{ qty }} × {{ item_name }} from order {{ doc.name }}.</p>"
+		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached.</p>{% endif %}"
+		"{% if refunded %}<p>We've refunded {{ amount }} to your card; it can take a few days to show.</p>"
+		"{% elif credit_note %}<p>We'll refund {{ amount }} to you and let you know when it's paid.</p>{% endif %}"
+		"{% if note %}<p>{{ note }}</p>{% endif %}",
+	),
 	"order_cancelled": (
 		"Shop: Order Cancelled",
 		ORDER,

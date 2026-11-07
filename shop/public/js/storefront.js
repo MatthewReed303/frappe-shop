@@ -794,6 +794,7 @@
 				token: new URLSearchParams(window.location.search).get("token") || undefined,
 				item_code: data.get("item_code"),
 				request_type: data.get("request_type"),
+				qty: data.get("qty") || 1,
 				reason: data.get("reason"),
 			});
 			window.location.reload();
