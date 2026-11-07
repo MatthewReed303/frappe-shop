@@ -241,14 +241,11 @@ def suggested_currency(address: frappe._dict | None) -> str:
 	"""The customer's own currency when the store has an account in it, else the company's."""
 	options = bank_currencies()
 	if address and address.get("country"):
-		currency = frappe.get_cached_value("Country", address.country, "currency") if frappe.db.has_column(
-			"Country", "currency"
-		) else None
-		currency = currency or COUNTRY_CURRENCY.get(address.get("country_code") or "")
+		from frappe.geo.country_info import get_country_info
+
+		currency = (get_country_info(address.country) or {}).get("currency")
 		if currency in options:
 			return currency
-		if address.get("country_code") in EURO_COUNTRIES and "EUR" in options:
-			return "EUR"
 	return company_currency()
 
 
@@ -518,14 +515,3 @@ def is_charge_item(item_code: str) -> bool:
 	"""Shipping and fee lines, which are not products."""
 	s = settings()
 	return item_code in {s.get("shipping_item"), s.get("card_fee_item"), s.get("conversion_fee_item")} - {None, ""}
-
-
-# Fallback when ERPNext's Country has no currency column (it does not in v16)
-COUNTRY_CURRENCY = {
-	"NZ": "NZD", "AU": "AUD", "US": "USD", "GB": "GBP", "CA": "CAD", "JP": "JPY", "SG": "SGD",
-	"HK": "HKD", "CH": "CHF", "SE": "SEK", "NO": "NOK", "DK": "DKK", "IN": "INR", "CN": "CNY",
-}
-EURO_COUNTRIES = {
-	"AT", "BE", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
-	"PT", "SK", "SI", "ES", "BG",
-}
