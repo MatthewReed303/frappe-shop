@@ -19,7 +19,7 @@ SETTINGS_FIELDS = (
 	"prices_include_tax", "tax_template", "export_tax_template", "shipping_item", "card_fee_item",
 	"card_fee_percent", "card_fee_fixed", "card_fee_percent_international", "card_fee_fixed_international",
 	"enable_bank_transfer", "conversion_fee_item", "bank_transfer_days", "require_terms", "terms_url",
-	"terms_version", "business_buyer_label", "flat_shipping_rate", "free_shipping_above", "enable_cod",
+	"terms_and_conditions", "terms_checkbox_note", "business_buyer_label", "flat_shipping_rate", "free_shipping_above", "enable_cod",
 	"payment_gateway_account",
 )
 
@@ -36,6 +36,16 @@ def test_rates(context):
 def rates_with_tax(context):
 	"""A shipping app whose prices include the store's tax: 13.80 is 12.00 plus 15%."""
 	return [{"id": "test:taxed", "label": "Taxed Courier", "amount": 13.80, "tax_included": True}]
+
+
+def terms_record() -> str:
+	"""An ERPNext Terms and Conditions record for the store, using Jinja as ERPNext allows."""
+	if not frappe.db.exists("Terms and Conditions", "_Test Store Terms"):
+		frappe.get_doc(
+			{"doctype": "Terms and Conditions", "title": "_Test Store Terms", "selling": 1,
+			 "terms": "<p>Terms for {{ customer_name }}</p>"}
+		).insert(ignore_permissions=True)
+	return "_Test Store Terms"
 
 
 def inactive_rates(context):
@@ -275,15 +285,23 @@ class TestCheckoutTotals(IntegrationTestCase):
 	# --- order rules ---------------------------------------------------------------
 
 	def test_terms_must_be_accepted_and_are_recorded(self):
-		self.set(require_terms=1, terms_url="/terms", terms_version="v1")
+		from shop.storefront import terms
+
+		self.set(require_terms=1, terms_url="", terms_and_conditions=terms_record())
 		self.basket(1)
 		with self.assertRaises(frappe.ValidationError):
 			checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")
 		result = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank",
 									  accept_terms=1, business_buyer=1)
 		order = frappe.get_doc("Sales Order", result["sales_order"])
-		self.assertEqual(order.shop_terms_version, "v1")
+		self.assertEqual(order.shop_terms_version, terms.version())
+		self.assertTrue(order.shop_terms_version.startswith("_Test Store Terms ("))
 		self.assertTrue(order.shop_terms_accepted_on)
+		# the ERPNext terms go on the order; ERPNext fills in their text for the order when printing it
+		self.assertEqual(order.tc_name, "_Test Store Terms")
+		order.set_missing_terms()
+		self.assertIn(f"Terms for {order.customer_name}", order.terms)
+		self.assertTrue(terms.url().endswith("/terms"))  # the store's own terms page
 		self.assertEqual(order.shop_business_buyer, 1)
 
 	def test_changed_total_stops_the_order(self):

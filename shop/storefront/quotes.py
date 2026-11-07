@@ -72,6 +72,9 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 				quotation.append("taxes", tax)
 		quotation.shop_access_token = frappe.generate_hash(length=32)
 		quotation.shop_request_message = (message or "").strip()[:2000]
+		from shop.storefront import terms
+
+		terms.apply_to(quotation)
 		if order_quote.shipping:
 			quotation.shop_shipping_option = json.dumps(
 				{k: order_quote.shipping.get(k) for k in ("id", "label", "amount", "carrier", "service", "meta")}, default=str

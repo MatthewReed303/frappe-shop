@@ -35,15 +35,9 @@ def countries() -> list[dict]:
 
 
 def terms_details() -> dict | None:
-	settings = frappe.get_cached_doc("Shop Settings")
-	if not settings.get("require_terms"):
-		return None
-	url = settings.get("terms_url") or (store_url("terms") if settings.get("terms_text") else "")
-	return {
-		"url": url,
-		"version": settings.get("terms_version") or "",
-		"business_label": settings.get("business_buyer_label") or None,
-	}
+	from shop.storefront import terms
+
+	return terms.details()
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -322,10 +316,13 @@ def confirmation_email_html(sales_order, confirmation_url: str) -> str:
 				f"<a href='{stripe_checkout.pay_url(sales_order.name, token)}'>{esc(_('Pay by card'))}</a></p>"
 			)
 	terms = ""
-	if sales_order.get("shop_terms_version") and settings.get("terms_url"):
+	from shop.storefront import terms as store_terms
+
+	terms_url = store_terms.url()
+	if sales_order.get("shop_terms_version") and terms_url:
 		terms = (
 			f"<p style='color:#666;font-size:13px'>{esc(_('You accepted our terms and conditions ({0}):').format(sales_order.shop_terms_version))} "
-			f"<a href='{frappe.utils.get_url(settings.terms_url)}'>{esc(frappe.utils.get_url(settings.terms_url))}</a></p>"
+			f"<a href='{frappe.utils.get_url(terms_url)}'>{esc(frappe.utils.get_url(terms_url))}</a></p>"
 		)
 	return f"""
 	<p>{esc(_("Thank you for your order at {0}.").format(settings.store_name or _("our store")))}</p>
@@ -572,8 +569,11 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 			{key: order_quote.shipping.get(key) for key in ("id", "label", "amount", "carrier", "service", "meta")},
 			default=str,
 		)
+	from shop.storefront import terms
+
+	terms.apply_to(sales_order)
 	if terms_accepted:
-		sales_order.shop_terms_version = settings.get("terms_version")
+		sales_order.shop_terms_version = terms.version()
 		sales_order.shop_terms_accepted_on = frappe.utils.now_datetime()
 	sales_order.shop_business_buyer = 1 if business_buyer else 0
 

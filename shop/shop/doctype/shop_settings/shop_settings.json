@@ -51,11 +51,11 @@
   "bank_accounts",
   "terms_section",
   "require_terms",
+  "terms_and_conditions",
   "terms_url",
-  "terms_version",
   "column_break_terms",
+  "terms_checkbox_note",
   "business_buyer_label",
-  "terms_text",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -339,20 +339,15 @@
    "fieldname": "require_terms",
    "fieldtype": "Check",
    "label": "Require Terms Acceptance",
-   "default": "0"
+   "default": "0",
+   "description": "Shoppers must accept the terms to create an account, apply for trade, place an order or accept a quote."
   },
   {
    "fieldname": "terms_url",
    "fieldtype": "Data",
    "label": "Terms URL",
-   "depends_on": "require_terms"
-  },
-  {
-   "fieldname": "terms_version",
-   "fieldtype": "Data",
-   "label": "Terms Version",
    "depends_on": "require_terms",
-   "description": "Saved on every order with the time the terms were accepted"
+   "description": "Optional: an outside page with the terms. Leave empty to show the Terms and Conditions above on the store's terms page."
   },
   {
    "fieldname": "column_break_terms",
@@ -372,16 +367,25 @@
    "description": "Signing secret of the Stripe webhook for payment_intent.succeeded, pointed at /api/method/shop.payments.stripe_checkout.webhook"
   },
   {
-   "fieldname": "terms_text",
-   "fieldtype": "Text Editor",
-   "label": "Terms Text",
+   "fieldname": "terms_and_conditions",
+   "fieldtype": "Link",
+   "options": "Terms and Conditions",
+   "label": "Terms and Conditions",
    "depends_on": "require_terms",
-   "description": "Shown on the store's terms page (/terms under the store). Leave empty to link to Terms URL only"
+   "link_filters": "[[\"Terms and Conditions\",\"selling\",\"=\",1]]",
+   "description": "The ERPNext Terms and Conditions shoppers accept. They go on orders and quotations and print on them."
+  },
+  {
+   "fieldname": "terms_checkbox_note",
+   "fieldtype": "Small Text",
+   "label": "Terms Checkbox Note",
+   "depends_on": "require_terms",
+   "description": "Shown beside the checkbox, after \"I accept the Terms and Conditions\". Use it for points buyers must notice."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 09:00:00.000000",
+ "modified": "2026-11-07 15:17:05.294739",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

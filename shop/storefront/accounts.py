@@ -17,7 +17,9 @@ def terms_required() -> bool:
 
 
 def terms_version() -> str | None:
-	return frappe.get_cached_doc("Shop Settings").get("terms_version")
+	from shop.storefront import terms
+
+	return terms.version()
 
 
 def check_terms(accept_terms) -> None:

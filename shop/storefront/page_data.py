@@ -357,11 +357,12 @@ def quote_page() -> dict:
 def terms_page() -> dict:
 	from frappe.utils.html_utils import sanitize_html
 
-	settings = frappe.get_cached_doc("Shop Settings")
+	from shop.storefront import terms
+
 	return {
 		"store": store_details(),
-		"terms_html": sanitize_html(settings.get("terms_text") or ""),
-		"terms_version": settings.get("terms_version") or "",
+		"terms_html": sanitize_html(terms.text()),
+		"terms_version": terms.version() or "",
 	}
 
 

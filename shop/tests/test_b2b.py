@@ -28,8 +28,10 @@ class TestTradeAccounts(IntegrationTestCase):
 			if hasattr(frappe.local, name):
 				delattr(frappe.local, name)
 		self.settings = frappe.get_doc("Shop Settings")
-		self.original = {f: self.settings.get(f) for f in ("require_terms", "terms_version", "card_fee_item", "card_fee_percent", "card_fee_fixed")}
-		frappe.db.set_single_value("Shop Settings", {"require_terms": 1, "terms_version": "T1"})
+		from shop.tests.test_checkout_totals import terms_record
+
+		self.original = {f: self.settings.get(f) for f in ("require_terms", "terms_and_conditions", "card_fee_item", "card_fee_percent", "card_fee_fixed")}
+		frappe.db.set_single_value("Shop Settings", {"require_terms": 1, "terms_and_conditions": terms_record()})
 		frappe.clear_cache(doctype="Shop Settings")
 		self.address = dict(ADDRESS, country=frappe.get_cached_value("Company", self.settings.company, "country"))
 		currency = self.settings.currency
@@ -77,7 +79,9 @@ class TestTradeAccounts(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			accounts.register(full_name="No Terms", email="no.terms@example.com", accept_terms=0)
 		email = self.register("with.terms@example.com", "With Terms")
-		self.assertEqual(frappe.db.get_value("User", email, "shop_terms_version"), "T1")
+		from shop.storefront import terms
+
+		self.assertEqual(frappe.db.get_value("User", email, "shop_terms_version"), terms.version())
 		self.assertEqual(frappe.db.get_value("User", email, "user_type"), "Website User")
 		with self.assertRaises(frappe.ValidationError):
 			accounts.register(full_name="Again", email=email, accept_terms=1)
