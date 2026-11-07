@@ -34,20 +34,66 @@ class TestTradeAccounts(IntegrationTestCase):
 		self.settings = frappe.get_doc("Shop Settings")
 		from shop.tests.utils import terms_record
 
-		self.original = {f: self.settings.get(f) for f in ("require_terms", "terms_and_conditions", "card_fee_item", "card_fee_percent", "card_fee_fixed")}
-		frappe.db.set_single_value("Shop Settings", {"require_terms": 1, "terms_and_conditions": terms_record()})
+		self.original = {
+			f: self.settings.get(f)
+			for f in (
+				"require_terms",
+				"terms_and_conditions",
+				"card_fee_item",
+				"card_fee_percent",
+				"card_fee_fixed",
+			)
+		}
+		frappe.db.set_single_value(
+			"Shop Settings", {"require_terms": 1, "terms_and_conditions": terms_record()}
+		)
 		frappe.clear_cache(doctype="Shop Settings")
-		self.address = dict(ADDRESS, country=frappe.get_cached_value("Company", self.settings.company, "country"))
+		self.address = dict(
+			ADDRESS, country=frappe.get_cached_value("Company", self.settings.company, "country")
+		)
 		currency = self.settings.currency
-		self.retail = flt(frappe.db.get_value("Item Price", {"item_code": ITEM, "price_list": self.settings.price_list}, "price_list_rate"))
-		ensure("Price List", "_Test Trade", {"price_list_name": "_Test Trade", "currency": currency, "selling": 1, "enabled": 1})
+		self.retail = flt(
+			frappe.db.get_value(
+				"Item Price", {"item_code": ITEM, "price_list": self.settings.price_list}, "price_list_rate"
+			)
+		)
+		ensure(
+			"Price List",
+			"_Test Trade",
+			{"price_list_name": "_Test Trade", "currency": currency, "selling": 1, "enabled": 1},
+		)
 		if not frappe.db.exists("Item Price", {"item_code": ITEM, "price_list": "_Test Trade"}):
-			frappe.get_doc({"doctype": "Item Price", "item_code": ITEM, "price_list": "_Test Trade",
-							"price_list_rate": flt(self.retail * 0.8, 2)}).insert(ignore_permissions=True)
-		ensure("Customer Group", "_Test Trade Group", {"customer_group_name": "_Test Trade Group",
-													  "parent_customer_group": "All Customer Groups", "default_price_list": "_Test Trade"})
-		ensure("Payment Terms Template", "_Test 20th", {"template_name": "_Test 20th", "terms": [
-			{"invoice_portion": 100, "due_date_based_on": "Day(s) after the end of the invoice month", "credit_days": 20}]})
+			frappe.get_doc(
+				{
+					"doctype": "Item Price",
+					"item_code": ITEM,
+					"price_list": "_Test Trade",
+					"price_list_rate": flt(self.retail * 0.8, 2),
+				}
+			).insert(ignore_permissions=True)
+		ensure(
+			"Customer Group",
+			"_Test Trade Group",
+			{
+				"customer_group_name": "_Test Trade Group",
+				"parent_customer_group": "All Customer Groups",
+				"default_price_list": "_Test Trade",
+			},
+		)
+		ensure(
+			"Payment Terms Template",
+			"_Test 20th",
+			{
+				"template_name": "_Test 20th",
+				"terms": [
+					{
+						"invoice_portion": 100,
+						"due_date_based_on": "Day(s) after the end of the invoice month",
+						"credit_days": 20,
+					}
+				],
+			},
+		)
 		self.sendmail = patch("frappe.sendmail")
 		self.sendmail.start()
 		self.addCleanup(self.sendmail.stop)
@@ -66,8 +112,14 @@ class TestTradeAccounts(IntegrationTestCase):
 		self.register(email)
 		frappe.set_user(email)
 		result = accounts.apply_trade(
-			{"company_name": f"Trade Co {email.split('@')[0]}", "contact_name": "Trade Tester", "email": email,
-			 "country": self.address["country"], "address_line1": "12 Industrial Way", "city": "Town"},
+			{
+				"company_name": f"Trade Co {email.split('@')[0]}",
+				"contact_name": "Trade Tester",
+				"email": email,
+				"country": self.address["country"],
+				"address_line1": "12 Industrial Way",
+				"city": "Town",
+			},
 			accept_terms=1,
 		)
 		frappe.set_user("Administrator")
@@ -78,7 +130,9 @@ class TestTradeAccounts(IntegrationTestCase):
 		self.assertEqual(lead.shop_user, email)
 		self.assertTrue(lead.shop_terms_version)
 		approved = accounts.approve_trade(
-			lead.name, customer_group="_Test Trade Group", allow_on_account=on_account,
+			lead.name,
+			customer_group="_Test Trade Group",
+			allow_on_account=on_account,
 			payment_terms="_Test 20th" if on_account else None,
 		)
 		lead.reload()
@@ -87,26 +141,45 @@ class TestTradeAccounts(IntegrationTestCase):
 		customer = frappe.get_doc("Customer", approved["customer"])
 		self.assertEqual(customer.lead_name, lead.name)
 		self.assertIn(email, [row.user for row in customer.portal_users])
-		self.assertTrue(frappe.db.exists("Dynamic Link", {"parenttype": "Address", "link_doctype": "Customer",
-															"link_name": customer.name}))
+		self.assertTrue(
+			frappe.db.exists(
+				"Dynamic Link",
+				{"parenttype": "Address", "link_doctype": "Customer", "link_name": customer.name},
+			)
+		)
 		return customer.name
 
 	def test_guest_application_becomes_a_customer_made_from_the_lead(self):
 		frappe.set_user("Guest")
 		try:
 			accounts.apply_trade(
-				{"company_name": "Guest Trade Ltd", "contact_name": "Gina Guest", "email": "gina.guest@example.com",
-				 "tax_id": "123-456-789", "country": self.address["country"], "address_line1": "1 Depot Road", "city": "Town"},
+				{
+					"company_name": "Guest Trade Ltd",
+					"contact_name": "Gina Guest",
+					"email": "gina.guest@example.com",
+					"tax_id": "123-456-789",
+					"country": self.address["country"],
+					"address_line1": "1 Depot Road",
+					"city": "Town",
+				},
 				accept_terms=1,
 			)
 		finally:
 			frappe.set_user("Administrator")
-		approved = accounts.approve_trade(lead_for("gina.guest@example.com"), customer_group="_Test Trade Group")
+		approved = accounts.approve_trade(
+			lead_for("gina.guest@example.com"), customer_group="_Test Trade Group"
+		)
 		customer = frappe.get_doc("Customer", approved["customer"])
-		self.assertEqual((customer.customer_name, customer.customer_type, customer.tax_id), ("Guest Trade Ltd", "Company", "123-456-789"))
+		self.assertEqual(
+			(customer.customer_name, customer.customer_type, customer.tax_id),
+			("Guest Trade Ltd", "Company", "123-456-789"),
+		)
 		self.assertEqual(customer.customer_group, "_Test Trade Group")
 		# ERPNext moved the Lead's contact to the Customer, and the applicant can sign in to the store
-		self.assertEqual(frappe.db.get_value("Contact", customer.customer_primary_contact, "email_id"), "gina.guest@example.com")
+		self.assertEqual(
+			frappe.db.get_value("Contact", customer.customer_primary_contact, "email_id"),
+			"gina.guest@example.com",
+		)
 		self.assertTrue(frappe.db.exists("User", "gina.guest@example.com"))
 		self.assertIn("gina.guest@example.com", [row.user for row in customer.portal_users])
 
@@ -114,12 +187,25 @@ class TestTradeAccounts(IntegrationTestCase):
 		email = self.register("trade.declined@example.com")
 		frappe.set_user(email)
 		result = accounts.apply_trade(
-			{"company_name": "Declined Co", "contact_name": "Trade Tester", "email": email, "country": self.address["country"],
-			 "message": "We buy about 50 a year"},
+			{
+				"company_name": "Declined Co",
+				"contact_name": "Trade Tester",
+				"email": email,
+				"country": self.address["country"],
+				"message": "We buy about 50 a year",
+			},
 			accept_terms=1,
 		)
 		# applying again updates the same Lead, with the same reply
-		again = accounts.apply_trade({"company_name": "Declined Co", "contact_name": "T", "email": email, "country": self.address["country"]}, accept_terms=1)
+		again = accounts.apply_trade(
+			{
+				"company_name": "Declined Co",
+				"contact_name": "T",
+				"email": email,
+				"country": self.address["country"],
+			},
+			accept_terms=1,
+		)
 		self.assertEqual(again, result)
 		self.assertEqual(frappe.db.count("Lead", {"email_id": email}), 1)
 		self.assertEqual(accounts.trade_status()["status"], "Pending")
@@ -132,7 +218,15 @@ class TestTradeAccounts(IntegrationTestCase):
 		frappe.set_user(email)
 		self.assertEqual(accounts.trade_status()["status"], "Declined")
 		# after a decline the business can apply again
-		accounts.apply_trade({"company_name": "Declined Co", "contact_name": "T", "email": email, "country": self.address["country"]}, accept_terms=1)
+		accounts.apply_trade(
+			{
+				"company_name": "Declined Co",
+				"contact_name": "T",
+				"email": email,
+				"country": self.address["country"],
+			},
+			accept_terms=1,
+		)
 		self.assertEqual(accounts.trade_status()["status"], "Pending")
 
 	def test_an_unverified_email_does_not_take_over_an_existing_customer(self):
@@ -140,13 +234,25 @@ class TestTradeAccounts(IntegrationTestCase):
 		frappe.db.set_value("Customer", existing, "payment_terms", "_Test 20th")
 		frappe.set_user("Guest")
 		try:
-			accounts.apply_trade({"company_name": "Imposter Ltd", "contact_name": "I", "email": "someone.else@example.com",
-								  "country": self.address["country"]}, accept_terms=1)
+			accounts.apply_trade(
+				{
+					"company_name": "Imposter Ltd",
+					"contact_name": "I",
+					"email": "someone.else@example.com",
+					"country": self.address["country"],
+				},
+				accept_terms=1,
+			)
 		finally:
 			frappe.set_user("Administrator")
-		approved = accounts.approve_trade(lead_for("someone.else@example.com"), customer_group="_Test Trade Group")
+		approved = accounts.approve_trade(
+			lead_for("someone.else@example.com"), customer_group="_Test Trade Group"
+		)
 		self.assertNotEqual(approved["customer"], existing)
-		self.assertEqual(frappe.db.get_value("Customer", existing, ["customer_name", "payment_terms"]), ("Someone Else", "_Test 20th"))
+		self.assertEqual(
+			frappe.db.get_value("Customer", existing, ["customer_name", "payment_terms"]),
+			("Someone Else", "_Test 20th"),
+		)
 
 	def test_sign_up_needs_the_terms_and_records_them(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -176,10 +282,21 @@ class TestTradeAccounts(IntegrationTestCase):
 	def test_customer_pricing_rule_applies(self):
 		customer = self.approved_trade_customer("trade.rule@example.com", on_account=0)
 		if not frappe.db.exists("Pricing Rule", {"title": "_Test 10% for trade.rule"}):
-			frappe.get_doc({"doctype": "Pricing Rule", "title": "_Test 10% for trade.rule", "apply_on": "Item Code",
-							"items": [{"item_code": ITEM}], "applicable_for": "Customer", "customer": customer, "selling": 1,
-							"rate_or_discount": "Discount Percentage", "discount_percentage": 10,
-							"company": self.settings.company, "currency": self.settings.currency}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Pricing Rule",
+					"title": "_Test 10% for trade.rule",
+					"apply_on": "Item Code",
+					"items": [{"item_code": ITEM}],
+					"applicable_for": "Customer",
+					"customer": customer,
+					"selling": 1,
+					"rate_or_discount": "Discount Percentage",
+					"discount_percentage": 10,
+					"company": self.settings.company,
+					"currency": self.settings.currency,
+				}
+			).insert(ignore_permissions=True)
 		frappe.set_user("trade.rule@example.com")
 		self.assertEqual(pricing.get_price(ITEM)["rate"], flt(self.retail * 0.8 * 0.9, 2))
 
@@ -189,15 +306,23 @@ class TestTradeAccounts(IntegrationTestCase):
 		methods = [m["method"] for m in totals.payment_methods()]
 		self.assertIn(totals.ACCOUNT, methods)
 		cart.add_item(ITEM)
-		result = checkout.place_order(customer={"email": "trade.account@example.com", "full_name": "Trade Tester"},
-									  address=self.address, payment_method=totals.ACCOUNT, accept_terms=1)
+		result = checkout.place_order(
+			customer={"email": "trade.account@example.com", "full_name": "Trade Tester"},
+			address=self.address,
+			payment_method=totals.ACCOUNT,
+			accept_terms=1,
+		)
 		frappe.set_user("Administrator")
 		order = frappe.get_doc("Sales Order", result["sales_order"])
 		self.assertEqual(order.customer, customer)
 		self.assertEqual(order.items[0].rate, flt(self.retail * 0.8, 2))
-		invoice = frappe.db.get_value("Sales Invoice Item", {"sales_order": order.name, "docstatus": 1}, "parent")
+		invoice = frappe.db.get_value(
+			"Sales Invoice Item", {"sales_order": order.name, "docstatus": 1}, "parent"
+		)
 		self.assertTrue(invoice)
-		self.assertEqual(frappe.db.get_value("Sales Invoice", invoice, "payment_terms_template"), "_Test 20th")
+		self.assertEqual(
+			frappe.db.get_value("Sales Invoice", invoice, "payment_terms_template"), "_Test 20th"
+		)
 
 	def test_retail_customers_cannot_pay_on_account(self):
 		self.register("retail.only@example.com")
@@ -213,7 +338,9 @@ class TestTradeAccounts(IntegrationTestCase):
 		settings.bank_accounts = []
 		from shop.tests.utils import company_bank_account
 
-		settings.append("bank_accounts", {"bank_account": company_bank_account(settings.company, settings.currency)})
+		settings.append(
+			"bank_accounts", {"bank_account": company_bank_account(settings.company, settings.currency)}
+		)
 		settings.save(ignore_permissions=True)
 
 		def restore():
@@ -221,14 +348,20 @@ class TestTradeAccounts(IntegrationTestCase):
 			doc.enable_bank_transfer = enabled
 			doc.bank_accounts = []
 			for row in banks:
-				doc.append("bank_accounts", {k: row[k] for k in ("bank_account", "label", "conversion_fee_percent", "instructions")})
+				doc.append(
+					"bank_accounts",
+					{k: row[k] for k in ("bank_account", "label", "conversion_fee_percent", "instructions")},
+				)
 			doc.save(ignore_permissions=True)
 
 		self.addCleanup(restore)
 		frappe.clear_cache(doctype="Shop Settings")
 		cart.add_item(ITEM, qty=3)
-		result = quotes.request_quote(customer={"email": "quote.buyer@example.com", "full_name": "Quote Buyer"},
-									  address=self.address, message="PO 123")
+		result = quotes.request_quote(
+			customer={"email": "quote.buyer@example.com", "full_name": "Quote Buyer"},
+			address=self.address,
+			message="PO 123",
+		)
 		quotation = frappe.get_doc("Quotation", result["quote"])
 		self.assertEqual(quotation.docstatus, 0)
 		self.assertEqual(quotation.shop_request_message, "PO 123")
@@ -239,7 +372,9 @@ class TestTradeAccounts(IntegrationTestCase):
 		with self.assertRaises(frappe.PermissionError):
 			quotes.quote_summary(quotation.name, "wrong-token")
 		frappe.set_user("Guest")
-		accepted = quotes.accept_quote(quotation.name, quotation.shop_access_token, totals.BANK, accept_terms=1)
+		accepted = quotes.accept_quote(
+			quotation.name, quotation.shop_access_token, totals.BANK, accept_terms=1
+		)
 		frappe.set_user("Administrator")
 		order = frappe.get_doc("Sales Order", accepted["sales_order"])
 		self.assertEqual(flt(order.grand_total), flt(quotation.grand_total))
@@ -249,10 +384,15 @@ class TestTradeAccounts(IntegrationTestCase):
 			quotes.accept_quote(quotation.name, quotation.shop_access_token, totals.BANK, accept_terms=1)
 
 	def test_card_fee_is_added_to_quotes_paid_by_card(self):
-		frappe.db.set_single_value("Shop Settings", {"card_fee_item": "SHOP-DEMO-003", "card_fee_percent": 2.65, "card_fee_fixed": 0.3})
+		frappe.db.set_single_value(
+			"Shop Settings",
+			{"card_fee_item": "SHOP-DEMO-003", "card_fee_percent": 2.65, "card_fee_fixed": 0.3},
+		)
 		frappe.clear_cache(doctype="Shop Settings")
 		cart.add_item(ITEM, qty=1)
-		result = quotes.request_quote(customer={"email": "fee.buyer@example.com", "full_name": "Fee Buyer"}, address=self.address)
+		result = quotes.request_quote(
+			customer={"email": "fee.buyer@example.com", "full_name": "Fee Buyer"}, address=self.address
+		)
 		quotation = frappe.get_doc("Quotation", result["quote"])
 		quotation.submit()
 		fee = quotes.card_fee(quotation)
@@ -266,26 +406,58 @@ class TestCustomerPrices(IntegrationTestCase):
 		for name in ("shop_session_customer", "shop_customer_rates"):
 			if hasattr(frappe.local, name):
 				delattr(frappe.local, name)
-		self.parent = ensure("Item Group", "_Test Store Hardware", {"item_group_name": "_Test Store Hardware",
-																	"parent_item_group": "All Item Groups", "is_group": 1})
-		self.child = ensure("Item Group", "_Test Store Tools", {"item_group_name": "_Test Store Tools",
-															   "parent_item_group": "_Test Store Hardware"})
+		self.parent = ensure(
+			"Item Group",
+			"_Test Store Hardware",
+			{
+				"item_group_name": "_Test Store Hardware",
+				"parent_item_group": "All Item Groups",
+				"is_group": 1,
+			},
+		)
+		self.child = ensure(
+			"Item Group",
+			"_Test Store Tools",
+			{"item_group_name": "_Test Store Tools", "parent_item_group": "_Test Store Hardware"},
+		)
 		self.item = "_Test Store Tool Item"
 		if not frappe.db.exists("Item", self.item):
-			frappe.get_doc({"doctype": "Item", "item_code": self.item, "item_name": self.item, "item_group": self.child,
-							"stock_uom": "Nos", "is_stock_item": 0}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Item",
+					"item_code": self.item,
+					"item_name": self.item,
+					"item_group": self.child,
+					"stock_uom": "Nos",
+					"is_stock_item": 0,
+				}
+			).insert(ignore_permissions=True)
 		settings = frappe.get_doc("Shop Settings")
 		if not frappe.db.exists("Item Price", {"item_code": self.item, "price_list": settings.price_list}):
-			frappe.get_doc({"doctype": "Item Price", "item_code": self.item, "price_list": settings.price_list,
-							"price_list_rate": 100}).insert(ignore_permissions=True)
-		self.group = ensure("Customer Group", "_Test Discount Group", {"customer_group_name": "_Test Discount Group",
-																	  "parent_customer_group": "All Customer Groups"})
-		self.customer = ensure("Customer", "_Test Discount Customer", {"customer_name": "_Test Discount Customer",
-																	   "customer_group": "_Test Discount Group"})
+			frappe.get_doc(
+				{
+					"doctype": "Item Price",
+					"item_code": self.item,
+					"price_list": settings.price_list,
+					"price_list_rate": 100,
+				}
+			).insert(ignore_permissions=True)
+		self.group = ensure(
+			"Customer Group",
+			"_Test Discount Group",
+			{"customer_group_name": "_Test Discount Group", "parent_customer_group": "All Customer Groups"},
+		)
+		self.customer = ensure(
+			"Customer",
+			"_Test Discount Customer",
+			{"customer_name": "_Test Discount Customer", "customer_group": "_Test Discount Group"},
+		)
 
 	def rate(self):
 		frappe.local.shop_customer_rates = {}
-		return pricing.customer_rate(self.item, self.customer, frappe.get_cached_doc("Shop Settings").price_list, 1)
+		return pricing.customer_rate(
+			self.item, self.customer, frappe.get_cached_doc("Shop Settings").price_list, 1
+		)
 
 	def test_a_customer_group_pricing_rule_gives_its_customers_their_price(self):
 		from shop import setup_store
@@ -302,25 +474,40 @@ class TestStatements(IntegrationTestCase):
 
 	def setUp(self):
 		for group in (self.GROUP, self.OTHER):
-			ensure("Customer Group", group, {"customer_group_name": group, "parent_customer_group": "All Customer Groups"})
+			ensure(
+				"Customer Group",
+				group,
+				{"customer_group_name": group, "parent_customer_group": "All Customer Groups"},
+			)
 		settings = frappe.get_doc("Shop Settings")
 		original = {field: settings.get(field) for field in ("trade_customer_group", "email_statements")}
 		self.addCleanup(lambda: frappe.db.set_single_value("Shop Settings", original))
-		frappe.db.set_single_value("Shop Settings", {"trade_customer_group": self.GROUP, "email_statements": 1})
+		frappe.db.set_single_value(
+			"Shop Settings", {"trade_customer_group": self.GROUP, "email_statements": 1}
+		)
 		frappe.clear_cache(doctype="Shop Settings")
-		self.stays = frappe.get_doc("Customer", accounts.ensure_customer("statement.stays@example.com", "Statement Stays"))
+		self.stays = frappe.get_doc(
+			"Customer", accounts.ensure_customer("statement.stays@example.com", "Statement Stays")
+		)
 		self.stays.customer_group = self.GROUP
 		self.stays.save(ignore_permissions=True)
 		self.RUN = frappe.db.get_value(
-			"Process Statement Of Accounts", {"customer_collection": "Customer Group", "collection_name": self.GROUP}
+			"Process Statement Of Accounts",
+			{"customer_collection": "Customer Group", "collection_name": self.GROUP},
 		)
 
 	def rows(self):
-		return frappe.get_all("Process Statement Of Accounts Customer", filters={"parent": self.RUN}, fields=["customer", "primary_email"])
+		return frappe.get_all(
+			"Process Statement Of Accounts Customer",
+			filters={"parent": self.RUN},
+			fields=["customer", "primary_email"],
+		)
 
 	def test_store_customer_gets_a_primary_contact_and_email(self):
 		customer = accounts.ensure_customer("statement.one@example.com", "Statement One")
-		values = frappe.db.get_value("Customer", customer, ["customer_primary_contact", "email_id"], as_dict=True)
+		values = frappe.db.get_value(
+			"Customer", customer, ["customer_primary_contact", "email_id"], as_dict=True
+		)
 		self.assertTrue(values.customer_primary_contact)
 		self.assertEqual(values.email_id, "statement.one@example.com")
 
@@ -329,10 +516,15 @@ class TestStatements(IntegrationTestCase):
 		self.assertIn("statement.stays@example.com", [r.primary_email for r in self.rows()])
 
 	def test_customer_joins_and_leaves_the_statement_run_with_their_group(self):
-		customer = frappe.get_doc("Customer", accounts.ensure_customer("statement.two@example.com", "Statement Two"))
+		customer = frappe.get_doc(
+			"Customer", accounts.ensure_customer("statement.two@example.com", "Statement Two")
+		)
 		customer.customer_group = self.GROUP
 		customer.save(ignore_permissions=True)
-		self.assertIn({"customer": customer.name, "primary_email": "statement.two@example.com"}, [dict(r) for r in self.rows()])
+		self.assertIn(
+			{"customer": customer.name, "primary_email": "statement.two@example.com"},
+			[dict(r) for r in self.rows()],
+		)
 		customer.customer_group = self.OTHER
 		customer.save(ignore_permissions=True)
 		self.assertNotIn(customer.name, [r.customer for r in self.rows()])

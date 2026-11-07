@@ -7,7 +7,14 @@ from shop.theme_generators.blocks import block, dv
 def store_css(refs, radius: str = "2px"):
 	"""Styles for what the store's script and server render: checkout lines and options, the
 	order's payment box and totals, account rows and forms, quote and terms pages."""
-	ink, muted, line, card, paper, ok = refs["ink"], refs["muted"], refs["line"], refs["card"], refs["paper"], refs["success"]
+	ink, muted, line, card, paper, ok = (
+		refs["ink"],
+		refs["muted"],
+		refs["line"],
+		refs["card"],
+		refs["paper"],
+		refs["success"],
+	)
 	warn = refs.get("badge") or refs.get("accent") or refs["ink"]
 	return f"""
 [hidden] {{ display: none !important; }}
@@ -80,50 +87,99 @@ small.checkout-option-price {{ font-weight:400; color:{muted}; font-size:12px; }
 
 
 def hint(refs, text="", **extra):
-	return block("p", text=text, classes=["checkout-hint"],
-				 styles={"color": refs["muted"], "fontSize": "12px", "gridColumn": "span 2", "lineHeight": "1.5", "width": "100%"}, **extra)
+	return block(
+		"p",
+		text=text,
+		classes=["checkout-hint"],
+		styles={
+			"color": refs["muted"],
+			"fontSize": "12px",
+			"gridColumn": "span 2",
+			"lineHeight": "1.5",
+			"width": "100%",
+		},
+		**extra,
+	)
 
 
 def form_error():
 	"""Where storefront.js shows a form's errors."""
-	return block("div", attrs={"data-shop": "error", "role": "alert"}, classes=["checkout-error"],
-				 styles={"display": "none", "gridColumn": "span 2"})
+	return block(
+		"div",
+		attrs={"data-shop": "error", "role": "alert"},
+		classes=["checkout-error"],
+		styles={"display": "none", "gridColumn": "span 2"},
+	)
 
 
 def terms_box(lead="I accept the", span=2, margin="6px", business=True):
 	"""The terms checkbox, with the store's Terms and Conditions link and note (terms.*), and, for
 	purchases, the store's business buyer statement."""
 	children = [
-		block("label", classes=["checkout-check"], children=[
-			block("input", attrs={"type": "checkbox", "name": "accept_terms", "required": "required"}),
-			block("span", children=[
-				block("span", text=f"{lead} "),
-				block("a", text="Terms and Conditions", attrs={"href": "/terms", "target": "_blank", "data-shop": "terms-link"},
-					  dynamicValues=[dv("terms.url", "href", "attribute")]),
-				block("span", text="", classes=["terms-note"], visibilityCondition={"key": "terms.note", "comesFrom": "dataScript"},
-					  dynamicValues=[dv("terms.note", "innerHTML")]),
-			]),
-		]),
+		block(
+			"label",
+			classes=["checkout-check"],
+			children=[
+				block("input", attrs={"type": "checkbox", "name": "accept_terms", "required": "required"}),
+				block(
+					"span",
+					children=[
+						block("span", text=f"{lead} "),
+						block(
+							"a",
+							text="Terms and Conditions",
+							attrs={"href": "/terms", "target": "_blank", "data-shop": "terms-link"},
+							dynamicValues=[dv("terms.url", "href", "attribute")],
+						),
+						block(
+							"span",
+							text="",
+							classes=["terms-note"],
+							visibilityCondition={"key": "terms.note", "comesFrom": "dataScript"},
+							dynamicValues=[dv("terms.note", "innerHTML")],
+						),
+					],
+				),
+			],
+		),
 	]
 	if business:
 		children.append(
-			block("label", classes=["checkout-check"], visibilityCondition={"key": "terms.business_label", "comesFrom": "dataScript"},
-				  children=[block("input", attrs={"type": "checkbox", "name": "business_buyer"}),
-							block("span", text="", dynamicValues=[dv("terms.business_label", "innerHTML")])])
+			block(
+				"label",
+				classes=["checkout-check"],
+				visibilityCondition={"key": "terms.business_label", "comesFrom": "dataScript"},
+				children=[
+					block("input", attrs={"type": "checkbox", "name": "business_buyer"}),
+					block("span", text="", dynamicValues=[dv("terms.business_label", "innerHTML")]),
+				],
+			)
 		)
 	return block(
 		"div",
 		name="Terms",
 		visibilityCondition={"key": "terms", "comesFrom": "dataScript"},
-		styles={"display": "flex", "flexDirection": "column", "gap": "10px", "gridColumn": f"span {span}", "marginTop": margin, "width": "100%"},
+		styles={
+			"display": "flex",
+			"flexDirection": "column",
+			"gap": "10px",
+			"gridColumn": f"span {span}",
+			"marginTop": margin,
+			"width": "100%",
+		},
 		children=children,
 	)
 
 
 def notice(refs):
 	"""A message a page shows instead of its form (page data key `notice`)."""
-	return block("p", text="", classes=["form-done"], visibilityCondition={"key": "notice", "comesFrom": "dataScript"},
-				 dynamicValues=[dv("notice", "innerHTML")])
+	return block(
+		"p",
+		text="",
+		classes=["form-done"],
+		visibilityCondition={"key": "notice", "comesFrom": "dataScript"},
+		dynamicValues=[dv("notice", "innerHTML")],
+	)
 
 
 def shown_with_form(form: dict) -> dict:

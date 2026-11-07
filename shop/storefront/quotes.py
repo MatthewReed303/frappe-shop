@@ -1,11 +1,5 @@
-"""Quotes: a shopper asks for a quote instead of ordering, staff finish and send it from the desk,
-and the customer accepts it online, which places the order.
-
-request_quote  checkout's "Request a quote": a draft Quotation at the shopper's own prices
-send_quote     desk button on a submitted Quotation: emails the customer a private link
-quote_summary  the quote page (/quote/<name>?token=...)
-accept_quote   the customer accepts: a Sales Order is made from the quote and paid like a checkout
-"""
+"""Quotes: a shopper requests one from checkout, staff send the submitted Quotation from the desk,
+and the customer accepts it online, which places and pays the order."""
 
 import json
 
@@ -23,7 +17,9 @@ VALID_DAYS = 30
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=60 * 10)
-def request_quote(customer: dict, address: dict, shipping_option: str | None = None, message: str | None = None) -> dict:
+def request_quote(
+	customer: dict, address: dict, shipping_option: str | None = None, message: str | None = None
+) -> dict:
 	from shop.storefront.accounts import staff_emails
 	from shop.storefront.checkout import create_address, elevated, get_or_create_customer
 
@@ -39,7 +35,9 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 		order_quote = totals.compute(cart, address, shipping_option)
 		party = get_or_create_customer(customer)
 		shipping_address = create_address(party, customer, order_quote.address or address)
-		quotation = quotation_from(order_quote.order, party, shipping_address.name, customer["email"].strip().lower())
+		quotation = quotation_from(
+			order_quote.order, party, shipping_address.name, customer["email"].strip().lower()
+		)
 		quotation.shop_access_token = frappe.generate_hash(length=32)
 		quotation.shop_request_message = (message or "").strip()[:2000]
 		from shop.storefront import terms
@@ -47,7 +45,11 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 		terms.apply_to(quotation)
 		if order_quote.shipping:
 			quotation.shop_shipping_option = json.dumps(
-				{k: order_quote.shipping.get(k) for k in ("id", "label", "amount", "carrier", "service", "meta")}, default=str
+				{
+					k: order_quote.shipping.get(k)
+					for k in ("id", "label", "amount", "carrier", "service", "meta")
+				},
+				default=str,
 			)
 		quotation.flags.ignore_permissions = True
 		quotation.insert(ignore_permissions=True)
@@ -55,8 +57,13 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 
 		emails.send("quote_request_received", customer["email"], quotation)
 		emails.send(
-			"quote_request_staff", staff_emails(), quotation, customer_name=customer["full_name"],
-			email=customer["email"], message=message or "", desk_url=frappe.utils.get_url("/desk/quotation/" + quotation.name),
+			"quote_request_staff",
+			staff_emails(),
+			quotation,
+			customer_name=customer["full_name"],
+			email=customer["email"],
+			message=message or "",
+			desk_url=frappe.utils.get_url("/desk/quotation/" + quotation.name),
 		)
 	return {"quote": quotation.name, "message": _("Thanks. We'll email your quote.")}
 
@@ -142,7 +149,13 @@ def send_quote(name: str) -> str:
 	from shop.storefront import emails
 
 	link = quote_url(quotation.name, quotation.shop_access_token)
-	emails.send("quote_ready", email, quotation, quote_url=link, valid_till=frappe.utils.formatdate(quotation.valid_till))
+	emails.send(
+		"quote_ready",
+		email,
+		quotation,
+		quote_url=link,
+		valid_till=frappe.utils.formatdate(quotation.valid_till),
+	)
 	quotation.add_comment("Info", _("Quote emailed to {0}.").format(email))
 	return link
 
@@ -171,17 +184,29 @@ def quote_summary(name: str, token: str | None) -> dict:
 	html = lines_html(quotation)
 	expired = bool(quotation.valid_till and getdate(quotation.valid_till) < getdate(nowdate()))
 	closed = quotation.status in ("Lost", "Cancelled") or quotation.docstatus == 2
-	can_accept = quotation.docstatus == 1 and not closed and quotation.status != "Ordered" and not expired and not order
+	can_accept = (
+		quotation.docstatus == 1
+		and not closed
+		and quotation.status != "Ordered"
+		and not expired
+		and not order
+	)
 	methods = quote_payment_methods(quotation) if can_accept else []
 	return {
 		"name": quotation.name,
 		"token": token or "",
 		"status": quote_status(quotation, order, expired, closed),
-		"valid_till": _("Valid until {0}").format(frappe.utils.formatdate(quotation.valid_till)) if quotation.valid_till else "",
+		"valid_till": _("Valid until {0}").format(frappe.utils.formatdate(quotation.valid_till))
+		if quotation.valid_till
+		else "",
 		"lines_html": html,
 		"can_accept": "true" if can_accept else None,
 		"payment_methods": methods,
-		"order_url": store_url(f"order-confirmation/{order}?token={frappe.db.get_value('Sales Order', order, 'shop_access_token') or ''}") if order else None,
+		"order_url": store_url(
+			f"order-confirmation/{order}?token={frappe.db.get_value('Sales Order', order, 'shop_access_token') or ''}"
+		)
+		if order
+		else None,
 	}
 
 
@@ -231,13 +256,22 @@ def quote_payment_methods(quotation) -> list[dict]:
 	for method in totals.payment_methods(is_export(quotation)):
 		if method["method"] == totals.GATEWAY:
 			fee = card_fee(quotation)
-			methods.append(dict(method, fee_note=_("Card fee {0} added").format(totals.money(fee, quotation.currency)) if fee else ""))
+			methods.append(
+				dict(
+					method,
+					fee_note=_("Card fee {0} added").format(totals.money(fee, quotation.currency))
+					if fee
+					else "",
+				)
+			)
 		elif method["method"] == totals.BANK and totals.bank_account(quotation.currency):
 			methods.append(method)
 	if quotation.party_name in session_customers():
 		terms = totals.on_account_terms(quotation.party_name)
 		if terms:
-			methods.insert(0, {"method": totals.ACCOUNT, "label": _("Pay on account (invoice)"), "fee_note": terms})
+			methods.insert(
+				0, {"method": totals.ACCOUNT, "label": _("Pay on account (invoice)"), "fee_note": terms}
+			)
 	return methods
 
 
@@ -270,7 +304,9 @@ def make_order(quotation):
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=60)
-def accept_quote(name: str, token: str, payment_method: str, accept_terms: int = 0, business_buyer: int = 0) -> dict:
+def accept_quote(
+	name: str, token: str, payment_method: str, accept_terms: int = 0, business_buyer: int = 0
+) -> dict:
 	"""The customer accepts the quote: the order is placed at the quoted prices, then paid."""
 	from shop.storefront import terms
 	from shop.storefront.checkout import (
@@ -296,7 +332,9 @@ def accept_quote(name: str, token: str, payment_method: str, accept_terms: int =
 		order.shop_access_token = frappe.generate_hash(length=32)
 		order_quote = frappe._dict(
 			payment_method=payment_method,
-			shipping=frappe._dict(json.loads(quotation.shop_shipping_option)) if quotation.get("shop_shipping_option") else None,
+			shipping=frappe._dict(json.loads(quotation.shop_shipping_option))
+			if quotation.get("shop_shipping_option")
+			else None,
 		)
 		set_shop_details(order, order_quote, cint(accept_terms), cint(business_buyer))
 		if payment_method == totals.GATEWAY:
@@ -308,7 +346,9 @@ def accept_quote(name: str, token: str, payment_method: str, accept_terms: int =
 		response = {"sales_order": order.name}
 		confirmation = store_url(f"order-confirmation/{order.name}?token={order.shop_access_token}")
 		if payment_method == totals.GATEWAY and totals.order_total(order) > 0:
-			response["redirect"] = create_payment_request(order, {"email": order.contact_email}, order.shop_access_token)
+			response["redirect"] = create_payment_request(
+				order, {"email": order.contact_email}, order.shop_access_token
+			)
 		else:
 			response["redirect"] = confirmation
 			send_confirmation_for(order, confirmation)

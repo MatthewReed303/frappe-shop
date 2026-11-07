@@ -27,7 +27,12 @@ def is_paid(order) -> bool:
 	return bool(
 		frappe.db.exists(
 			"Payment Request",
-			{"reference_doctype": "Sales Order", "reference_name": order.name, "status": "Paid", "docstatus": 1},
+			{
+				"reference_doctype": "Sales Order",
+				"reference_name": order.name,
+				"status": "Paid",
+				"docstatus": 1,
+			},
 		)
 	)
 
@@ -50,7 +55,9 @@ def bank_instructions(order) -> dict | None:
 		"amount": totals.money(amount_due(order), order.currency),
 		"reference": order.name,
 		"details": lines,
-		"due": frappe.utils.formatdate(order.get("shop_payment_due")) if order.get("shop_payment_due") else "",
+		"due": frappe.utils.formatdate(order.get("shop_payment_due"))
+		if order.get("shop_payment_due")
+		else "",
 	}
 
 
@@ -99,7 +106,10 @@ def was_paid_before(order, reference) -> bool:
 	"""Whether the order was already paid in full before this payment."""
 	paid, allocated = flt(order.advance_paid), flt(reference.allocated_amount)
 	if (order.get("party_account_currency") or order.currency) != order.currency:
-		paid, allocated = paid / (flt(order.conversion_rate) or 1), allocated / (flt(order.conversion_rate) or 1)
+		paid, allocated = (
+			paid / (flt(order.conversion_rate) or 1),
+			allocated / (flt(order.conversion_rate) or 1),
+		)
 	return totals.order_total(order) - (paid - allocated) <= 0
 
 
@@ -116,7 +126,13 @@ def notify_paid(order) -> None:
 	from shop.storefront import emails
 
 	invoice = order_invoice(order.name)
-	emails.send("payment_received", order.contact_email, order, attachments=invoice_attachments(invoice), invoice=invoice)
+	emails.send(
+		"payment_received",
+		order.contact_email,
+		order,
+		attachments=invoice_attachments(invoice),
+		invoice=invoice,
+	)
 
 
 def order_invoice(order_name: str) -> str | None:
@@ -149,7 +165,10 @@ def invoice_paid_order(order) -> str | None:
 	except Exception:
 		frappe.db.rollback(save_point="shop_invoice")
 		frappe.log_error(title=f"Could not invoice paid order {order.name}")
-		order.add_comment("Info", _("The order is paid but could not be invoiced automatically. Make the invoice from the order."))
+		order.add_comment(
+			"Info",
+			_("The order is paid but could not be invoiced automatically. Make the invoice from the order."),
+		)
 		return None
 	order.add_comment("Info", _("Paid and invoiced: {0}.").format(invoice.name))
 	return invoice.name
@@ -200,7 +219,12 @@ def cancel_if_unpaid(name: str) -> bool:
 		return False
 	for request in frappe.get_all(
 		"Payment Request",
-		filters={"reference_doctype": "Sales Order", "reference_name": name, "docstatus": 1, "status": ["!=", "Paid"]},
+		filters={
+			"reference_doctype": "Sales Order",
+			"reference_name": name,
+			"docstatus": 1,
+			"status": ["!=", "Paid"],
+		},
 		pluck="name",
 	):
 		frappe.get_doc("Payment Request", request).cancel()
@@ -214,4 +238,9 @@ def cancel_if_unpaid(name: str) -> bool:
 def notify_cancelled(order) -> None:
 	from shop.storefront import emails
 
-	emails.send("order_cancelled", order.contact_email, order, due_date=frappe.utils.formatdate(order.shop_payment_due))
+	emails.send(
+		"order_cancelled",
+		order.contact_email,
+		order,
+		due_date=frappe.utils.formatdate(order.shop_payment_due),
+	)

@@ -42,17 +42,24 @@ def store_prices(item_codes: list[str]) -> dict:
 	rates = {}
 	for row in frappe.get_all(
 		"Item Price",
-		filters={"item_code": ["in", item_codes], "price_list": settings.price_list, "customer": ["is", "not set"]},
+		filters={
+			"item_code": ["in", item_codes],
+			"price_list": settings.price_list,
+			"customer": ["is", "not set"],
+		},
 		fields=["item_code", "price_list_rate", "valid_from", "valid_upto"],
 		order_by="valid_from desc",
 	):
 		if row.item_code in rates:
 			continue
-		if (row.valid_from and getdate(row.valid_from) > today) or (row.valid_upto and getdate(row.valid_upto) < today):
+		if (row.valid_from and getdate(row.valid_from) > today) or (
+			row.valid_upto and getdate(row.valid_upto) < today
+		):
 			continue
 		rates[row.item_code] = row.price_list_rate
 	return {
-		code: {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)} for code, rate in rates.items()
+		code: {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)}
+		for code, rate in rates.items()
 	}
 
 
@@ -133,12 +140,20 @@ def domestic_taxes() -> list:
 	cache = request_cache("shop_domestic_taxes")
 	template = frappe.get_cached_doc("Shop Settings").tax_template or ""
 	if template not in cache:
-		cache[template] = frappe.get_all(
-			"Sales Taxes and Charges",
-			filters={"parent": template, "parenttype": "Sales Taxes and Charges Template", "charge_type": "On Net Total"},
-			fields=["rate", "description"],
-			order_by="idx",
-		) if template else []
+		cache[template] = (
+			frappe.get_all(
+				"Sales Taxes and Charges",
+				filters={
+					"parent": template,
+					"parenttype": "Sales Taxes and Charges Template",
+					"charge_type": "On Net Total",
+				},
+				fields=["rate", "description"],
+				order_by="idx",
+			)
+			if template
+			else []
+		)
 	return cache[template]
 
 
@@ -198,7 +213,9 @@ def display_price_without_tax(amount: float) -> str | None:
 	if not shows_store_currency() or not shows_tax():
 		return None
 	excluding = with_and_without_tax(amount)[1]
-	return _("{0} excl. {1}").format(with_code(fmt_money(flt(excluding, 2), currency=store_currency()), store_currency()), tax_name())
+	return _("{0} excl. {1}").format(
+		with_code(fmt_money(flt(excluding, 2), currency=store_currency()), store_currency()), tax_name()
+	)
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -208,7 +225,9 @@ def set_currency(currency: str) -> str:
 	Billing Currency where ERPNext allows it for their account."""
 	if currency not in display_currencies():
 		frappe.throw(_("Prices can't be shown in {0}").format(currency))
-	frappe.local.cookie_manager.set_cookie(CURRENCY_COOKIE, currency, max_age=60 * 60 * 24 * 365, samesite="Lax")
+	frappe.local.cookie_manager.set_cookie(
+		CURRENCY_COOKIE, currency, max_age=60 * 60 * 24 * 365, samesite="Lax"
+	)
 	customer = session_customer()
 	if customer and frappe.db.get_value("Customer", customer, "default_currency") != currency:
 		save_billing_currency(customer, currency)
@@ -238,7 +257,8 @@ def currency_picker_html() -> str:
 	current = display_currency()
 	esc = frappe.utils.escape_html
 	items = "".join(
-		f'<option value="{esc(code)}"{" selected" if code == current else ""}>{esc(code)}</option>' for code in options
+		f'<option value="{esc(code)}"{" selected" if code == current else ""}>{esc(code)}</option>'
+		for code in options
 	)
 	return (
 		f'<label class="currency-picker"><span class="visually-hidden">{esc(_("Currency"))}</span>'

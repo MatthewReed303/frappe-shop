@@ -1,10 +1,12 @@
 """Customer accounts: sign-up with the store's terms, trade account applications and approval,
 and the account overview (orders, invoices, quotes)."""
 
+from urllib.parse import urlencode
+
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import cint, flt, now_datetime, nowdate, validate_email_address
+from frappe.utils import cint, cstr, flt, now_datetime, nowdate, validate_email_address
 
 from shop.routes import store_url
 from shop.storefront import pricing
@@ -80,9 +82,9 @@ def ensure_customer(email: str, full_name: str) -> str:
 	existing = find_customer_by_email(email)
 	if existing:
 		return existing
-	party = frappe.get_doc({"doctype": "Customer", "customer_name": full_name, "customer_type": "Individual"}).insert(
-		ignore_permissions=True
-	)
+	party = frappe.get_doc(
+		{"doctype": "Customer", "customer_name": full_name, "customer_type": "Individual"}
+	).insert(ignore_permissions=True)
 	create_contact(party.name, {"full_name": full_name}, email)
 	return party.name
 
@@ -90,8 +92,21 @@ def ensure_customer(email: str, full_name: str) -> str:
 # --- trade accounts ------------------------------------------------------------------
 
 TRADE_FIELDS = (
-	"company_name", "company_number", "tax_id", "industry", "website", "country", "message",
-	"contact_name", "email", "phone", "address_line1", "address_line2", "city", "state", "pincode",
+	"company_name",
+	"company_number",
+	"tax_id",
+	"industry",
+	"website",
+	"country",
+	"message",
+	"contact_name",
+	"email",
+	"phone",
+	"address_line1",
+	"address_line2",
+	"city",
+	"state",
+	"pincode",
 )
 
 
@@ -107,10 +122,14 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 	"""A business applies for a trade account: an ERPNext Lead (UTM Source "Store Trade Application")
 	with its contact, address and the terms they accepted. Staff approve it from the Lead."""
 	check_terms(accept_terms)
-	values = {field: (application.get(field) or "").strip() for field in TRADE_FIELDS}
+	values = {field: cstr(application.get(field)).strip() for field in TRADE_FIELDS}
 	values["email"] = values["email"].lower()
 	validate_email_address(values["email"], throw=True)
-	for field, label in (("company_name", _("business name")), ("contact_name", _("your name")), ("country", _("country"))):
+	for field, label in (
+		("company_name", _("business name")),
+		("contact_name", _("your name")),
+		("country", _("country")),
+	):
 		if not values[field]:
 			frappe.throw(_("Please enter {0}").format(label))
 	from shop.storefront.checkout import elevated
@@ -161,7 +180,12 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 			add_address("Lead", lead.name, values)
 		from shop.storefront import emails
 
-		emails.send("trade_application_staff", staff_emails(), lead, desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"))
+		emails.send(
+			"trade_application_staff",
+			staff_emails(),
+			lead,
+			desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"),
+		)
 		emails.send("trade_application_received", values["email"], lead)
 	return {"message": _("Thanks. We'll review your application and email you.")}
 
@@ -175,10 +199,14 @@ def application_lead(email: str):
 def staff_emails() -> list[str]:
 	"""The staff who look after store applications and quote requests."""
 	users = frappe.get_all(
-		"Has Role", filters={"role": ["in", ["Shop Manager", "Sales Manager"]], "parenttype": "User"}, pluck="parent", distinct=True
+		"Has Role",
+		filters={"role": ["in", ["Shop Manager", "Sales Manager"]], "parenttype": "User"},
+		pluck="parent",
+		distinct=True,
 	)
 	return [
-		u for u in frappe.get_all("User", filters={"name": ["in", users or [""]], "enabled": 1}, pluck="name")
+		u
+		for u in frappe.get_all("User", filters={"name": ["in", users or [""]], "enabled": 1}, pluck="name")
 		if u not in ("Administrator", "Guest")
 	]
 
@@ -248,19 +276,33 @@ def approve_trade(
 		customer = _make_customer(doc.name, ignore_permissions=True)
 		customer.tax_id = doc.shop_tax_id
 	settings = frappe.get_cached_doc("Shop Settings")
-	customer.customer_group = customer_group or settings.get("trade_customer_group") or customer.customer_group
+	customer.customer_group = (
+		customer_group or settings.get("trade_customer_group") or customer.customer_group
+	)
 	# only what the approver set changes an existing customer
 	if price_list:
 		customer.default_price_list = price_list
 	if payment_terms:
 		customer.payment_terms = payment_terms
 	if customer.meta.has_field("shop_allow_on_account"):
-		customer.shop_allow_on_account = 1 if cint(allow_on_account) else customer.get("shop_allow_on_account") or 0
+		customer.shop_allow_on_account = (
+			1 if cint(allow_on_account) else customer.get("shop_allow_on_account") or 0
+		)
 	if flt(credit_limit):
-		customer.credit_limits = [row for row in customer.get("credit_limits") or [] if row.company != settings.company]
+		customer.credit_limits = [
+			row for row in customer.get("credit_limits") or [] if row.company != settings.company
+		]
 		customer.append("credit_limits", {"company": settings.company, "credit_limit": flt(credit_limit)})
-	user = doc.shop_user or (doc.email_id if frappe.db.exists("User", doc.email_id) else None) or create_user(
-		doc.email_id, doc.lead_name, accepted=(doc.shop_terms_version, doc.shop_terms_accepted_on) if doc.get("shop_terms_version") else None
+	user = (
+		doc.shop_user
+		or (doc.email_id if frappe.db.exists("User", doc.email_id) else None)
+		or create_user(
+			doc.email_id,
+			doc.lead_name,
+			accepted=(doc.shop_terms_version, doc.shop_terms_accepted_on)
+			if doc.get("shop_terms_version")
+			else None,
+		)
 	)
 	if user not in [row.user for row in customer.get("portal_users") or []]:
 		customer.append("portal_users", {"user": user})
@@ -268,17 +310,31 @@ def approve_trade(
 	customer.save(ignore_permissions=True) if existing else customer.insert(ignore_permissions=True)
 	if existing:
 		# the applicant's customer keeps its own contact; the Lead's address joins it
-		for address in frappe.get_all("Dynamic Link", filters={"parenttype": "Address", "link_doctype": "Lead", "link_name": doc.name}, pluck="parent"):
+		for address in frappe.get_all(
+			"Dynamic Link",
+			filters={"parenttype": "Address", "link_doctype": "Lead", "link_name": doc.name},
+			pluck="parent",
+		):
 			address_doc = frappe.get_doc("Address", address)
 			address_doc.append("links", {"link_doctype": "Customer", "link_name": customer.name})
 			address_doc.save(ignore_permissions=True)
 	doc.reload()
-	doc.db_set({"status": "Converted", "customer": customer.name, "qualification_status": "Qualified",
-				"qualified_by": frappe.session.user, "qualified_on": nowdate()})
+	doc.db_set(
+		{
+			"status": "Converted",
+			"customer": customer.name,
+			"qualification_status": "Qualified",
+			"qualified_by": frappe.session.user,
+			"qualified_on": nowdate(),
+		}
+	)
 	from shop.storefront import emails
 
 	emails.send(
-		"trade_account_approved", doc.email_id, doc, on_account=bool(cint(allow_on_account)),
+		"trade_account_approved",
+		doc.email_id,
+		doc,
+		on_account=bool(cint(allow_on_account)),
 		sign_in_url=frappe.utils.get_url("/login?redirect-to=" + store_url("account/orders")),
 	)
 	return {"customer": customer.name, "user": user}
@@ -310,7 +366,14 @@ def decline_trade(lead: str, reason: str | None = None) -> None:
 	if doc.status == "Converted" or doc.qualification_status == "Unqualified":
 		frappe.throw(_("This application has already been dealt with"))
 	if reason:
-		doc.append("notes", {"note": frappe.utils.escape_html(reason), "added_by": frappe.session.user, "added_on": now_datetime()})
+		doc.append(
+			"notes",
+			{
+				"note": frappe.utils.escape_html(reason),
+				"added_by": frappe.session.user,
+				"added_on": now_datetime(),
+			},
+		)
 	doc.qualification_status = "Unqualified"
 	doc.save(ignore_permissions=True)
 	from shop.storefront import emails
@@ -328,17 +391,24 @@ def trade_status() -> dict | None:
 	if user in ("Guest", None):
 		return None
 	application = frappe.db.get_value(
-		"Lead", {"email_id": user, "utm_source": trade_source()}, ["name", "status", "qualification_status"],
-		as_dict=True, order_by="creation desc",
+		"Lead",
+		{"email_id": user, "utm_source": trade_source()},
+		["name", "status", "qualification_status"],
+		as_dict=True,
+		order_by="creation desc",
 	)
 	state = None
 	if application:
-		state = "Approved" if application.status == "Converted" else (
-			"Declined" if application.qualification_status == "Unqualified" else "Pending")
+		state = (
+			"Approved"
+			if application.status == "Converted"
+			else ("Declined" if application.qualification_status == "Unqualified" else "Pending")
+		)
 	if not customer:
 		return {"status": state} if state else None
 	fields = ["customer_group", "payment_terms", "lead_name"] + (
-		["shop_allow_on_account"] if frappe.get_meta("Customer").has_field("shop_allow_on_account") else [])
+		["shop_allow_on_account"] if frappe.get_meta("Customer").has_field("shop_allow_on_account") else []
+	)
 	values = frappe.db.get_value("Customer", customer, fields, as_dict=True)
 	settings = frappe.get_cached_doc("Shop Settings")
 	trade = (
@@ -360,14 +430,22 @@ def invoices(customers: list[str]) -> list[dict]:
 	rows = frappe.get_all(
 		"Sales Invoice",
 		filters={"customer": ["in", customers], "docstatus": 1},
-		fields=["name", "posting_date", "due_date", "grand_total", "outstanding_amount", "currency", "status"],
+		fields=[
+			"name",
+			"posting_date",
+			"due_date",
+			"grand_total",
+			"outstanding_amount",
+			"currency",
+			"status",
+		],
 		order_by="posting_date desc",
 		limit=50,
 	)
 	for row in rows:
 		row.formatted_total = frappe.utils.fmt_money(row.grand_total, currency=row.currency)
 		row.formatted_outstanding = frappe.utils.fmt_money(row.outstanding_amount, currency=row.currency)
-		row.pdf_url = f"/api/method/shop.storefront.accounts.invoice_pdf?name={row.name}"
+		row.pdf_url = "/api/method/shop.storefront.accounts.invoice_pdf?" + urlencode({"name": row.name})
 	return rows
 
 

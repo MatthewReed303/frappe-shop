@@ -1,21 +1,6 @@
-"""Set a store up on ERPNext's own records, the same for every store. Safe to run again: it makes
-what is missing and keeps what exists (and anything a store owner has changed).
-
-	from shop.setup_store import set_up
-	set_up(company="Acme", trade_group="Trade", trade_payment_terms="30 days")
-
-- charge items: non-stock items for the shipping, card fee and currency conversion lines on
-  orders, each with its own income account (Shop Settings shipping_item, card_fee_item,
-  conversion_fee_item)
-- card payments: a "Stripe Clearing" bank account and the Payment Gateway Account for the Stripe
-  gateway, when one has been set up in the desk
-- taxes: the company's default sales taxes for home orders, and a zero-rated Export Tax Template
-  for orders shipped abroad
-- trade customers: a Customer Group with default Payment Terms and Pricing Rule discounts
-- new customers: Selling Settings' default Customer Group
-- statements: a statement letterhead and a monthly ERPNext Process Statement Of Accounts for the
-  trade group
-"""
+"""Set a store up on ERPNext's own records: charge items and their income accounts, the online
+payment account, home and export taxes, trade Customer Group and discounts, the default
+Customer Group and monthly statements. Running it again keeps what exists."""
 
 import frappe
 from frappe import _
@@ -58,7 +43,9 @@ def set_up(
 	for field, code, name, account_name in CHARGE_ITEMS:
 		if settings.get(field):
 			continue
-		income = account(company_doc, account_name, income_parent(company_doc), "Income Account", numbers.get(account_name))
+		income = account(
+			company_doc, account_name, income_parent(company_doc), "Income Account", numbers.get(account_name)
+		)
 		settings.set(field, charge_item(company_doc, code, name, income))
 
 	gateway = stripe_gateway_account(company_doc, numbers.get("Stripe Clearing"))
@@ -78,7 +65,9 @@ def set_up(
 	if statements and settings.get("trade_customer_group"):
 		if not settings.get("email_statements"):
 			frappe.db.set_single_value("Shop Settings", "email_statements", 1)
-		statement_run(company_doc.name, settings.trade_customer_group, settings.store_name or company_doc.company_name)
+		statement_run(
+			company_doc.name, settings.trade_customer_group, settings.store_name or company_doc.company_name
+		)
 	return settings
 
 
@@ -89,25 +78,36 @@ def income_parent(company) -> str:
 	"""Where new income accounts go: beside the company's default income account."""
 	if company.default_income_account:
 		return frappe.db.get_value("Account", company.default_income_account, "parent_account")
-	return frappe.db.get_value("Account", {"company": company.name, "root_type": "Income", "is_group": 1}, "name", order_by="lft desc")
+	return frappe.db.get_value(
+		"Account",
+		{"company": company.name, "root_type": "Income", "is_group": 1},
+		"name",
+		order_by="lft desc",
+	)
 
 
-def account(company, name: str, parent: str, account_type: str, number: str | None = None, currency: str | None = None) -> str:
+def account(
+	company, name: str, parent: str, account_type: str, number: str | None = None, currency: str | None = None
+) -> str:
 	"""The company's account with this name, made under `parent` if it doesn't exist."""
 	existing = frappe.db.get_value("Account", {"company": company.name, "account_name": name, "is_group": 0})
 	if existing:
 		return existing
-	return frappe.get_doc(
-		{
-			"doctype": "Account",
-			"account_name": name,
-			"account_number": number,
-			"parent_account": parent,
-			"company": company.name,
-			"account_type": account_type,
-			"account_currency": currency or company.default_currency,
-		}
-	).insert(ignore_permissions=True).name
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Account",
+				"account_name": name,
+				"account_number": number,
+				"parent_account": parent,
+				"company": company.name,
+				"account_type": account_type,
+				"account_currency": currency or company.default_currency,
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 def charge_item(company, code: str, name: str, income_account: str) -> str:
@@ -119,9 +119,9 @@ def charge_item(company, code: str, name: str, income_account: str) -> str:
 				"item_code": code,
 				"item_name": name,
 				"description": name,
-				"item_group": "Services" if frappe.db.exists("Item Group", "Services") else frappe.db.get_value(
-					"Item Group", {"is_group": 0}, "name"
-				),
+				"item_group": "Services"
+				if frappe.db.exists("Item Group", "Services")
+				else frappe.db.get_value("Item Group", {"is_group": 0}, "name"),
 				"stock_uom": "Nos",
 				"is_stock_item": 0,
 				"is_sales_item": 1,
@@ -146,17 +146,30 @@ def stripe_gateway_account(company, number: str | None = None) -> str | None:
 	gateway = frappe.db.get_value("Payment Gateway", {"gateway_settings": "Stripe Settings"})
 	if not gateway:
 		return None
-	bank_parent = frappe.db.get_value("Account", {"company": company.name, "account_type": "Bank", "is_group": 0}, "parent_account")
+	bank_parent = frappe.db.get_value(
+		"Account", {"company": company.name, "account_type": "Bank", "is_group": 0}, "parent_account"
+	)
 	if not bank_parent:
 		return None
 	clearing = account(company, "Stripe Clearing", bank_parent, "Bank", number)
-	existing = frappe.db.get_value("Payment Gateway Account", {"payment_gateway": gateway, "currency": company.default_currency})
+	existing = frappe.db.get_value(
+		"Payment Gateway Account", {"payment_gateway": gateway, "currency": company.default_currency}
+	)
 	if existing:
 		return existing
-	return frappe.get_doc(
-		{"doctype": "Payment Gateway Account", "payment_gateway": gateway, "payment_account": clearing,
-		 "currency": company.default_currency, "is_default": 1}
-	).insert(ignore_permissions=True).name
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Payment Gateway Account",
+				"payment_gateway": gateway,
+				"payment_account": clearing,
+				"currency": company.default_currency,
+				"is_default": 1,
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 # --- taxes and customers -----------------------------------------------------------------
@@ -175,27 +188,43 @@ def zero_rated_template(company, home_template: str) -> str:
 	if frappe.db.exists("Sales Taxes and Charges Template", name):
 		return name
 	account_head = frappe.db.get_value(
-		"Sales Taxes and Charges", {"parent": home_template, "parenttype": "Sales Taxes and Charges Template"}, "account_head"
+		"Sales Taxes and Charges",
+		{"parent": home_template, "parenttype": "Sales Taxes and Charges Template"},
+		"account_head",
 	)
 	tax = frappe.db.get_value("Account", account_head, "account_name") if account_head else _("Tax")
-	return frappe.get_doc(
-		{
-			"doctype": "Sales Taxes and Charges Template",
-			"title": "Export zero-rated",
-			"company": company.name,
-			"taxes": [{"charge_type": "On Net Total", "account_head": account_head, "rate": 0,
-					   "description": f"{tax} 0% (exported goods)"}],
-		}
-	).insert(ignore_permissions=True).name
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Sales Taxes and Charges Template",
+				"title": "Export zero-rated",
+				"company": company.name,
+				"taxes": [
+					{
+						"charge_type": "On Net Total",
+						"account_head": account_head,
+						"rate": 0,
+						"description": f"{tax} 0% (exported goods)",
+					}
+				],
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 def customer_group(name: str, payment_terms: str | None = None, discounts: dict | None = None) -> str:
 	"""A Customer Group for trade customers with its default Payment Terms, and an ERPNext Pricing
 	Rule for each Item Group discount (made once; changes made in the desk are kept)."""
 	if not frappe.db.exists("Customer Group", name):
-		frappe.get_doc({"doctype": "Customer Group", "customer_group_name": name, "parent_customer_group": "All Customer Groups"}).insert(
-			ignore_permissions=True
-		)
+		frappe.get_doc(
+			{
+				"doctype": "Customer Group",
+				"customer_group_name": name,
+				"parent_customer_group": "All Customer Groups",
+			}
+		).insert(ignore_permissions=True)
 	group = frappe.get_doc("Customer Group", name)
 	if payment_terms and not group.payment_terms:
 		group.payment_terms = payment_terms
@@ -272,8 +301,12 @@ def statement_letter_head(store_name: str) -> str:
 	name = f"{store_name} Statement"
 	if not frappe.db.exists("Letter Head", name):
 		frappe.get_doc(
-			{"doctype": "Letter Head", "letter_head_name": name, "source": "HTML",
-			 "content": LETTER_HEAD.replace("{{ store_name }}", frappe.utils.escape_html(store_name))}
+			{
+				"doctype": "Letter Head",
+				"letter_head_name": name,
+				"source": "HTML",
+				"content": LETTER_HEAD.replace("{{ store_name }}", frappe.utils.escape_html(store_name)),
+			}
 		).insert(ignore_permissions=True)
 	return name
 

@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
-from frappe.utils import cint, escape_html
+from frappe.utils import cint, escape_html, flt
+from frappe.utils.caching import redis_cache
 
 from shop.routes import store_url
 from shop.storefront import cart, catalog, checkout, orders, pricing, product
@@ -84,16 +85,7 @@ def parse_price_bucket(bucket: str | None):
 def useful_price_buckets(form) -> list:
 	"""The price ranges that have products in them. With fewer than two, a price filter can't
 	narrow anything down and is left out (unless the shopper already chose a range)."""
-	settings = frappe.get_cached_doc("Shop Settings")
-	items = frappe.get_all("Shop Product", filters={"published": 1}, pluck="item")
-	rates = [
-		row.price_list_rate
-		for row in frappe.get_all(
-			"Item Price",
-			filters={"item_code": ["in", items or [""]], "price_list": settings.price_list},
-			fields=["price_list_rate"],
-		)
-	]
+	rates = listed_prices(frappe.get_cached_doc("Shop Settings").price_list)
 	buckets = [
 		bucket
 		for bucket in PRICE_BUCKETS
@@ -102,6 +94,14 @@ def useful_price_buckets(form) -> list:
 	if len(buckets) < 2 and not form.get("price"):
 		return []
 	return buckets
+
+
+@redis_cache(ttl=300)
+def listed_prices(price_list: str) -> list[float]:
+	"""The store price each published product is listed at (its lowest variant's, for variants)."""
+	products = frappe.get_all("Shop Product", filters={"published": 1}, fields=["item", "has_variants"])
+	prices = catalog.display_prices(products, customer=None)
+	return [flt(prices[p.item]["rate"]) for p in products if p.item in prices]
 
 
 def listing_filters(form, collections) -> list[dict]:
@@ -295,7 +295,7 @@ def account_html(customers: list[str]) -> str:
 			html += (
 				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.posting_date))}</span>'
 				f"<span>{esc(row.formatted_total)}</span><span>{owing}</span>"
-				f'<a href="{row.pdf_url}">{esc(_("PDF"))}</a></div>'
+				f'<a href="{esc(row.pdf_url)}">{esc(_("PDF"))}</a></div>'
 			)
 		html += "</div>"
 	quotes = frappe.get_all(
@@ -313,7 +313,7 @@ def account_html(customers: list[str]) -> str:
 			html += (
 				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.transaction_date))}</span>'
 				f"<span>{esc(frappe.utils.fmt_money(row.grand_total, currency=row.currency))}</span><span>{esc(state)}</span>"
-				+ (f'<a href="{link}">{esc(_("View"))}</a>' if link else "<span></span>")
+				+ (f'<a href="{esc(link)}">{esc(_("View"))}</a>' if link else "<span></span>")
 				+ "</div>"
 			)
 		html += "</div>"

@@ -48,6 +48,53 @@
 					Open payment gateway settings in Desk
 					<LucideExternalLink class="size-3.5" />
 				</a>
+				<FormControl
+					v-model="payments.online_payment_label"
+					label="Online payment label"
+					description="What checkout calls paying through the gateway."
+					class="max-w-sm"
+				/>
+				<div class="grid max-w-lg grid-cols-2 gap-4">
+					<FormControl v-model.number="payments.card_fee_percent" type="number" label="Card fee %" />
+					<FormControl
+						v-model.number="payments.card_fee_fixed"
+						type="number"
+						:label="`Card fee fixed (${data.currency})`"
+					/>
+					<FormControl
+						v-model.number="payments.card_fee_percent_international"
+						type="number"
+						label="Card fee % (international)"
+					/>
+					<FormControl
+						v-model.number="payments.card_fee_fixed_international"
+						type="number"
+						:label="`Card fee fixed, international (${data.currency})`"
+					/>
+				</div>
+				<p class="text-p-sm text-ink-gray-5">
+					A card fee is added to online payments when a Card Fee Item is set in Shop Settings.
+				</p>
+				<Switch
+					v-model="payments.enable_bank_transfer"
+					label="Bank transfer"
+					description="Customers pay into one of your bank accounts, with the order number as reference."
+				/>
+				<FormControl
+					v-if="payments.enable_bank_transfer"
+					v-model.number="payments.bank_transfer_days"
+					type="number"
+					label="Days to pay by bank transfer"
+					class="max-w-sm"
+				/>
+				<a
+					href="/app/shop-settings"
+					target="_blank"
+					class="inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
+				>
+					{{ data.has_bank_accounts ? 'Edit bank accounts and fee items in Desk' : 'Add bank accounts in Desk' }}
+					<LucideExternalLink class="size-3.5" />
+				</a>
 				<template #footer>
 					<Button
 						variant="solid"
@@ -81,8 +128,16 @@
 					:options="accountOptions"
 					class="max-w-sm"
 				/>
+				<FormControl
+					v-model="shipping.shipping_item"
+					type="select"
+					label="Shipping item"
+					:options="itemOptions"
+					class="max-w-sm"
+				/>
 				<p class="text-p-sm text-ink-gray-5">
-					A shipping account is required for shipping charges to apply on orders.
+					Shipping is charged as the shipping item's line, or on the shipping account when no item
+					is set. One of them is required for shipping charges to apply on orders.
 				</p>
 				<template #footer>
 					<Button
@@ -166,12 +221,100 @@
 					label="Prices include tax"
 					description="Storefront prices are treated as tax inclusive."
 				/>
+				<Switch
+					v-model="catalog.show_prices_with_tax"
+					label="Show prices with tax"
+					description="Show prices with the tax template's tax, and the price without tax under them."
+				/>
+				<FormControl
+					v-model="catalog.export_tax_template"
+					type="select"
+					label="Export tax template"
+					description="Taxes for orders shipped abroad, when no Tax Rule for the shopping cart matches."
+					:options="taxOptions"
+					class="max-w-sm"
+				/>
 				<template #footer>
 					<Button
 						variant="solid"
 						:loading="saving === 'catalog'"
 						@click="saveSection('catalog', catalog)"
 					>
+						Save
+					</Button>
+				</template>
+			</CatalogSection>
+
+			<CatalogSection title="Orders" description="What happens to orders after checkout.">
+				<Switch
+					v-model="orders.invoice_paid_orders"
+					label="Invoice paid orders"
+					description="Make the Sales Invoice when an order is paid in full, and email it to the customer."
+				/>
+				<Switch
+					v-model="orders.cancel_unpaid_orders"
+					label="Cancel unpaid orders"
+					description="Cancel online and bank transfer orders not paid by their due date, and tell the customer."
+				/>
+				<FormControl
+					v-if="orders.cancel_unpaid_orders"
+					v-model.number="orders.online_payment_days"
+					type="number"
+					label="Days to pay online"
+					class="max-w-sm"
+				/>
+				<Switch
+					v-model="orders.send_shipping_emails"
+					label="Email shipping updates"
+					description="Email the customer when their order ships and when it is delivered."
+				/>
+				<template #footer>
+					<Button variant="solid" :loading="saving === 'orders'" @click="saveSection('orders', orders)">
+						Save
+					</Button>
+				</template>
+			</CatalogSection>
+
+			<CatalogSection title="Accounts" description="Terms, trade accounts and quotes.">
+				<Switch
+					v-model="accounts.require_terms"
+					label="Require terms"
+					description="Customers accept your terms when they sign up, order or accept a quote."
+				/>
+				<div v-if="accounts.require_terms" class="grid max-w-lg grid-cols-2 gap-4">
+					<FormControl
+						v-model="accounts.terms_and_conditions"
+						type="select"
+						label="Terms and conditions"
+						:options="listOptions(data.terms_records)"
+					/>
+					<FormControl
+						v-model="accounts.terms_url"
+						label="Terms page URL"
+						description="Leave empty to use the store's terms page."
+					/>
+				</div>
+				<FormControl
+					v-model="accounts.trade_customer_group"
+					type="select"
+					label="Trade customer group"
+					description="Approved trade customers join this group, with its prices and payment terms."
+					:options="[{ label: 'No trade accounts', value: '' }, ...listOptions(data.customer_groups)]"
+					class="max-w-sm"
+				/>
+				<Switch
+					v-if="accounts.trade_customer_group"
+					v-model="accounts.email_statements"
+					label="Email monthly statements"
+					description="Each trade customer gets a statement every month."
+				/>
+				<Switch
+					v-model="accounts.allow_quote_requests"
+					label="Quote requests"
+					description="Shoppers can ask for a quote at checkout instead of ordering."
+				/>
+				<template #footer>
+					<Button variant="solid" :loading="saving === 'accounts'" @click="saveSection('accounts', accounts)">
 						Save
 					</Button>
 				</template>
@@ -204,16 +347,47 @@ import StorefrontThemes from '@/components/StorefrontThemes.vue'
 const saving = ref('')
 
 const store = reactive({ store_name: '', store_logo: '' })
-const payments = reactive({ enable_cod: true, payment_gateway_account: '' })
-const shipping = reactive({ flat_shipping_rate: 0, free_shipping_above: 0, shipping_account: '' })
+const payments = reactive({
+	enable_cod: true,
+	payment_gateway_account: '',
+	online_payment_label: '',
+	card_fee_percent: 0,
+	card_fee_fixed: 0,
+	card_fee_percent_international: 0,
+	card_fee_fixed_international: 0,
+	enable_bank_transfer: false,
+	bank_transfer_days: 7,
+})
+const shipping = reactive({
+	flat_shipping_rate: 0,
+	free_shipping_above: 0,
+	shipping_account: '',
+	shipping_item: '',
+})
+const orders = reactive({
+	invoice_paid_orders: false,
+	cancel_unpaid_orders: false,
+	online_payment_days: 2,
+	send_shipping_emails: false,
+})
+const accounts = reactive({
+	require_terms: false,
+	terms_and_conditions: '',
+	terms_url: '',
+	trade_customer_group: '',
+	email_statements: false,
+	allow_quote_requests: false,
+})
 const fulfillment = reactive({ fulfillment_provider: 'manual', auto_send_to_fulfillment: false })
 const catalog = reactive({
 	price_list: '',
 	default_warehouse: '',
 	low_stock_threshold: 0,
 	tax_template: '',
+	export_tax_template: '',
 	allow_out_of_stock: false,
 	prices_include_tax: false,
+	show_prices_with_tax: false,
 })
 
 const settings = createResource({
@@ -236,11 +410,33 @@ function hydrate(doc: Record<string, any>) {
 	Object.assign(payments, {
 		enable_cod: !!doc.enable_cod,
 		payment_gateway_account: doc.payment_gateway_account || '',
+		online_payment_label: doc.online_payment_label || '',
+		card_fee_percent: doc.card_fee_percent || 0,
+		card_fee_fixed: doc.card_fee_fixed || 0,
+		card_fee_percent_international: doc.card_fee_percent_international || 0,
+		card_fee_fixed_international: doc.card_fee_fixed_international || 0,
+		enable_bank_transfer: !!doc.enable_bank_transfer,
+		bank_transfer_days: doc.bank_transfer_days || 7,
 	})
 	Object.assign(shipping, {
 		flat_shipping_rate: doc.flat_shipping_rate || 0,
 		free_shipping_above: doc.free_shipping_above || 0,
 		shipping_account: doc.shipping_account || '',
+		shipping_item: doc.shipping_item || '',
+	})
+	Object.assign(orders, {
+		invoice_paid_orders: !!doc.invoice_paid_orders,
+		cancel_unpaid_orders: !!doc.cancel_unpaid_orders,
+		online_payment_days: doc.online_payment_days || 2,
+		send_shipping_emails: !!doc.send_shipping_emails,
+	})
+	Object.assign(accounts, {
+		require_terms: !!doc.require_terms,
+		terms_and_conditions: doc.terms_and_conditions || '',
+		terms_url: doc.terms_url || '',
+		trade_customer_group: doc.trade_customer_group || '',
+		email_statements: !!doc.email_statements,
+		allow_quote_requests: !!doc.allow_quote_requests,
 	})
 	Object.assign(fulfillment, {
 		fulfillment_provider: doc.fulfillment_provider || 'manual',
@@ -251,8 +447,10 @@ function hydrate(doc: Record<string, any>) {
 		default_warehouse: doc.default_warehouse || '',
 		low_stock_threshold: doc.low_stock_threshold || 0,
 		tax_template: doc.tax_template || '',
+		export_tax_template: doc.export_tax_template || '',
 		allow_out_of_stock: !!doc.allow_out_of_stock,
 		prices_include_tax: !!doc.prices_include_tax,
+		show_prices_with_tax: !!doc.show_prices_with_tax,
 	})
 }
 
@@ -279,6 +477,11 @@ const providerOptions = computed(() =>
 		}),
 	),
 )
+
+const itemOptions = computed(() => [
+	{ label: 'No shipping item', value: '' },
+	...listOptions(data.value.service_items),
+])
 
 const taxOptions = computed(() => [
 	{ label: 'No tax template', value: '' },

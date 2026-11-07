@@ -12,9 +12,18 @@ def after_migrate():
 	setup()
 
 
+def before_uninstall():
+	"""Remove the fields Shop added to other apps' documents."""
+	for doctype, fields in custom_fields().items():
+		for field in fields:
+			name = frappe.db.get_value("Custom Field", {"dt": doctype, "fieldname": field["fieldname"]})
+			if name:
+				frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
+
+
 def setup():
 	create_shop_manager_role()
-	create_order_fields()
+	create_custom_fields()
 	create_email_templates()
 	sync_templates()
 	apply_default_theme()
@@ -47,69 +56,187 @@ def sync_agent():
 	sync()
 
 
-def order_fields() -> dict:
+def custom_fields() -> dict:
+	"""The fields Shop adds to ERPNext's documents: the store details of orders, quotations,
+	customers, trade applications (Leads) and the terms a user accepted."""
 	"""What the store records on each Sales Order: how it is paid and what was agreed at checkout."""
 	return {
 		"Sales Order": [
-			{"fieldname": "shop_section", "fieldtype": "Section Break", "label": "Online Store",
-			 "insert_after": "terms", "collapsible": 1},
-			{"fieldname": "shop_payment_method", "fieldtype": "Data", "label": "Payment Method",
-			 "read_only": 1, "insert_after": "shop_section", "allow_on_submit": 1},
-			{"fieldname": "shop_payment_due", "fieldtype": "Date", "label": "Payment Due",
-			 "insert_after": "shop_payment_method", "allow_on_submit": 1,
-			 "description": "Unpaid store orders are cancelled after this date"},
-			{"fieldname": "shop_payment_reference", "fieldtype": "Data", "label": "Payment Reference",
-			 "read_only": 1, "insert_after": "shop_payment_due", "allow_on_submit": 1},
-			{"fieldname": "shop_shipping_option", "fieldtype": "Small Text", "label": "Shipping Chosen",
-			 "read_only": 1, "insert_after": "shop_payment_reference"},
+			{
+				"fieldname": "shop_section",
+				"fieldtype": "Section Break",
+				"label": "Online Store",
+				"insert_after": "terms",
+				"collapsible": 1,
+			},
+			{
+				"fieldname": "shop_payment_method",
+				"fieldtype": "Data",
+				"label": "Payment Method",
+				"read_only": 1,
+				"insert_after": "shop_section",
+				"allow_on_submit": 1,
+			},
+			{
+				"fieldname": "shop_payment_due",
+				"fieldtype": "Date",
+				"label": "Payment Due",
+				"insert_after": "shop_payment_method",
+				"allow_on_submit": 1,
+				"description": "Unpaid store orders are cancelled after this date",
+			},
+			{
+				"fieldname": "shop_payment_reference",
+				"fieldtype": "Data",
+				"label": "Payment Reference",
+				"read_only": 1,
+				"insert_after": "shop_payment_due",
+				"allow_on_submit": 1,
+			},
+			{
+				"fieldname": "shop_shipping_option",
+				"fieldtype": "Small Text",
+				"label": "Shipping Chosen",
+				"read_only": 1,
+				"insert_after": "shop_payment_reference",
+			},
 			{"fieldname": "shop_column", "fieldtype": "Column Break", "insert_after": "shop_shipping_option"},
-			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Terms Accepted",
-			 "read_only": 1, "insert_after": "shop_column"},
-			{"fieldname": "shop_terms_accepted_on", "fieldtype": "Datetime", "label": "Terms Accepted On",
-			 "read_only": 1, "insert_after": "shop_terms_version"},
-			{"fieldname": "shop_business_buyer", "fieldtype": "Check", "label": "Business Buyer",
-			 "read_only": 1, "insert_after": "shop_terms_accepted_on",
-			 "description": "Confirmed at checkout that they are buying for business purposes"},
-			{"fieldname": "shop_access_token", "fieldtype": "Data", "label": "Access Token", "hidden": 1,
-			 "read_only": 1, "no_copy": 1, "insert_after": "shop_business_buyer"},
+			{
+				"fieldname": "shop_terms_version",
+				"fieldtype": "Data",
+				"label": "Terms Accepted",
+				"read_only": 1,
+				"insert_after": "shop_column",
+			},
+			{
+				"fieldname": "shop_terms_accepted_on",
+				"fieldtype": "Datetime",
+				"label": "Terms Accepted On",
+				"read_only": 1,
+				"insert_after": "shop_terms_version",
+			},
+			{
+				"fieldname": "shop_business_buyer",
+				"fieldtype": "Check",
+				"label": "Business Buyer",
+				"read_only": 1,
+				"insert_after": "shop_terms_accepted_on",
+				"description": "Confirmed at checkout that they are buying for business purposes",
+			},
+			{
+				"fieldname": "shop_access_token",
+				"fieldtype": "Data",
+				"label": "Access Token",
+				"hidden": 1,
+				"read_only": 1,
+				"no_copy": 1,
+				"insert_after": "shop_business_buyer",
+			},
 		],
 		"Quotation": [
-			{"fieldname": "shop_section", "fieldtype": "Section Break", "label": "Online Store",
-			 "insert_after": "terms", "collapsible": 1},
-			{"fieldname": "shop_request_message", "fieldtype": "Small Text", "label": "Customer's Request",
-			 "read_only": 1, "insert_after": "shop_section"},
-			{"fieldname": "shop_shipping_option", "fieldtype": "Small Text", "label": "Shipping Chosen",
-			 "read_only": 1, "insert_after": "shop_request_message"},
-			{"fieldname": "shop_access_token", "fieldtype": "Data", "label": "Access Token", "hidden": 1,
-			 "read_only": 1, "no_copy": 1, "insert_after": "shop_shipping_option"},
+			{
+				"fieldname": "shop_section",
+				"fieldtype": "Section Break",
+				"label": "Online Store",
+				"insert_after": "terms",
+				"collapsible": 1,
+			},
+			{
+				"fieldname": "shop_request_message",
+				"fieldtype": "Small Text",
+				"label": "Customer's Request",
+				"read_only": 1,
+				"insert_after": "shop_section",
+			},
+			{
+				"fieldname": "shop_shipping_option",
+				"fieldtype": "Small Text",
+				"label": "Shipping Chosen",
+				"read_only": 1,
+				"insert_after": "shop_request_message",
+			},
+			{
+				"fieldname": "shop_access_token",
+				"fieldtype": "Data",
+				"label": "Access Token",
+				"hidden": 1,
+				"read_only": 1,
+				"no_copy": 1,
+				"insert_after": "shop_shipping_option",
+			},
 		],
 		"Customer": [
-			{"fieldname": "shop_allow_on_account", "fieldtype": "Check", "label": "Pay on Account at the Store",
-			 "insert_after": "payment_terms",
-			 "description": "Can order online and pay by invoice under their payment terms and credit limit"},
+			{
+				"fieldname": "shop_allow_on_account",
+				"fieldtype": "Check",
+				"label": "Pay on Account at the Store",
+				"insert_after": "payment_terms",
+				"description": "Can order online and pay by invoice under their payment terms and credit limit",
+			},
 		],
 		# trade account applications from the store are ERPNext Leads (UTM Source: TRADE_SOURCE)
 		"Lead": [
-			{"fieldname": "shop_trade_section", "fieldtype": "Section Break", "label": "Trade Account Application",
-			 "insert_after": "utm_campaign", "collapsible": 1, "depends_on": "eval:doc.utm_source == 'Store Trade Application'"},
-			{"fieldname": "shop_tax_id", "fieldtype": "Data", "label": "Tax ID", "insert_after": "shop_trade_section",
-			 "description": "GST or VAT number the business gave. Copied to the Customer when approved."},
-			{"fieldname": "shop_company_number", "fieldtype": "Data", "label": "Company Number",
-			 "insert_after": "shop_tax_id"},
-			{"fieldname": "shop_user", "fieldtype": "Link", "options": "User", "label": "Applied As",
-			 "read_only": 1, "insert_after": "shop_company_number",
-			 "description": "The store login that applied, if they were signed in"},
+			{
+				"fieldname": "shop_trade_section",
+				"fieldtype": "Section Break",
+				"label": "Trade Account Application",
+				"insert_after": "utm_campaign",
+				"collapsible": 1,
+				"depends_on": "eval:doc.utm_source == 'Store Trade Application'",
+			},
+			{
+				"fieldname": "shop_tax_id",
+				"fieldtype": "Data",
+				"label": "Tax ID",
+				"insert_after": "shop_trade_section",
+				"description": "GST or VAT number the business gave. Copied to the Customer when approved.",
+			},
+			{
+				"fieldname": "shop_company_number",
+				"fieldtype": "Data",
+				"label": "Company Number",
+				"insert_after": "shop_tax_id",
+			},
+			{
+				"fieldname": "shop_user",
+				"fieldtype": "Link",
+				"options": "User",
+				"label": "Applied As",
+				"read_only": 1,
+				"insert_after": "shop_company_number",
+				"description": "The store login that applied, if they were signed in",
+			},
 			{"fieldname": "shop_trade_column", "fieldtype": "Column Break", "insert_after": "shop_user"},
-			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Terms Accepted",
-			 "read_only": 1, "insert_after": "shop_trade_column"},
-			{"fieldname": "shop_terms_accepted_on", "fieldtype": "Datetime", "label": "Terms Accepted On",
-			 "read_only": 1, "insert_after": "shop_terms_version"},
+			{
+				"fieldname": "shop_terms_version",
+				"fieldtype": "Data",
+				"label": "Terms Accepted",
+				"read_only": 1,
+				"insert_after": "shop_trade_column",
+			},
+			{
+				"fieldname": "shop_terms_accepted_on",
+				"fieldtype": "Datetime",
+				"label": "Terms Accepted On",
+				"read_only": 1,
+				"insert_after": "shop_terms_version",
+			},
 		],
 		"User": [
-			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Store Terms Accepted",
-			 "read_only": 1, "insert_after": "user_type"},
-			{"fieldname": "shop_terms_accepted_on", "fieldtype": "Datetime", "label": "Store Terms Accepted On",
-			 "read_only": 1, "insert_after": "shop_terms_version"},
+			{
+				"fieldname": "shop_terms_version",
+				"fieldtype": "Data",
+				"label": "Store Terms Accepted",
+				"read_only": 1,
+				"insert_after": "user_type",
+			},
+			{
+				"fieldname": "shop_terms_accepted_on",
+				"fieldtype": "Datetime",
+				"label": "Store Terms Accepted On",
+				"read_only": 1,
+				"insert_after": "shop_terms_version",
+			},
 		],
 	}
 
@@ -117,14 +244,18 @@ def order_fields() -> dict:
 TRADE_SOURCE = "Store Trade Application"
 
 
-def create_order_fields():
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+def create_custom_fields():
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields as create
 
-	create_custom_fields(order_fields(), ignore_validate=True)
+	create(custom_fields(), ignore_validate=True)
 	if frappe.db.table_exists("UTM Source") and not frappe.db.exists("UTM Source", TRADE_SOURCE):
-		frappe.get_doc({"doctype": "UTM Source", "__newname": TRADE_SOURCE, "description": "Trade account applications made in the store"}).insert(
-			ignore_permissions=True
-		)
+		frappe.get_doc(
+			{
+				"doctype": "UTM Source",
+				"__newname": TRADE_SOURCE,
+				"description": "Trade account applications made in the store",
+			}
+		).insert(ignore_permissions=True)
 
 
 def create_shop_manager_role():

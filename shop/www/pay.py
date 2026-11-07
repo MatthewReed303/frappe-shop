@@ -38,8 +38,10 @@ def get_context(context):
 	context.currency = order.currency
 	context.formatted_due = frappe.utils.fmt_money(due, currency=order.currency)
 	context.lines = [
-		{"label": f"{row.item_name} × {frappe.utils.cint(row.qty)}" if row.qty != 1 else row.item_name,
-		 "amount": frappe.utils.fmt_money(row.amount, currency=order.currency)}
+		{
+			"label": f"{row.item_name} × {frappe.utils.cint(row.qty)}" if row.qty != 1 else row.item_name,
+			"amount": frappe.utils.fmt_money(row.amount, currency=order.currency),
+		}
 		for row in order.items
 	]
 	context.tax_note = tax_note(order)

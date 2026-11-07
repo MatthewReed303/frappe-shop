@@ -1,22 +1,6 @@
-"""Shipping options at checkout.
-
-Shop offers its flat rate (Shop Settings) and asks the shipping apps installed on the site
-for live rates. An app adds rates by listing a function in the `shop_shipping_rate_providers`
-hook. The function receives a context and returns options:
-
-	def rates(context) -> list[dict] | dict:
-		# context.cart_items: [{"item_code", "qty", "rate"}]; context.address: the delivery address
-		# with "country" (name) and "country_code"; context.company, context.currency
-		return [{"id": "carrier-service", "label": "Courier, overnight", "amount": 12.5,
-				 "tax_included": False, "carrier": "...", "service": "...", "meta": {...}}]
-
-A provider can return {"options": [...], "messages": ["..."]} to explain why it has no rates
-(for example an item it cannot carry overseas), and returns None when it is switched off.
-When no provider is active and there is no flat rate, shipping is free. Amounts are in the
-company currency.
-Options are kept on the cart, so the price charged is the price quoted, never one sent by
-the browser.
-"""
+"""Shipping options at checkout: the store's flat rate and the rates of the shipping apps listed
+in the `shop_shipping_rate_providers` hook (see docs/extending.md). Amounts are in the company
+currency, and the option charged is the one the server quoted, never one sent by the browser."""
 
 import hashlib
 import json
@@ -75,7 +59,13 @@ def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = Fa
 		options, messages, active = provider_options(cart, address, subtotal)
 		store_quotes(
 			cart,
-			{"key": key, "created": str(now_datetime()), "options": options, "messages": messages, "active": active},
+			{
+				"key": key,
+				"created": str(now_datetime()),
+				"options": options,
+				"messages": messages,
+				"active": active,
+			},
 		)
 	options = list(options)
 	flat = flat_rate_option(subtotal)
@@ -93,7 +83,9 @@ def provider_options(cart, address: frappe._dict, subtotal: float) -> tuple[list
 	of them is switched on."""
 	settings = frappe.get_cached_doc("Shop Settings")
 	context = frappe._dict(
-		cart_items=[{"item_code": row.item_code, "qty": flt(row.qty), "rate": flt(row.rate)} for row in cart.items],
+		cart_items=[
+			{"item_code": row.item_code, "qty": flt(row.qty), "rate": flt(row.rate)} for row in cart.items
+		],
 		address=address,
 		subtotal=subtotal,
 		company=settings.company,

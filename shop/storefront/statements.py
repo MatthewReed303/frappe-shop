@@ -1,13 +1,5 @@
-"""Customer statements, made by ERPNext's Process Statement Of Accounts.
-
-statement_pdf   the signed-in customer downloads their statement from their store account
-sync_customer   keeps each customer in the statement runs that email their Customer Group
-
-A Process Statement Of Accounts run lists its customers in a table that ERPNext fills once
-(Fetch Customers). For runs that email a Customer Group automatically, this keeps that table
-up to date as customers join or leave the group, so a newly approved trade customer is not
-missed. Runs set up any other way are left alone.
-"""
+"""Customer statements from ERPNext's General Ledger: the account page download, and the store's
+monthly Process Statement Of Accounts run for its trade Customer Group."""
 
 import frappe
 from frappe import _
@@ -35,14 +27,24 @@ def statement_doc(customers: list[str], company: str, from_date, to_date):
 		}
 	)
 	for customer in customers:
-		doc.append("customers", {"customer": customer, "customer_name": frappe.db.get_value("Customer", customer, "customer_name")})
+		doc.append(
+			"customers",
+			{
+				"customer": customer,
+				"customer_name": frappe.db.get_value("Customer", customer, "customer_name"),
+			},
+		)
 	return doc
 
 
 def letter_head_for(customers: list[str]) -> str | None:
 	"""The letterhead of the statement run the customer is in, so the download matches the
 	statements they are emailed; otherwise the default letterhead."""
-	run = frappe.db.get_value(ROW_DOCTYPE, {"customer": ["in", customers or [""]], "parenttype": "Process Statement Of Accounts"}, "parent")
+	run = frappe.db.get_value(
+		ROW_DOCTYPE,
+		{"customer": ["in", customers or [""]], "parenttype": "Process Statement Of Accounts"},
+		"parent",
+	)
 	letter_head = run and frappe.db.get_value("Process Statement Of Accounts", run, "letter_head")
 	return letter_head or frappe.db.get_value("Letter Head", {"is_default": 1, "disabled": 0})
 
@@ -63,7 +65,9 @@ def statement_pdf():
 	company = frappe.get_cached_doc("Shop Settings").company
 	to_date = getdate(nowdate())
 	with elevated():
-		pdf = get_report_pdf(statement_doc(customers, company, add_months(to_date, -STATEMENT_MONTHS), to_date))
+		pdf = get_report_pdf(
+			statement_doc(customers, company, add_months(to_date, -STATEMENT_MONTHS), to_date)
+		)
 	if not pdf:
 		frappe.throw(_("There is nothing on your account yet."), title=_("No statement"))
 	frappe.local.response.filename = f"Statement {to_date}.pdf"
@@ -80,14 +84,20 @@ def sync_customer(doc, method=None) -> None:
 	if not (group and settings.get("email_statements")):
 		return
 	before = doc.get_doc_before_save()
-	if before and all(before.get(field) == doc.get(field) for field in ("customer_group", "email_id", "disabled")):
+	if before and all(
+		before.get(field) == doc.get(field) for field in ("customer_group", "email_id", "disabled")
+	):
 		return
 	trade_groups = {group, *frappe.db.get_descendants("Customer Group", group)}
 	if not {doc.customer_group, before.customer_group if before else None} & trade_groups:
 		return
 	from shop.setup_store import statement_run
 
-	statement_run(settings.company, group, settings.store_name or frappe.get_cached_value("Company", settings.company, "company_name"))
+	statement_run(
+		settings.company,
+		group,
+		settings.store_name or frappe.get_cached_value("Company", settings.company, "company_name"),
+	)
 	for name in frappe.get_all(
 		"Process Statement Of Accounts",
 		filters={"enable_auto_email": 1, "customer_collection": "Customer Group", "collection_name": group},
@@ -113,7 +123,11 @@ def run_customers(group: str, primary_mandatory: int) -> list[dict]:
 		frappe.clear_messages()
 		return []
 	return [
-		{"customer": row["name"], "customer_name": row["customer_name"], "primary_email": row["primary_email"],
-		 "billing_email": row["billing_email"]}
+		{
+			"customer": row["name"],
+			"customer_name": row["customer_name"],
+			"primary_email": row["primary_email"],
+			"billing_email": row["billing_email"],
+		}
 		for row in customers
 	]

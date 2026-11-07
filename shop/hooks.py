@@ -41,6 +41,7 @@ override_doctype_class = {
 
 after_install = "shop.install.after_install"
 after_migrate = "shop.install.after_migrate"
+before_uninstall = "shop.install.before_uninstall"
 
 on_session_creation = "shop.storefront.cart.merge_guest_cart"
 

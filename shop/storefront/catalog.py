@@ -179,12 +179,14 @@ def first_images(product_names: list[str]) -> dict:
 	return images
 
 
-def display_prices(products: list) -> dict:
+def display_prices(products: list, customer: str | None = "session") -> dict:
+	"""Each product's price for the customer (the shopper's by default); a product with variants
+	shows its lowest. One lookup for the page."""
 	simple = [p.item for p in products if not p.has_variants]
-	templates = [p.item for p in products if p.has_variants]
-	prices = pricing.get_prices(simple)
-	for template, codes in variants_by_template(templates).items():
-		rates = [p["rate"] for code, p in pricing.get_prices(codes).items()]
+	variants = variants_by_template([p.item for p in products if p.has_variants])
+	prices = pricing.get_prices(simple + [code for codes in variants.values() for code in codes], customer=customer)
+	for template, codes in variants.items():
+		rates = [prices[code]["rate"] for code in codes if code in prices]
 		if rates:
 			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), **pricing.display_fields(min(rates))}
 	return prices

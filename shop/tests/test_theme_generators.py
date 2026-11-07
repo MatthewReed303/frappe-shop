@@ -64,7 +64,9 @@ class TestThemeGenerators(IntegrationTestCase):
 		)
 		self.assertIn(".acme-only", frappe.db.get_value("Builder Client Script", f"{group}-styles", "script"))
 		# the generator's own components are left as they were
-		self.assertEqual(frappe.db.get_value("Builder Component", f"{group}-hero", "component_name"), "Acme Store Hero")
+		self.assertEqual(
+			frappe.db.get_value("Builder Component", f"{group}-hero", "component_name"), "Acme Store Hero"
+		)
 		self.assertIn(f"{group}-hero", routes["home"].blocks)
 		self.assertNotIn(f'"{prefix}-hero"', routes["home"].blocks)
 		self.assertEqual(generator.THEME.group, generator.GROUP)

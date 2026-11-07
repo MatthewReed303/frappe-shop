@@ -37,8 +37,13 @@ def tax_template_for(address: frappe._dict | None) -> str | None:
 
 	s = settings()
 	country = (address or {}).get("country") or company_country()
-	args = {"tax_type": "Sales", "company": s.company, "use_for_shopping_cart": 1,
-			"shipping_country": country, "billing_country": country}
+	args = {
+		"tax_type": "Sales",
+		"company": s.company,
+		"use_for_shopping_cart": 1,
+		"shipping_country": country,
+		"billing_country": country,
+	}
 	customer = pricing.session_customer()
 	if customer:
 		group, category = frappe.get_cached_value("Customer", customer, ["customer_group", "tax_category"])
@@ -64,7 +69,11 @@ def payment_methods(export: bool = False) -> list[dict]:
 	methods = []
 	if gateway_available():
 		methods.append(
-			{"method": GATEWAY, "label": s.get("online_payment_label") or _("Pay Online"), "fee_note": card_fee_note(export)}
+			{
+				"method": GATEWAY,
+				"label": s.get("online_payment_label") or _("Pay Online"),
+				"fee_note": card_fee_note(export),
+			}
 		)
 	if s.get("enable_bank_transfer") and s.get("bank_accounts"):
 		methods.append({"method": BANK, "label": _("Bank transfer"), "fee_note": ""})
@@ -129,7 +138,11 @@ def bank_accounts() -> list[frappe._dict]:
 		account = frappe.get_cached_doc("Bank Account", row.bank_account)
 		if account.disabled:
 			continue
-		currency = frappe.get_cached_value("Account", account.account, "account_currency") if account.account else None
+		currency = (
+			frappe.get_cached_value("Account", account.account, "account_currency")
+			if account.account
+			else None
+		)
 		if not currency:
 			continue
 		rows.append(
@@ -138,9 +151,8 @@ def bank_accounts() -> list[frappe._dict]:
 				currency=currency,
 				label=row.label or currency,
 				conversion_fee_percent=flt(row.conversion_fee_percent),
-				details=bank_account_details(account, currency) + [
-					line.strip() for line in (row.instructions or "").splitlines() if line.strip()
-				],
+				details=bank_account_details(account, currency)
+				+ [line.strip() for line in (row.instructions or "").splitlines() if line.strip()],
 			)
 		)
 	return rows
@@ -150,7 +162,11 @@ def bank_account_details(account, currency: str) -> list[str]:
 	"""The lines a customer needs to pay into a Bank Account."""
 	bank = frappe.get_cached_doc("Bank", account.bank) if account.bank else None
 	# a company bank account is held by the company
-	holder = frappe.get_cached_value("Company", account.company, "company_name") if account.company else account.account_name
+	holder = (
+		frappe.get_cached_value("Company", account.company, "company_name")
+		if account.company
+		else account.account_name
+	)
 	lines = [
 		(_("Account name"), holder),
 		(_("Bank"), bank.bank_name if bank else None),
@@ -310,7 +326,12 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 	for row in cart.items:
 		order.append(
 			"items",
-			{"item_code": row.item_code, "qty": flt(row.qty), "warehouse": s.default_warehouse, "delivery_date": order.delivery_date},
+			{
+				"item_code": row.item_code,
+				"qty": flt(row.qty),
+				"warehouse": s.default_warehouse,
+				"delivery_date": order.delivery_date,
+			},
 		)
 	if template:
 		from shop.compat import get_sales_taxes
@@ -381,7 +402,11 @@ def shipping_line_amount(order, option: dict) -> float:
 	store's own tax has it taken off when the order's lines don't include tax."""
 	s = settings()
 	amount = flt(option["amount"])
-	home = 1 + included_rate(s.tax_template) / 100 if s.prices_include_tax else 1 + added_rate(s.tax_template) / 100
+	home = (
+		1 + included_rate(s.tax_template) / 100
+		if s.prices_include_tax
+		else 1 + added_rate(s.tax_template) / 100
+	)
 	if option.get("tax_included") and not s.prices_include_tax:
 		amount /= home
 	elif s.prices_include_tax:
@@ -414,14 +439,25 @@ def add_shipping(order, option: dict) -> None:
 	elif s.get("shipping_account"):
 		order.append(
 			"taxes",
-			{"charge_type": "Actual", "account_head": s.shipping_account, "description": label, "tax_amount": amount},
+			{
+				"charge_type": "Actual",
+				"account_head": s.shipping_account,
+				"description": label,
+				"tax_amount": amount,
+			},
 		)
 
 
 def add_line(order, item_code: str, rate: float, description: str):
 	row = order.append(
 		"items",
-		{"item_code": item_code, "qty": 1, "rate": rate, "description": description, "delivery_date": order.delivery_date},
+		{
+			"item_code": item_code,
+			"qty": 1,
+			"rate": rate,
+			"description": description,
+			"delivery_date": order.delivery_date,
+		},
 	)
 	order.set_missing_item_details(for_validate=True)
 	row.rate = rate
@@ -485,14 +521,30 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 	"""An order's lines as a receipt shows them: subtotal, discount, shipping, fees, taxes added on
 	top, rounding, plus notes for taxes included in the prices. Amounts are in the order currency."""
 	product_lines = [item for item in order.items if not is_charge_item(item.item_code)]
-	lines = [{"kind": "subtotal", "label": _("Subtotal"), "amount": sum(flt(item.amount) for item in product_lines)}]
+	lines = [
+		{
+			"kind": "subtotal",
+			"label": _("Subtotal"),
+			"amount": sum(flt(item.amount) for item in product_lines),
+		}
+	]
 	if flt(order.discount_amount):
 		lines.append({"kind": "discount", "label": _("Discount"), "amount": -flt(order.discount_amount)})
 	s = settings()
-	kinds = {s.get("shipping_item"): "shipping", s.get("card_fee_item"): "card_fee", s.get("conversion_fee_item"): "conversion_fee"}
+	kinds = {
+		s.get("shipping_item"): "shipping",
+		s.get("card_fee_item"): "card_fee",
+		s.get("conversion_fee_item"): "conversion_fee",
+	}
 	for item in order.items:
 		if is_charge_item(item.item_code):
-			lines.append({"kind": kinds.get(item.item_code, "charge"), "label": item.description or item.item_name, "amount": flt(item.amount)})
+			lines.append(
+				{
+					"kind": kinds.get(item.item_code, "charge"),
+					"label": item.description or item.item_name,
+					"amount": flt(item.amount),
+				}
+			)
 	notes = []
 	for tax in order.taxes:
 		amount = flt(tax.tax_amount_after_discount_amount)
@@ -501,7 +553,11 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 		if tax.charge_type == "Actual":
 			lines.append({"kind": "shipping", "label": tax.description, "amount": amount})
 		elif tax.included_in_print_rate:
-			notes.append(_("Includes {0}: {1}").format(tax_name(tax.description) or tax.description, money(amount, order.currency)))
+			notes.append(
+				_("Includes {0}: {1}").format(
+					tax_name(tax.description) or tax.description, money(amount, order.currency)
+				)
+			)
 		else:
 			lines.append({"kind": "tax", "label": tax.description, "amount": amount})
 	if flt(order.rounding_adjustment) and flt(order.rounded_total):
@@ -521,7 +577,9 @@ def shown_with_tax(lines: list[dict], order) -> list[dict]:
 	for line in shown[1:]:
 		if line["kind"] != "rounding":
 			line["amount"] = flt(line["amount"] * factor, order.precision("grand_total"))
-	shown[0]["amount"] = flt(order_total(order) - sum(line["amount"] for line in shown[1:]), order.precision("grand_total"))
+	shown[0]["amount"] = flt(
+		order_total(order) - sum(line["amount"] for line in shown[1:]), order.precision("grand_total")
+	)
 	return shown
 
 
@@ -555,22 +613,29 @@ def payload(quote: frappe._dict) -> dict:
 		picked = pricing.display_currency()
 		if picked != quote.company_currency:
 			notes.append(
-				_("Online payments are charged in {0}. Your card provider converts it to {1}, usually at a small cost. "
-				  "To pay in {1}, choose bank transfer.").format(quote.company_currency, picked)
+				_(
+					"Online payments are charged in {0}. Your card provider converts it to {1}, usually at a small cost. "
+					"To pay in {1}, choose bank transfer."
+				).format(quote.company_currency, picked)
 				if picked in bank_currencies()
-				else _("Online payments are charged in {0}. Your card provider converts it.").format(quote.company_currency)
+				else _("Online payments are charged in {0}. Your card provider converts it.").format(
+					quote.company_currency
+				)
 			)
 	if quote.currency != quote.company_currency:
 		notes.append(
 			_("Converted from {0} at {1}").format(
-				quote.company_currency, f"1 {quote.company_currency} = {flt(quote.exchange_rate, 4):g} {quote.currency}"
+				quote.company_currency,
+				f"1 {quote.company_currency} = {flt(quote.exchange_rate, 4):g} {quote.currency}",
 			)
 		)
 
 	def option_amount(option):
 		amount = option["customer_amount"]
 		if with_tax and amount:
-			amount = flt(amount * (1 + added_rate(order.taxes_and_charges) / 100), order.precision("grand_total"))
+			amount = flt(
+				amount * (1 + added_rate(order.taxes_and_charges) / 100), order.precision("grand_total")
+			)
 		return money(amount, currency) if amount else _("Free")
 
 	return {
@@ -595,11 +660,16 @@ def payload(quote: frappe._dict) -> dict:
 		"can_ship": bool(quote.shipping),
 		"payment_methods": payment_methods(quote.export),
 		"payment_method": quote.payment_method,
-		"bank_currencies": [{"currency": row.currency, "label": row.label or row.currency} for row in bank_accounts()],
+		"bank_currencies": [
+			{"currency": row.currency, "label": row.label or row.currency} for row in bank_accounts()
+		],
 	}
 
 
 def is_charge_item(item_code: str) -> bool:
 	"""Shipping and fee lines, which are not products."""
 	s = settings()
-	return item_code in {s.get("shipping_item"), s.get("card_fee_item"), s.get("conversion_fee_item")} - {None, ""}
+	return item_code in {s.get("shipping_item"), s.get("card_fee_item"), s.get("conversion_fee_item")} - {
+		None,
+		"",
+	}

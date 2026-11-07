@@ -19,7 +19,50 @@ EDITABLE = (
 	"default_warehouse",
 	"fulfillment_provider",
 	"auto_send_to_fulfillment",
+	"show_prices_with_tax",
+	"export_tax_template",
+	"shipping_item",
+	"online_payment_label",
+	"card_fee_percent",
+	"card_fee_fixed",
+	"card_fee_percent_international",
+	"card_fee_fixed_international",
+	"enable_bank_transfer",
+	"bank_transfer_days",
+	"invoice_paid_orders",
+	"cancel_unpaid_orders",
+	"online_payment_days",
+	"send_shipping_emails",
+	"require_terms",
+	"terms_and_conditions",
+	"terms_url",
+	"trade_customer_group",
+	"email_statements",
+	"allow_quote_requests",
 )
+CHECKS = {
+	"enable_cod",
+	"allow_out_of_stock",
+	"prices_include_tax",
+	"auto_send_to_fulfillment",
+	"show_prices_with_tax",
+	"enable_bank_transfer",
+	"invoice_paid_orders",
+	"cancel_unpaid_orders",
+	"send_shipping_emails",
+	"require_terms",
+	"email_statements",
+	"allow_quote_requests",
+}
+AMOUNTS = {
+	"flat_shipping_rate",
+	"free_shipping_above",
+	"card_fee_percent",
+	"card_fee_fixed",
+	"card_fee_percent_international",
+	"card_fee_fixed_international",
+}
+COUNTS = {"low_stock_threshold", "bank_transfer_days", "online_payment_days"}
 
 
 @frappe.whitelist()
@@ -42,6 +85,16 @@ def get_settings() -> dict:
 				pluck="name",
 			),
 			"price_lists": frappe.get_all("Price List", filters={"selling": 1}, pluck="name"),
+			"service_items": frappe.get_all(
+				"Item",
+				filters={"is_stock_item": 0, "is_sales_item": 1, "disabled": 0, "has_variants": 0},
+				pluck="name",
+			),
+			"terms_records": frappe.get_all(
+				"Terms and Conditions", filters={"selling": 1, "disabled": 0}, pluck="name"
+			),
+			"customer_groups": frappe.get_all("Customer Group", filters={"is_group": 0}, pluck="name"),
+			"has_bank_accounts": bool(settings.get("bank_accounts")),
 			"fulfillment_providers": fulfillment_providers(),
 			"warehouses": [
 				{"value": row.name, "label": row.warehouse_name or row.name}
@@ -70,11 +123,11 @@ def save_settings(payload: dict) -> dict:
 		if field not in payload:
 			continue
 		value = payload[field]
-		if field in ("enable_cod", "allow_out_of_stock", "prices_include_tax", "auto_send_to_fulfillment"):
+		if field in CHECKS:
 			value = 1 if value else 0
-		elif field in ("flat_shipping_rate", "free_shipping_above"):
+		elif field in AMOUNTS:
 			value = flt(value)
-		elif field == "low_stock_threshold":
+		elif field in COUNTS:
 			value = cint(value)
 		settings.set(field, value)
 	settings.save(ignore_permissions=True)

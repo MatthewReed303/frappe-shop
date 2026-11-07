@@ -78,6 +78,8 @@ class ShopSettings(Document):
 			)
 
 	def on_update(self):
+		# the storefront reads the cached settings, which Frappe refreshes only after on_update
+		self.clear_cache()
 		if self.has_value_changed("require_terms"):
 			from shop.install import enable_customer_signup
 

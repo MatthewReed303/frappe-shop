@@ -28,7 +28,24 @@ from shop.routes import store_url
 
 WEBHOOK_TOLERANCE_SECONDS = 300
 # currencies Stripe charges in whole units
-ZERO_DECIMAL = {"BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF"}
+ZERO_DECIMAL = {
+	"BIF",
+	"CLP",
+	"DJF",
+	"GNF",
+	"JPY",
+	"KMF",
+	"KRW",
+	"MGA",
+	"PYG",
+	"RWF",
+	"UGX",
+	"VND",
+	"VUV",
+	"XAF",
+	"XOF",
+	"XPF",
+}
 
 
 def gateway_settings() -> frappe._dict | None:
@@ -136,7 +153,9 @@ def create_intent(order: str, token: str) -> dict:
 		},
 		options={"idempotency_key": f"{frappe.local.site}-{sales_order.name}-{amount}"},
 	)
-	frappe.db.set_value("Sales Order", sales_order.name, "shop_payment_reference", intent.id, update_modified=False)
+	frappe.db.set_value(
+		"Sales Order", sales_order.name, "shop_payment_reference", intent.id, update_modified=False
+	)
 	return {"client_secret": intent.client_secret}
 
 
@@ -152,8 +171,14 @@ def complete(order: str, token: str, payment_intent: str) -> dict:
 		record_payment(intent)
 		return {"paid": True, "redirect": confirmation(sales_order, token)}
 	if intent.status == "processing":
-		return {"paid": False, "message": _("Your payment is processing. We'll email you when it's confirmed.")}
-	return {"paid": False, "message": _("The payment didn't go through. Please try again or use another card.")}
+		return {
+			"paid": False,
+			"message": _("Your payment is processing. We'll email you when it's confirmed."),
+		}
+	return {
+		"paid": False,
+		"message": _("The payment didn't go through. Please try again or use another card."),
+	}
 
 
 def record_payment(intent) -> str | None:
@@ -172,7 +197,9 @@ def record_payment(intent) -> str | None:
 	if request.status == "Paid":
 		return request.name
 	if intent.amount_received < minor_units(request.grand_total, order.currency):
-		frappe.log_error(title="Stripe payment is less than the amount due", message=f"{intent.id} {order_name}")
+		frappe.log_error(
+			title="Stripe payment is less than the amount due", message=f"{intent.id} {order_name}"
+		)
 		return None
 	from shop.storefront.checkout import elevated
 
@@ -191,7 +218,9 @@ def confirmation(order, token: str) -> str:
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def webhook():
 	"""Stripe events. Only payment_intent.succeeded is acted on; the signature is checked first."""
-	secret = frappe.get_cached_doc("Shop Settings").get_password("stripe_webhook_secret", raise_exception=False)
+	secret = frappe.get_cached_doc("Shop Settings").get_password(
+		"stripe_webhook_secret", raise_exception=False
+	)
 	payload = frappe.request.get_data() if frappe.request else b""
 	if not secret or not valid_signature(payload, frappe.get_request_header("Stripe-Signature"), secret):
 		raise frappe.PermissionError

@@ -49,8 +49,8 @@ def normalize_prefix(value: str | None) -> str:
 
 def get_prefix() -> str:
 	prefix = None
-	if frappe.db.exists("DocType", "Shop Settings"):
-		prefix = frappe.db.get_single_value("Shop Settings", "route_prefix")
+	if "shop" in frappe.get_installed_apps():
+		prefix = frappe.get_cached_doc("Shop Settings").get("route_prefix")
 	return normalize_prefix(prefix or frappe.conf.get("shop_route_prefix"))
 
 

@@ -1,11 +1,5 @@
-"""The store's terms: an ERPNext Terms and Conditions record, picked in Shop Settings.
-
-Shoppers accept them when they sign up, apply for a trade account, check out or accept a quote.
-The store records which version they accepted and when; the terms themselves go on the order and
-quotation (tc_name and terms), so they print on them and carry through to the invoice, as in
-ERPNext. The version is the record's name and when it was last changed, so it can't drift from
-the text.
-"""
+"""The store's terms: the ERPNext Terms and Conditions record picked in Shop Settings. Orders and
+quotations carry it (tc_name), and what a shopper accepted is recorded as its version and time."""
 
 import frappe
 from frappe.utils import format_datetime
