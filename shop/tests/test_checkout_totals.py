@@ -432,7 +432,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		with patch("frappe.sendmail") as sendmail, patch("frappe.db.commit"):
 			payment.cancel_overdue_orders()
 		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 2)
-		self.assertEqual(sendmail.call_args.kwargs["recipients"], [BUYER["email"]])
+		self.assertIn([BUYER["email"]], [call.kwargs["recipients"] for call in sendmail.call_args_list])
 
 	def test_unpaid_bank_order_is_not_cancelled_before_its_due_date(self):
 		self.basket(1)

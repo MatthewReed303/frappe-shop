@@ -12,7 +12,11 @@
 			note.dataset.shopSignup = "1";
 			note.className = "text-center sign-up-message";
 			note.style.marginTop = "16px";
-			note.innerHTML = 'New customer? <a href="' + message + '">Create an account</a>';
+			const t = window.__ || ((text) => text);
+			const link = document.createElement("a");
+			link.href = message;
+			link.textContent = t("Create an account");
+			note.append(t("New customer?") + " ", link);
 			form.appendChild(note);
 		})
 		.catch(() => {});

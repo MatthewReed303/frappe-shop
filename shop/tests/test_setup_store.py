@@ -10,7 +10,7 @@ class TestSetUpStore(IntegrationTestCase):
 	def setUp(self):
 		self.settings = frappe.get_doc("Shop Settings")
 		self.original = {f: self.settings.get(f) for f in (
-			"shipping_item", "card_fee_item", "conversion_fee_item", "trade_customer_group", "tax_template", "export_tax_template")}
+			"shipping_item", "card_fee_item", "conversion_fee_item", "trade_customer_group", "tax_template", "export_tax_template", "email_statements")}
 		self.addCleanup(lambda: frappe.db.set_single_value("Shop Settings", self.original))
 
 	def test_store_is_set_up_on_erpnext_records_and_again_changes_nothing(self):
@@ -27,8 +27,7 @@ class TestSetUpStore(IntegrationTestCase):
 		self.assertEqual(rule.discount_percentage, 10)
 		if settings.tax_template:
 			self.assertTrue(settings.export_tax_template)
-		run = f"{settings.store_name or frappe.db.get_value('Company', company, 'company_name')} statements"
-		self.assertEqual(frappe.db.get_value("Process Statement Of Accounts", run, "collection_name"), "_Test Setup Trade")
+		self.assertEqual(frappe.db.get_single_value("Shop Settings", "email_statements"), 1)
 
 		# an owner's changes are kept when set-up runs again
 		frappe.db.set_value("Pricing Rule", rule.name, "discount_percentage", 12)

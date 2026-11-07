@@ -239,7 +239,7 @@ const storefrontUrl = computed(() =>
 	isEdit.value && detail.value?.slug ? storefrontPath(`product/${detail.value.slug}`) : undefined,
 )
 
-const slugHint = computed(() => `Storefront URL: /product/${form.slug || detail.value?.slug || ''}`)
+const slugHint = computed(() => `Storefront URL: ${storefrontPath(`product/${form.slug || detail.value?.slug || ''}`)}`)
 
 const variantPricing = computed(() =>
 	isEdit.value ? !!detail.value?.has_variants : isLink.value && itemHasVariants.value,

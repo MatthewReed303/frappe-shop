@@ -76,6 +76,8 @@ def set_up(
 	settings.save(ignore_permissions=True)
 
 	if statements and settings.get("trade_customer_group"):
+		if not settings.get("email_statements"):
+			frappe.db.set_single_value("Shop Settings", "email_statements", 1)
 		statement_run(company_doc.name, settings.trade_customer_group, settings.store_name or company_doc.company_name)
 	return settings
 
@@ -276,9 +278,10 @@ def statement_letter_head(store_name: str) -> str:
 	return name
 
 
-def statement_run(company: str, group: str, store_name: str) -> str:
-	"""ERPNext's Process Statement Of Accounts emailing the group a statement each month. The store
-	keeps its customer list in step with the group (shop.storefront.statements.sync_customer)."""
+def statement_run(company: str, group: str, store_name: str) -> str | None:
+	"""ERPNext's Process Statement Of Accounts emailing the group a statement each month, once the
+	group has a customer. The store keeps its customer list in step with the group
+	(shop.storefront.statements.sync_customer)."""
 	name = f"{store_name} statements"
 	if frappe.db.exists("Process Statement Of Accounts", name):
 		return name
@@ -313,13 +316,12 @@ def statement_run(company: str, group: str, store_name: str) -> str:
 			"pdf_name": f"{store_name} statement {{{{ doc.to_date }}}}",
 		}
 	)
-	for customer in frappe.get_all(
-		"Customer", filters={"customer_group": group, "disabled": 0, "email_id": ["is", "set"]},
-		fields=["name", "customer_name", "email_id"],
-	):
-		doc.append("customers", {"customer": customer.name, "customer_name": customer.customer_name, "primary_email": customer.email_id})
-	if not doc.customers:
-		# ERPNext won't save a run with no customers; customers are added as they join the group
-		doc.flags.ignore_validate = doc.flags.ignore_mandatory = True
+	from shop.storefront.statements import run_customers
+
+	customers = run_customers(group, 1)
+	if not customers:
+		# ERPNext's run needs a customer; it is made when the first one joins the group
+		return None
+	doc.set("customers", customers)
 	doc.insert(ignore_permissions=True)
 	return name

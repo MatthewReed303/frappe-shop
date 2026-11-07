@@ -112,7 +112,10 @@ def order_summary(order, token: str | None = None) -> dict:
 		"display_status": display_status(order, paid),
 		"progress": order_progress(order, shipment),
 		"shipment": shipment,
-		"awaiting_shipment": None if shipment else "true",
+		# paid, or to be paid on account or on delivery, and not sent yet
+		"awaiting_shipment": "true"
+		if not shipment and order.docstatus == 1 and (paid or method in (totals.ACCOUNT, totals.COD, None))
+		else None,
 		"transaction_date": str(order.transaction_date),
 		"currency": order.currency,
 		"total": product_total,

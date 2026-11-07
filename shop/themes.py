@@ -191,6 +191,9 @@ def refresh_theme(group: str):
 			page.blocks = rewrite_blocks(template.blocks, prefix)
 			page.draft_blocks = page.blocks
 			page.page_data_script = template.page_data_script
+			page.page_title = template.page_title
+			page.authenticated_access = template.authenticated_access
+			page.meta_description = template.meta_description
 			page.body_html = with_prefix_script(template.body_html, prefix)
 			page.client_scripts = []
 			for script in template.client_scripts:

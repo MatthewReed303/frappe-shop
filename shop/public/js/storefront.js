@@ -13,16 +13,28 @@
 		return div.innerHTML;
 	}
 
+	const GENERIC_ERROR = "Something went wrong. Please try again.";
+
 	async function call(method, args) {
-		const response = await fetch(`/api/method/${method}`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"X-Frappe-CSRF-Token": (window.frappe && window.frappe.csrf_token) || "",
-			},
-			body: JSON.stringify(args || {}),
-		});
-		const body = await response.json();
+		let response;
+		try {
+			response = await fetch(`/api/method/${method}`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Frappe-CSRF-Token": (window.frappe && window.frappe.csrf_token) || "",
+				},
+				body: JSON.stringify(args || {}),
+			});
+		} catch (e) {
+			throw new Error("We couldn't reach the store. Check your connection and try again.");
+		}
+		let body = {};
+		try {
+			body = await response.json();
+		} catch (e) {
+			if (!response.ok) throw new Error(GENERIC_ERROR);
+		}
 		if (!response.ok) throw new Error(serverMessage(body));
 		return body.message;
 	}
@@ -32,17 +44,28 @@
 			const messages = JSON.parse(body._server_messages || "[]");
 			if (messages.length) return JSON.parse(messages[0]).message.replace(/<[^>]+>/g, "");
 		} catch (e) {}
-		return "Something went wrong. Please try again.";
+		return GENERIC_ERROR;
 	}
 
-	function showError(message) {
-		const target = document.querySelector('[data-shop="error"]');
+	// the error box of the form in use, else the page's
+	function errorBox(scope) {
+		return (scope && scope.querySelector('[data-shop="error"]')) || document.querySelector('[data-shop="error"]');
+	}
+
+	function showError(message, scope) {
+		const target = errorBox(scope);
 		if (target) {
 			target.textContent = message;
 			target.style.display = "block";
+			target.scrollIntoView({ block: "nearest", behavior: "smooth" });
 		} else {
 			alert(message);
 		}
+	}
+
+	function hideError(scope) {
+		const target = errorBox(scope);
+		if (target) target.style.display = "none";
 	}
 
 	function updateCartCount(count) {
@@ -106,9 +129,12 @@
 	}
 
 	async function toggleDrawer() {
-		const cart = await call("shop.storefront.cart.get_cart");
-		renderDrawer(cart);
-		openDrawer();
+		try {
+			renderDrawer(await call("shop.storefront.cart.get_cart"));
+			openDrawer();
+		} catch (error) {
+			window.location.href = base + "/cart";
+		}
 	}
 
 	function renderDrawer(cart) {
@@ -151,9 +177,17 @@
 		try {
 			const cart = await call("shop.storefront.cart.set_qty", { item_code: itemCode, qty: qty });
 			renderDrawer(cart);
+			cartChanged();
 		} catch (error) {
 			showError(error.message);
 		}
+	}
+
+	// on the checkout page a changed cart has a new total
+	function cartChanged() {
+		if (!checkoutForm()) return;
+		checkout.quote = null;
+		scheduleQuote(0);
 	}
 
 	async function setQty(itemCode, qty) {
@@ -278,7 +312,7 @@
 	// A theme opts in by placing these hooks in the checkout form:
 	// [data-shop="shipping-options"], [data-shop="checkout-totals"], [data-shop="bank-currency"],
 	// [data-shop="payment-fee"][data-method], and inputs named accept_terms / business_buyer.
-	const checkout = { quote: null, timer: null, seq: 0 };
+	const checkout = { quote: null, timer: null, seq: 0, submitting: false };
 	const ADDRESS_FIELDS = ["address_line1", "address_line2", "city", "state", "country", "pincode"];
 
 	function checkoutForm() {
@@ -316,11 +350,17 @@
 		totalsBox && totalsBox.setAttribute("aria-busy", "true");
 		try {
 			const quote = await call("shop.storefront.checkout.quote", { address: formAddress(form), ...checkoutChoice(form) });
-			if (seq !== checkout.seq) return;
+			if (seq !== checkout.seq) return null;
 			checkout.quote = quote;
+			hideError(form);
 			renderQuote(form, quote);
+			return quote;
 		} catch (error) {
-			if (seq === checkout.seq) showError(error.message);
+			if (seq === checkout.seq) {
+				checkout.quote = null;
+				showError(error.message, form);
+			}
+			return null;
 		} finally {
 			totalsBox && totalsBox.removeAttribute("aria-busy");
 		}
@@ -368,20 +408,31 @@
 			totalsBox.innerHTML = `${lines}<div class="checkout-line checkout-total"><span>Total</span><span data-shop="checkout-total">${esc(quote.formatted_total)} ${esc(quote.currency)}</span></div>${notes}`;
 		}
 		const submit = form.querySelector('[type="submit"]');
-		if (submit) submit.disabled = !quote.can_ship;
+		if (submit) submit.disabled = !quote.can_ship || checkout.submitting;
 		syncPaymentUI();
 	}
 
 	async function submitCheckout(form) {
+		if (checkout.submitting) return;
 		const data = new FormData(form);
 		const submit = form.querySelector('[type="submit"]');
 		const terms = form.querySelector('[name="accept_terms"]');
 		if (terms && !terms.checked) {
-			showError("Please accept the terms and conditions.");
+			showError("Please accept the terms and conditions.", form);
 			terms.focus();
 			return;
 		}
+		clearTimeout(checkout.timer);
+		checkout.submitting = true;
 		if (submit) submit.disabled = true;
+		// the order is placed at the total the shopper is shown, worked out now if it isn't yet
+		const quote = checkout.quote || (await requestQuote(form));
+		checkout.seq++;
+		if (!quote) {
+			checkout.submitting = false;
+			if (submit) submit.disabled = false;
+			return;
+		}
 		try {
 			const result = await call("shop.storefront.checkout.place_order", {
 				customer: {
@@ -390,15 +441,15 @@
 					phone: data.get("phone"),
 				},
 				address: formAddress(form),
-				payment_method: data.get("payment_method") || "cod",
 				...checkoutChoice(form),
 				accept_terms: terms && terms.checked ? 1 : 0,
 				business_buyer: data.get("business_buyer") ? 1 : 0,
-				expected_total: checkout.quote ? checkout.quote.total : undefined,
+				expected_total: quote.total,
 			});
 			window.location.href = result.payment_url || result.confirmation_url;
 		} catch (error) {
-			showError(error.message);
+			checkout.submitting = false;
+			showError(error.message, form);
 			if (submit) submit.disabled = false;
 			scheduleQuote(0);
 		}
@@ -416,7 +467,7 @@
 				done.hidden = false;
 			}
 		} catch (error) {
-			showError(error.message);
+			showError(error.message, form);
 			if (submit) submit.disabled = false;
 		}
 	}
@@ -431,10 +482,11 @@
 				token: form.dataset.token,
 				payment_method: data.get("payment_method"),
 				accept_terms: data.get("accept_terms") ? 1 : 0,
+				business_buyer: data.get("business_buyer") ? 1 : 0,
 			});
 			window.location.href = result.redirect;
 		} catch (error) {
-			showError(error.message);
+			showError(error.message, form);
 			if (submit) submit.disabled = false;
 		}
 	}
@@ -637,8 +689,7 @@
 	function applySavedAddress(picker) {
 		const addresses = (window.page_data && window.page_data.addresses) || [];
 		const chosen = addresses.find((address) => address.name === picker.value);
-		const fields = ["address_line1", "address_line2", "city", "state", "country", "pincode"];
-		fields.forEach((field) => {
+		ADDRESS_FIELDS.forEach((field) => {
 			const input = document.querySelector(`[data-shop="checkout-form"] [name="${field}"]`);
 			if (input) input.value = (chosen && chosen[field]) || "";
 		});

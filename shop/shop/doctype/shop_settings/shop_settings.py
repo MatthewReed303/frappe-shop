@@ -35,6 +35,7 @@ class ShopSettings(Document):
 		conversion_fee_item: DF.Link | None
 		currency: DF.Link | None
 		default_warehouse: DF.Link | None
+		email_statements: DF.Check
 		enable_bank_transfer: DF.Check
 		enable_cod: DF.Check
 		export_tax_template: DF.Link | None
@@ -77,6 +78,10 @@ class ShopSettings(Document):
 			)
 
 	def on_update(self):
+		if self.has_value_changed("require_terms"):
+			from shop.install import enable_customer_signup
+
+			enable_customer_signup()
 		if not self.active_theme:
 			return
 		if get_prefix() != normalize_prefix(self.applied_route_prefix):

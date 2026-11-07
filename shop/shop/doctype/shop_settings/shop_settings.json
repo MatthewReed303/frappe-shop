@@ -66,6 +66,7 @@
   "business_buyer_label",
   "trade_section",
   "trade_customer_group",
+  "email_statements",
   "allow_quote_requests",
   "theme_pages_section",
   "theme_pages"
@@ -394,7 +395,7 @@
    "label": "Trade Accounts"
   },
   {
-   "description": "Approved trade customers join this Customer Group (its Price List, Payment Terms, credit limit and Pricing Rules apply). Applications arrive as Leads with UTM Source \"Store Trade Application\".",
+   "description": "Approved trade customers join this Customer Group (its Price List, Payment Terms, credit limit and Store Discounts apply). Applications arrive as Leads with UTM Source \"Store Trade Application\".",
    "fieldname": "trade_customer_group",
    "fieldtype": "Link",
    "label": "Trade Customer Group",
@@ -464,11 +465,19 @@
    "fieldname": "online_payment_days",
    "fieldtype": "Int",
    "label": "Days to Pay Online"
+  },
+  {
+   "default": "0",
+   "depends_on": "trade_customer_group",
+   "description": "Email each customer in the trade Customer Group a statement every month, with ERPNext's Process Statement Of Accounts.",
+   "fieldname": "email_statements",
+   "fieldtype": "Check",
+   "label": "Email Monthly Statements"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 09:47:04.773094",
+ "modified": "2026-11-07 10:10:05.388106",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

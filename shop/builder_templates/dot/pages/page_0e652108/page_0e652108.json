@@ -18,99 +18,99 @@
     "paddingTop": "94px",
     "width": "100%"
    },
-   "blockId": "77ef03e9d6",
+   "blockId": "1425b5fbb0",
    "blockName": "Root",
    "children": [
     {
-     "blockId": "c8952c0a73",
+     "blockId": "18ac1c7047",
      "children": [
       {
-       "blockId": "cfe51a5559",
+       "blockId": "82a9d7a42e",
        "children": [
         {
-         "blockId": "5998b779d6",
+         "blockId": "049a1e1d0c",
          "children": [
           {
-           "blockId": "c924e84a52",
+           "blockId": "43a7a5f588",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "73cf2cd52a"
+           "referenceBlockId": "932e824fc9"
           },
           {
-           "blockId": "ba88751448",
+           "blockId": "0dbc92fb38",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "bc19555f0c"
+           "referenceBlockId": "b7b09ec142"
           }
          ],
          "isChildOfComponent": "dot-navbar",
-         "referenceBlockId": "ec5d0586ec"
+         "referenceBlockId": "fdd8299032"
         },
         {
-         "blockId": "e266d3528d",
+         "blockId": "691dc03cb5",
          "children": [
           {
-           "blockId": "c1649b3beb",
+           "blockId": "6033b956d2",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "26278f3dd9"
+           "referenceBlockId": "d25e7ef7ed"
           },
           {
-           "blockId": "0f262bf259",
+           "blockId": "6b042230c1",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "35089bd19c"
+           "referenceBlockId": "e06e14d7e2"
           },
           {
-           "blockId": "8649f10f30",
+           "blockId": "5fa24a183b",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "040751be0a"
+           "referenceBlockId": "900299e16e"
           },
           {
-           "blockId": "15886733d6",
+           "blockId": "4509514051",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "9a11038654"
+           "referenceBlockId": "94eaa409f0"
           },
           {
-           "blockId": "b97724e744",
+           "blockId": "d9ef97a003",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "840892cd7a"
+           "referenceBlockId": "df6097427a"
           },
           {
-           "blockId": "4d97d76f08",
+           "blockId": "db1e020d09",
            "children": [],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "39d08d266e"
+           "referenceBlockId": "1fd9486bb1"
           },
           {
-           "blockId": "8f5a99591c",
+           "blockId": "d9b4fe111b",
            "children": [
             {
-             "blockId": "0ffb065fc1",
+             "blockId": "85c7b3ed51",
              "children": [],
              "isChildOfComponent": "dot-navbar",
-             "referenceBlockId": "a5c3b1ee6d"
+             "referenceBlockId": "4abda7d861"
             },
             {
-             "blockId": "1fbe5372b8",
+             "blockId": "e18a42df98",
              "children": [],
              "isChildOfComponent": "dot-navbar",
-             "referenceBlockId": "831d712af0"
+             "referenceBlockId": "10504f81ba"
             }
            ],
            "isChildOfComponent": "dot-navbar",
-           "referenceBlockId": "aceb9a9ac2"
+           "referenceBlockId": "d884d5b6ef"
           }
          ],
          "isChildOfComponent": "dot-navbar",
-         "referenceBlockId": "a4ceee1745"
+         "referenceBlockId": "1cc21ada38"
         }
        ],
        "isChildOfComponent": "dot-navbar",
-       "referenceBlockId": "91e2198f0e"
+       "referenceBlockId": "3cde7f13c2"
       }
      ],
      "extendedFromComponent": "dot-navbar"
@@ -126,7 +126,7 @@
       "padding": "0 20px",
       "width": "100%"
      },
-     "blockId": "ad2dcb890c",
+     "blockId": "9d28350da0",
      "blockName": "Stack",
      "children": [
       {
@@ -140,7 +140,7 @@
         "padding": "26px 4px 6px",
         "width": "100%"
        },
-       "blockId": "6c8f3b7686",
+       "blockId": "eacc363b49",
        "blockName": "Page Header",
        "children": [
         {
@@ -153,7 +153,7 @@
           "minWidth": "0px",
           "width": "100%"
          },
-         "blockId": "054daac92b",
+         "blockId": "e67689f1e4",
          "children": [
           {
            "attributes": {},
@@ -167,7 +167,7 @@
             "textTransform": "uppercase",
             "width": "fit-content"
            },
-           "blockId": "f84622ed32",
+           "blockId": "88d14ceaaa",
            "children": [],
            "classes": [],
            "customAttributes": {},
@@ -188,7 +188,7 @@
             "lineHeight": "1.1",
             "width": "fit-content"
            },
-           "blockId": "c1c2598479",
+           "blockId": "71edb6c515",
            "children": [],
            "classes": [],
            "customAttributes": {},
@@ -208,7 +208,7 @@
             "lineHeight": "1.65",
             "width": "min(520px, 100%)"
            },
-           "blockId": "7d1a993cc9",
+           "blockId": "35e08cbafb",
            "children": [],
            "classes": [],
            "customAttributes": {},
@@ -226,7 +226,7 @@
             "gap": "12px",
             "width": "fit-content"
            },
-           "blockId": "904c996cd4",
+           "blockId": "de7699aa3c",
            "blockName": "Active Search",
            "children": [
             {
@@ -240,7 +240,7 @@
               "letterSpacing": "0.1em",
               "width": "fit-content"
              },
-             "blockId": "4313f3ae2f",
+             "blockId": "54ee653073",
              "children": [],
              "classes": [],
              "customAttributes": {},
@@ -272,7 +272,7 @@
               "textTransform": "uppercase",
               "width": "fit-content"
              },
-             "blockId": "cd007ee02d",
+             "blockId": "2daa82237f",
              "children": [],
              "classes": [],
              "customAttributes": {},
@@ -311,7 +311,7 @@
           "justifyContent": "flex-end",
           "width": "fit-content"
          },
-         "blockId": "1a5dda43eb",
+         "blockId": "59c7ff286f",
          "blockName": "Listing Controls",
          "children": [
           {
@@ -341,7 +341,7 @@
             "textTransform": "uppercase",
             "width": "fit-content"
            },
-           "blockId": "416f835445",
+           "blockId": "6f90d6116d",
            "blockName": "Filter Toggle",
            "children": [
             {
@@ -351,7 +351,7 @@
               "letterSpacing": "0.14em",
               "width": "fit-content"
              },
-             "blockId": "dc6e4bebbe",
+             "blockId": "8f1ca05e23",
              "children": [],
              "classes": [],
              "customAttributes": {},
@@ -374,7 +374,7 @@
               "minWidth": "16px",
               "padding": "0 4px"
              },
-             "blockId": "ecc7bbbddd",
+             "blockId": "d1f5df5831",
              "blockName": "Applied Count",
              "children": [],
              "classes": [
@@ -416,7 +416,7 @@
             "gap": "8px",
             "width": "fit-content"
            },
-           "blockId": "75540340a6",
+           "blockId": "656a770878",
            "blockName": "Search",
            "children": [
             {
@@ -436,7 +436,7 @@
               "padding": "9px 16px",
               "width": "200px"
              },
-             "blockId": "5ceadc3da2",
+             "blockId": "351f15a4ee",
              "children": [],
              "classes": [],
              "customAttributes": {},
@@ -475,7 +475,7 @@
               "textTransform": "uppercase",
               "width": "fit-content"
              },
-             "blockId": "84ad4a79e8",
+             "blockId": "7a64495eca",
              "children": [],
              "classes": [],
              "customAttributes": {},
@@ -531,37 +531,37 @@
         "padding": "18px 28px",
         "width": "100%"
        },
-       "blockId": "68fa9a7240",
+       "blockId": "e32cd8baaa",
        "blockName": "Section · Controls",
        "children": [
         {
-         "blockId": "cb5fce5b75",
+         "blockId": "2b9e092931",
          "children": [
           {
-           "blockId": "ce004b2ae3",
+           "blockId": "d4e3294b4e",
            "children": [
             {
-             "blockId": "dda229612c",
+             "blockId": "8a60e5c9e5",
              "children": [],
              "isChildOfComponent": "dot-filter-bar",
-             "referenceBlockId": "16d10bb356"
+             "referenceBlockId": "14a193bd1b"
             },
             {
-             "blockId": "14db0d6f4e",
+             "blockId": "7b5bb9d5bd",
              "children": [
               {
-               "blockId": "4d798aa79b",
+               "blockId": "d4d5a79594",
                "children": [],
                "isChildOfComponent": "dot-filter-bar",
-               "referenceBlockId": "dbae83e36e"
+               "referenceBlockId": "a4b4fff7d9"
               }
              ],
              "isChildOfComponent": "dot-filter-bar",
-             "referenceBlockId": "9828f4289e"
+             "referenceBlockId": "565f2d4de4"
             }
            ],
            "isChildOfComponent": "dot-filter-bar",
-           "referenceBlockId": "76664555ff"
+           "referenceBlockId": "f5c9bbc928"
           }
          ],
          "extendedFromComponent": "dot-filter-bar"
@@ -577,7 +577,7 @@
           "paddingTop": "12px",
           "width": "100%"
          },
-         "blockId": "9e74061324",
+         "blockId": "d5ff50d0bc",
          "blockName": "Clear Filters",
          "children": [
           {
@@ -595,7 +595,7 @@
             "textTransform": "uppercase",
             "width": "fit-content"
            },
-           "blockId": "359740b23b",
+           "blockId": "82832b2d2d",
            "children": [],
            "classes": [],
            "customAttributes": {},
@@ -638,7 +638,7 @@
         "padding": "40px",
         "width": "100%"
        },
-       "blockId": "edf8d39108",
+       "blockId": "63e273be82",
        "blockName": "Section · Product Grid",
        "children": [
         {
@@ -649,119 +649,125 @@
           "gridTemplateColumns": "repeat(4, minmax(0, 1fr))",
           "width": "100%"
          },
-         "blockId": "383423aa95",
+         "blockId": "c67f8de0c5",
          "blockName": "Grid · products",
          "children": [
           {
-           "blockId": "8219c5e15c",
+           "blockId": "61b3ae138a",
            "children": [
             {
-             "blockId": "56e6c54c12",
+             "blockId": "339e552c56",
              "children": [
               {
-               "blockId": "bcc7fc8b9f",
+               "blockId": "8c6c752c55",
                "children": [],
                "isChildOfComponent": "dot-product-card",
-               "referenceBlockId": "4f1baa91f0"
+               "referenceBlockId": "708934a612"
               }
              ],
              "isChildOfComponent": "dot-product-card",
-             "referenceBlockId": "e2416824b9"
+             "referenceBlockId": "9c9ac064f5"
             },
             {
-             "blockId": "da76885ae2",
+             "blockId": "c341f97dc9",
              "children": [],
              "isChildOfComponent": "dot-product-card",
-             "referenceBlockId": "8f88db97ac"
+             "referenceBlockId": "e0a4f9f7f9"
             },
             {
-             "blockId": "fa02e27b7a",
+             "blockId": "3cb8d3244b",
              "children": [
               {
-               "blockId": "4fab929b74",
+               "blockId": "9178106318",
                "children": [],
                "isChildOfComponent": "dot-product-card",
-               "referenceBlockId": "bfd426a395"
+               "referenceBlockId": "e8cff31a73"
               },
               {
-               "blockId": "eec3e82931",
+               "blockId": "2c07b21785",
                "children": [
                 {
-                 "blockId": "eef276e5f1",
+                 "blockId": "7edaf5b9cf",
                  "children": [],
                  "isChildOfComponent": "dot-product-card",
-                 "referenceBlockId": "cc7aee5b96"
+                 "referenceBlockId": "c7ab518b1f"
                 },
                 {
-                 "blockId": "31b68c4711",
+                 "blockId": "b84014ca0a",
                  "children": [],
                  "isChildOfComponent": "dot-product-card",
-                 "referenceBlockId": "6da2c8eb4c"
+                 "referenceBlockId": "279e5385cb"
                 },
                 {
-                 "blockId": "69e1e134c3",
+                 "blockId": "2b06c6714c",
                  "children": [],
                  "isChildOfComponent": "dot-product-card",
-                 "referenceBlockId": "1c50050e5d"
+                 "referenceBlockId": "46c4341d68"
                 }
                ],
                "isChildOfComponent": "dot-product-card",
-               "referenceBlockId": "dc0750bba0"
+               "referenceBlockId": "7eefeb330a"
               }
              ],
              "isChildOfComponent": "dot-product-card",
-             "referenceBlockId": "36a32460b3"
+             "referenceBlockId": "2e83ec0187"
             },
             {
-             "blockId": "54e8fa8d5f",
+             "blockId": "decbf6d3cf",
              "children": [
               {
-               "blockId": "51a12e0475",
+               "blockId": "6e18a8cc91",
                "children": [],
                "isChildOfComponent": "dot-product-card",
-               "referenceBlockId": "894103eabe"
+               "referenceBlockId": "41ea801d46"
               },
               {
-               "blockId": "ae6e668476",
+               "blockId": "82924b2244",
                "children": [],
                "isChildOfComponent": "dot-product-card",
-               "referenceBlockId": "ebd8133a87"
+               "referenceBlockId": "068c03f165"
               },
               {
-               "blockId": "d9d017c8d2",
+               "blockId": "245100e908",
                "children": [
                 {
-                 "blockId": "b552fa7a1b",
+                 "blockId": "bf33003981",
                  "children": [
                   {
-                   "blockId": "25f4c6e101",
+                   "blockId": "0b73b22f6e",
                    "children": [],
                    "isChildOfComponent": "dot-product-card",
-                   "referenceBlockId": "6cc816ee23"
+                   "referenceBlockId": "5ca63d2925"
                   },
                   {
-                   "blockId": "22284355da",
+                   "blockId": "6b43c7d120",
                    "children": [],
                    "isChildOfComponent": "dot-product-card",
-                   "referenceBlockId": "416b563168"
+                   "referenceBlockId": "1db66a3e64"
                   },
                   {
-                   "blockId": "79d5bfd61d",
+                   "blockId": "dd5ac39c5b",
                    "children": [],
                    "isChildOfComponent": "dot-product-card",
-                   "referenceBlockId": "3336f52abf"
+                   "referenceBlockId": "5b729c9196"
                   }
                  ],
                  "isChildOfComponent": "dot-product-card",
-                 "referenceBlockId": "d0e603a8fa"
+                 "referenceBlockId": "3cd7f1b857"
                 }
                ],
                "isChildOfComponent": "dot-product-card",
-               "referenceBlockId": "08948b233b"
+               "referenceBlockId": "7b2d85a5cf"
+              },
+              {
+               "blockId": "f9e108e8eb",
+               "children": [],
+               "isChildOfComponent": "dot-product-card",
+               "referenceBlockId": "eaa8e050cc"
               }
              ],
              "isChildOfComponent": "dot-product-card",
-             "referenceBlockId": "fe5356bda7"
+             "referenceBlockId": "8525e2bfb9"
             }
            ],
            "extendedFromComponent": "dot-product-card"
@@ -793,7 +799,7 @@
           "padding": "40px 0",
           "width": "100%"
          },
-         "blockId": "bed7577ffa",
+         "blockId": "2e751f6524",
          "blockName": "No Results",
          "children": [
           {
@@ -808,7 +814,7 @@
             "textTransform": "uppercase",
             "width": "fit-content"
            },
-           "blockId": "5f6dc6b054",
+           "blockId": "ff41132eec",
            "children": [],
            "classes": [],
            "customAttributes": {},
@@ -832,7 +838,7 @@
             "textTransform": "uppercase",
             "width": "fit-content"
            },
-           "blockId": "76810652f5",
+           "blockId": "d76413eb34",
            "children": [],
            "classes": [],
            "customAttributes": {},
@@ -874,262 +880,262 @@
      "tabletStyles": {}
     },
     {
-     "blockId": "8afcff174f",
+     "blockId": "587f00a2a1",
      "children": [
       {
-       "blockId": "f238dfb9d7",
+       "blockId": "26aa4d64e0",
        "children": [
         {
-         "blockId": "5ff691065c",
+         "blockId": "192c8d7e34",
          "children": [
           {
-           "blockId": "ff7edda76a",
+           "blockId": "1fe9820970",
            "children": [
             {
-             "blockId": "907c4f6427",
+             "blockId": "7681ad399d",
              "children": [
               {
-               "blockId": "f04f4013d2",
+               "blockId": "271414f961",
                "children": [
                 {
-                 "blockId": "d7c27b11b3",
+                 "blockId": "b838b84079",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "1de42721cc"
+                 "referenceBlockId": "f74429f95a"
                 },
                 {
-                 "blockId": "d12e4bed36",
+                 "blockId": "dedb4d4a60",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "d7141ce255"
+                 "referenceBlockId": "d3a4aea1a7"
                 }
                ],
                "isChildOfComponent": "dot-footer",
-               "referenceBlockId": "1f865e1516"
+               "referenceBlockId": "e39ffa37d7"
               },
               {
-               "blockId": "dca094d422",
+               "blockId": "f06025ad94",
                "children": [],
                "isChildOfComponent": "dot-footer",
-               "referenceBlockId": "37277aba3b"
+               "referenceBlockId": "bc74875173"
               }
              ],
              "isChildOfComponent": "dot-footer",
-             "referenceBlockId": "c41cc952fe"
+             "referenceBlockId": "597e84e48c"
             },
             {
-             "blockId": "583707838d",
+             "blockId": "85e11bb4ef",
              "children": [
               {
-               "blockId": "9ca6471231",
+               "blockId": "48006553ec",
                "children": [
                 {
-                 "blockId": "15cc39cdee",
+                 "blockId": "30801fc977",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "c42680a9b3"
+                 "referenceBlockId": "0740fcd687"
                 },
                 {
-                 "blockId": "9509c28d51",
+                 "blockId": "c627932436",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "ce32e3b4ab"
+                 "referenceBlockId": "0ea04c54d6"
                 },
                 {
-                 "blockId": "2823537de0",
+                 "blockId": "6955b11be2",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "3052d6e0f6"
+                 "referenceBlockId": "8637609482"
                 }
                ],
                "isChildOfComponent": "dot-footer",
-               "referenceBlockId": "a128d54483"
+               "referenceBlockId": "f039ec24fb"
               },
               {
-               "blockId": "3b7ec6e008",
+               "blockId": "425118c0dc",
                "children": [
                 {
-                 "blockId": "6c7d203501",
+                 "blockId": "7594e2a27d",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "53bb4ef523"
+                 "referenceBlockId": "410ef335e8"
                 },
                 {
-                 "blockId": "e223209eb9",
+                 "blockId": "ac1839a1c2",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "6f9452bac1"
+                 "referenceBlockId": "cd621e0ff5"
                 },
                 {
-                 "blockId": "94c2246619",
+                 "blockId": "b539fd7609",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "1d8a58fb44"
+                 "referenceBlockId": "63033fd355"
                 }
                ],
                "isChildOfComponent": "dot-footer",
-               "referenceBlockId": "cbecd6afd9"
+               "referenceBlockId": "a5a05e462e"
               },
               {
-               "blockId": "c48075a695",
+               "blockId": "d0cc77dd55",
                "children": [
                 {
-                 "blockId": "6cd76a3684",
+                 "blockId": "1650d4d447",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "cbf8c8eaf5"
+                 "referenceBlockId": "e7731f7313"
                 },
                 {
-                 "blockId": "6798d14008",
+                 "blockId": "3d7c61e50f",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "7bc3b56b69"
+                 "referenceBlockId": "6d61985f3e"
                 },
                 {
-                 "blockId": "b991828d42",
+                 "blockId": "d8db7112f4",
                  "children": [],
                  "isChildOfComponent": "dot-footer",
-                 "referenceBlockId": "dad0ed0318"
+                 "referenceBlockId": "6deb2f57a7"
                 }
                ],
                "isChildOfComponent": "dot-footer",
-               "referenceBlockId": "1e6f712457"
+               "referenceBlockId": "bf68166161"
               }
              ],
              "isChildOfComponent": "dot-footer",
-             "referenceBlockId": "1d004641ed"
+             "referenceBlockId": "482835258e"
             }
            ],
            "isChildOfComponent": "dot-footer",
-           "referenceBlockId": "dda777fa56"
+           "referenceBlockId": "42f1cd9666"
           },
           {
-           "blockId": "0b7d4efe9f",
+           "blockId": "387d5ef807",
            "children": [
             {
-             "blockId": "7a2586b32f",
+             "blockId": "4ae421a2d6",
              "children": [],
              "isChildOfComponent": "dot-footer",
-             "referenceBlockId": "98bcc86e15"
+             "referenceBlockId": "12c73fc659"
             },
             {
-             "blockId": "b94527c820",
+             "blockId": "ab4f01f31a",
              "children": [],
              "isChildOfComponent": "dot-footer",
-             "referenceBlockId": "62acebc5a1"
+             "referenceBlockId": "1b944cee6d"
             },
             {
-             "blockId": "50a1ec57ed",
+             "blockId": "068489c6a6",
              "children": [],
              "isChildOfComponent": "dot-footer",
-             "referenceBlockId": "a225570692"
+             "referenceBlockId": "de9809cda0"
             }
            ],
            "isChildOfComponent": "dot-footer",
-           "referenceBlockId": "5a62b53a7a"
+           "referenceBlockId": "7954cc5e9d"
           }
          ],
          "isChildOfComponent": "dot-footer",
-         "referenceBlockId": "a83d0ea34b"
+         "referenceBlockId": "042dcc9002"
         }
        ],
        "isChildOfComponent": "dot-footer",
-       "referenceBlockId": "3035fbba19"
+       "referenceBlockId": "c8b5cd8a99"
       }
      ],
      "extendedFromComponent": "dot-footer"
     },
     {
-     "blockId": "91c4e10d21",
+     "blockId": "65fafabedb",
      "children": [
       {
-       "blockId": "ce8d6037b0",
+       "blockId": "7a43ed73a7",
        "children": [],
        "isChildOfComponent": "dot-cart-drawer",
-       "referenceBlockId": "e3b8437aa4"
+       "referenceBlockId": "a3d1890855"
       },
       {
-       "blockId": "52d5c90f59",
+       "blockId": "60d52ecd4b",
        "children": [
         {
-         "blockId": "d0eb061ca0",
+         "blockId": "da957081f9",
          "children": [
           {
-           "blockId": "f790b6a61a",
+           "blockId": "dfc42a1407",
            "children": [],
            "isChildOfComponent": "dot-cart-drawer",
-           "referenceBlockId": "187d39d9ae"
+           "referenceBlockId": "3feb58dbd8"
           },
           {
-           "blockId": "aee9de69f5",
+           "blockId": "c7828d1763",
            "children": [],
            "isChildOfComponent": "dot-cart-drawer",
-           "referenceBlockId": "44fa278fd4"
+           "referenceBlockId": "708202f540"
           }
          ],
          "isChildOfComponent": "dot-cart-drawer",
-         "referenceBlockId": "e5b3aa3570"
+         "referenceBlockId": "debcd5a0b4"
         },
         {
-         "blockId": "d23676ab5e",
+         "blockId": "c7ca7a5b2b",
          "children": [],
          "isChildOfComponent": "dot-cart-drawer",
-         "referenceBlockId": "b685fc79ca"
+         "referenceBlockId": "4f2f58e922"
         },
         {
-         "blockId": "5e22767325",
+         "blockId": "b13d6731b0",
          "children": [
           {
-           "blockId": "d54070ee25",
+           "blockId": "78b317398e",
            "children": [
             {
-             "blockId": "14074482e8",
+             "blockId": "ccc859c4f6",
              "children": [],
              "isChildOfComponent": "dot-cart-drawer",
-             "referenceBlockId": "2ae5a67118"
+             "referenceBlockId": "832d2bdc60"
             },
             {
-             "blockId": "a6810008e6",
+             "blockId": "68cb9a91c2",
              "children": [],
              "isChildOfComponent": "dot-cart-drawer",
-             "referenceBlockId": "c667703abb"
+             "referenceBlockId": "05f0ae657f"
             }
            ],
            "isChildOfComponent": "dot-cart-drawer",
-           "referenceBlockId": "4165fe5cf1"
+           "referenceBlockId": "1d0abce3c1"
           },
           {
-           "blockId": "bbcca5cedc",
+           "blockId": "a1cb112591",
            "children": [],
            "isChildOfComponent": "dot-cart-drawer",
-           "referenceBlockId": "e120474dde"
+           "referenceBlockId": "b59e374df5"
           },
           {
-           "blockId": "d277a31f2d",
+           "blockId": "dfc126d72d",
            "children": [
             {
-             "blockId": "a9daee2003",
+             "blockId": "fa2e7a8add",
              "children": [],
              "isChildOfComponent": "dot-cart-drawer",
-             "referenceBlockId": "338e72ba7d"
+             "referenceBlockId": "7224b02104"
             },
             {
-             "blockId": "2eceb82b09",
+             "blockId": "016abbe202",
              "children": [],
              "isChildOfComponent": "dot-cart-drawer",
-             "referenceBlockId": "350e46b377"
+             "referenceBlockId": "2fa0aaafb2"
             }
            ],
            "isChildOfComponent": "dot-cart-drawer",
-           "referenceBlockId": "15d35d4fbb"
+           "referenceBlockId": "6d4c19697f"
           }
          ],
          "isChildOfComponent": "dot-cart-drawer",
-         "referenceBlockId": "577195b35c"
+         "referenceBlockId": "0e1c82f604"
         }
        ],
        "isChildOfComponent": "dot-cart-drawer",
-       "referenceBlockId": "b231220fc0"
+       "referenceBlockId": "9ea749fea1"
       }
      ],
      "extendedFromComponent": "dot-cart-drawer"
@@ -1161,7 +1167,7 @@
  "idx": 0,
  "is_standard": 0,
  "is_template": 1,
- "modified": "2026-11-07 08:22:01.157799",
+ "modified": "2026-11-07 10:22:56.652974",
  "modified_by": "Administrator",
  "name": "page-0e652108",
  "owner": "Administrator",

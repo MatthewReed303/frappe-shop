@@ -9,21 +9,11 @@ from frappe.utils import cint, flt, now_datetime, nowdate, validate_email_addres
 from shop.routes import store_url
 from shop.storefront import pricing
 
-APPROVER_ROLES = ("System Manager", "Sales Manager", "Shop Manager")
-
-
-def terms_required() -> bool:
-	return bool(frappe.get_cached_doc("Shop Settings").get("require_terms"))
-
-
-def terms_version() -> str | None:
-	from shop.storefront import terms
-
-	return terms.version()
-
 
 def check_terms(accept_terms) -> None:
-	if terms_required() and not cint(accept_terms):
+	from shop.storefront import terms
+
+	if terms.required() and not cint(accept_terms):
 		frappe.throw(_("Please accept the terms and conditions"))
 
 
@@ -59,7 +49,11 @@ def register(full_name: str, email: str, accept_terms: int = 0) -> dict:
 	return {"message": _("Check your email for a link to set your password.")}
 
 
-def create_user(email: str, full_name: str, send_welcome: bool = True) -> str:
+def create_user(email: str, full_name: str, accepted: tuple | None = None) -> str:
+	"""A Website User for a store customer; `accepted` is the (terms version, time) they accepted,
+	now when not given."""
+	from shop.storefront import terms
+
 	first, _space, last = full_name.partition(" ")
 	user = frappe.get_doc(
 		{
@@ -68,12 +62,11 @@ def create_user(email: str, full_name: str, send_welcome: bool = True) -> str:
 			"first_name": first,
 			"last_name": last.strip() or None,
 			"user_type": "Website User",
-			"send_welcome_email": 1 if send_welcome else 0,
+			"send_welcome_email": 1,
 		}
 	)
-	if frappe.get_meta("User").has_field("shop_terms_version") and terms_required():
-		user.shop_terms_version = terms_version()
-		user.shop_terms_accepted_on = now_datetime()
+	if user.meta.has_field("shop_terms_version") and (accepted or terms.required()):
+		user.shop_terms_version, user.shop_terms_accepted_on = accepted or (terms.version(), now_datetime())
 	user.flags.ignore_permissions = True
 	user.insert(ignore_permissions=True)
 	if frappe.db.exists("Role", "Customer"):
@@ -127,11 +120,13 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 	if values["industry"] and not frappe.db.exists("Industry Type", values["industry"]):
 		values["industry"] = ""
 	with elevated():
-		if pending_application(values["email"]):
-			frappe.throw(_("We already have an application from {0}. We'll be in touch soon.").format(values["email"]))
-		lead = frappe.get_doc(
+		lead = application_lead(values["email"])
+		if lead and lead.status == "Converted":
+			# already approved: nothing to do, and the reply doesn't say whose account it is
+			return {"message": _("Thanks. We'll review your application and email you.")}
+		lead = lead or frappe.new_doc("Lead")
+		lead.update(
 			{
-				"doctype": "Lead",
 				"lead_name": values["contact_name"],
 				"company_name": values["company_name"],
 				"email_id": values["email"],
@@ -149,41 +144,75 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 				"shop_company_number": values["company_number"],
 			}
 		)
-		if values["message"]:
-			lead.append("notes", {"note": frappe.utils.escape_html(values["message"]), "added_on": now_datetime()})
-		if terms_required():
-			lead.shop_terms_version = terms_version()
+		note = values["message"] or (_("Applied again.") if not lead.is_new() else "")
+		if note:
+			lead.append("notes", {"note": frappe.utils.escape_html(note), "added_on": now_datetime()})
+		from shop.storefront import terms
+
+		if terms.required():
+			lead.shop_terms_version = terms.version()
 			lead.shop_terms_accepted_on = now_datetime()
 		user = pricing.shopper()
 		if user not in ("Guest", None) and user == values["email"]:
 			lead.shop_user = user
-		lead.insert(ignore_permissions=True)
+		lead.flags.ignore_permissions = True
+		lead.save(ignore_permissions=True)
 		if values["address_line1"] and values["city"]:
 			add_address("Lead", lead.name, values)
 		from shop.storefront import emails
 
 		emails.send("trade_application_staff", staff_emails(), lead, desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"))
 		emails.send("trade_application_received", values["email"], lead)
-	return {"name": lead.name, "message": _("Thanks. We'll review your application and email you.")}
+	return {"message": _("Thanks. We'll review your application and email you.")}
 
 
-def pending_application(email: str) -> str | None:
-	"""An open trade application (Lead) from this email, not yet approved or turned down."""
-	return frappe.db.get_value(
-		"Lead",
-		{"email_id": email, "utm_source": trade_source(), "status": ["!=", "Converted"],
-		 "qualification_status": ["!=", "Unqualified"]},
-	)
+def application_lead(email: str):
+	"""The Lead for this email, which a new application updates: ERPNext keeps one Lead per email."""
+	name = frappe.db.get_value("Lead", {"email_id": email}, order_by="creation desc")
+	return frappe.get_doc("Lead", name) if name else None
 
 
 def staff_emails() -> list[str]:
+	"""The staff who look after store applications and quote requests."""
 	users = frappe.get_all(
-		"Has Role", filters={"role": "Shop Manager", "parenttype": "User"}, pluck="parent", distinct=True
+		"Has Role", filters={"role": ["in", ["Shop Manager", "Sales Manager"]], "parenttype": "User"}, pluck="parent", distinct=True
 	)
 	return [
 		u for u in frappe.get_all("User", filters={"name": ["in", users or [""]], "enabled": 1}, pluck="name")
 		if u not in ("Administrator", "Guest")
 	]
+
+
+def trade_lead(lead: str):
+	doc = frappe.get_doc("Lead", lead)
+	doc.check_permission("write")
+	if doc.utm_source != trade_source():
+		frappe.throw(_("This Lead is not a trade account application"))
+	return doc
+
+
+def applicant_customer(lead) -> str | None:
+	"""The customer an approval updates: the applicant's own, when they applied signed in to it.
+	An email typed into the form alone isn't proof the applicant owns that account."""
+	if not lead.get("shop_user"):
+		return None
+	from shop.storefront.orders import session_customers
+
+	customers = session_customers(lead.shop_user)
+	return customers[0] if customers else None
+
+
+@frappe.whitelist()
+def trade_defaults(lead: str) -> dict:
+	"""What the approval dialog starts with: the store's trade Customer Group and its Payment
+	Terms, and the customer the approval would update, if any."""
+	doc = trade_lead(lead)
+	group = frappe.get_cached_doc("Shop Settings").get("trade_customer_group")
+	return {
+		"customer_group": group,
+		"payment_terms": frappe.db.get_value("Customer Group", group, "payment_terms") if group else None,
+		"existing_customer": applicant_customer(doc),
+	}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -198,43 +227,47 @@ def approve_trade(
 	"""Approve a trade application: ERPNext makes the Customer from the Lead (moving its contact and
 	address over and marking it Converted), or an existing customer with that email is converted.
 	The trade terms are set on the Customer and the applicant gets a store login."""
-	frappe.only_for(APPROVER_ROLES)
-	doc = frappe.get_doc("Lead", lead)
-	if doc.utm_source != trade_source():
-		frappe.throw(_("This Lead is not a trade account application"))
+	doc = trade_lead(lead)
 	if doc.status == "Converted":
 		frappe.throw(_("This application has already been approved"))
 	if cint(allow_on_account) and not payment_terms:
 		frappe.throw(_("Set the Payment Terms to let them pay on account"))
 	from erpnext.crm.doctype.lead.lead import _make_customer
 
-	from shop.storefront.checkout import find_customer_by_email
-
-	existing = find_customer_by_email(doc.email_id)
+	existing = applicant_customer(doc)
 	if existing:
+		frappe.has_permission("Customer", "write", existing, throw=True)
 		customer = frappe.get_doc("Customer", existing)
-		customer.customer_name = doc.company_name
-		customer.customer_type = "Company"
+		# the applicant's own account becomes the business they applied as
+		customer.customer_name = doc.company_name or customer.customer_name
+		customer.customer_type = "Company" if doc.company_name else customer.customer_type
 		customer.lead_name = doc.name
+		customer.tax_id = customer.tax_id or doc.shop_tax_id
 	else:
+		frappe.has_permission("Customer", "create", throw=True)
 		customer = _make_customer(doc.name, ignore_permissions=True)
-	customer.customer_group = customer_group or frappe.get_cached_doc("Shop Settings").get("trade_customer_group") or customer.customer_group
-	customer.default_price_list = price_list or None
-	customer.tax_id = doc.shop_tax_id or customer.tax_id
-	customer.payment_terms = payment_terms or None
+		customer.tax_id = doc.shop_tax_id
+	settings = frappe.get_cached_doc("Shop Settings")
+	customer.customer_group = customer_group or settings.get("trade_customer_group") or customer.customer_group
+	# only what the approver set changes an existing customer
+	if price_list:
+		customer.default_price_list = price_list
+	if payment_terms:
+		customer.payment_terms = payment_terms
 	if customer.meta.has_field("shop_allow_on_account"):
-		customer.shop_allow_on_account = 1 if cint(allow_on_account) else 0
-	company = frappe.get_cached_doc("Shop Settings").company
-	customer.credit_limits = [row for row in customer.get("credit_limits") or [] if row.company != company]
+		customer.shop_allow_on_account = 1 if cint(allow_on_account) else customer.get("shop_allow_on_account") or 0
 	if flt(credit_limit):
-		customer.append("credit_limits", {"company": company, "credit_limit": flt(credit_limit)})
-	user = doc.shop_user or (doc.email_id if frappe.db.exists("User", doc.email_id) else None) or create_user(doc.email_id, doc.lead_name)
+		customer.credit_limits = [row for row in customer.get("credit_limits") or [] if row.company != settings.company]
+		customer.append("credit_limits", {"company": settings.company, "credit_limit": flt(credit_limit)})
+	user = doc.shop_user or (doc.email_id if frappe.db.exists("User", doc.email_id) else None) or create_user(
+		doc.email_id, doc.lead_name, accepted=(doc.shop_terms_version, doc.shop_terms_accepted_on) if doc.get("shop_terms_version") else None
+	)
 	if user not in [row.user for row in customer.get("portal_users") or []]:
 		customer.append("portal_users", {"user": user})
 	customer.flags.ignore_permissions = True
 	customer.save(ignore_permissions=True) if existing else customer.insert(ignore_permissions=True)
 	if existing:
-		# a customer made before applying keeps its own contact; the Lead's address joins it
+		# the applicant's customer keeps its own contact; the Lead's address joins it
 		for address in frappe.get_all("Dynamic Link", filters={"parenttype": "Address", "link_doctype": "Lead", "link_name": doc.name}, pluck="parent"):
 			address_doc = frappe.get_doc("Address", address)
 			address_doc.append("links", {"link_doctype": "Customer", "link_name": customer.name})
@@ -273,9 +306,8 @@ def add_address(link_doctype: str, link_name: str, values: dict) -> None:
 @frappe.whitelist(methods=["POST"])
 def decline_trade(lead: str, reason: str | None = None) -> None:
 	"""Turn down a trade application: the Lead is marked Unqualified, with the reason as a note."""
-	frappe.only_for(APPROVER_ROLES)
-	doc = frappe.get_doc("Lead", lead)
-	if doc.utm_source != trade_source() or doc.status == "Converted" or doc.qualification_status == "Unqualified":
+	doc = trade_lead(lead)
+	if doc.status == "Converted" or doc.qualification_status == "Unqualified":
 		frappe.throw(_("This application has already been dealt with"))
 	if reason:
 		doc.append("notes", {"note": frappe.utils.escape_html(reason), "added_by": frappe.session.user, "added_on": now_datetime()})

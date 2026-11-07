@@ -72,36 +72,48 @@ def statement_pdf():
 
 
 def sync_customer(doc, method=None) -> None:
-	"""Customer on_update: add the customer to, or remove them from, the automatic statement
-	runs for Customer Groups, matching the group they are in now."""
-	if not frappe.db.table_exists("Process Statement Of Accounts"):
+	"""Customer on_update: when the store emails monthly statements, keep the customer list of its
+	statement run (ERPNext's Process Statement Of Accounts for the trade Customer Group) as
+	ERPNext's Fetch Customers fills it, making the run once the group has a customer."""
+	settings = frappe.get_cached_doc("Shop Settings")
+	group = settings.get("trade_customer_group")
+	if not (group and settings.get("email_statements")):
 		return
-	runs = frappe.get_all(
+	before = doc.get_doc_before_save()
+	if before and all(before.get(field) == doc.get(field) for field in ("customer_group", "email_id", "disabled")):
+		return
+	trade_groups = {group, *frappe.db.get_descendants("Customer Group", group)}
+	if not {doc.customer_group, before.customer_group if before else None} & trade_groups:
+		return
+	from shop.setup_store import statement_run
+
+	statement_run(settings.company, group, settings.store_name or frappe.get_cached_value("Company", settings.company, "company_name"))
+	for name in frappe.get_all(
 		"Process Statement Of Accounts",
-		filters={"enable_auto_email": 1, "customer_collection": "Customer Group"},
-		fields=["name", "collection_name", "primary_mandatory"],
-	)
-	for run in runs:
-		groups = [run.collection_name, *frappe.db.get_descendants("Customer Group", run.collection_name)]
-		belongs = (
-			doc.customer_group in groups
-			and not doc.disabled
-			and (doc.email_id or not run.primary_mandatory)
-		)
-		row = frappe.db.get_value(ROW_DOCTYPE, {"parent": run.name, "customer": doc.name}, ["name", "primary_email"], as_dict=True)
-		if belongs and not row:
-			add_row(run.name, doc)
-		elif belongs and row and row.primary_email != (doc.email_id or ""):
-			frappe.db.set_value(ROW_DOCTYPE, row.name, "primary_email", doc.email_id or "")
-		elif row and not belongs:
-			# a direct delete: saving the run would refuse an empty customer list
-			frappe.db.delete(ROW_DOCTYPE, {"name": row.name})
+		filters={"enable_auto_email": 1, "customer_collection": "Customer Group", "collection_name": group},
+		pluck="name",
+	):
+		run = frappe.get_doc("Process Statement Of Accounts", name)
+		customers = run_customers(group, run.primary_mandatory)
+		if customers:
+			run.set("customers", customers)
+			run.flags.ignore_permissions = True
+			run.save()
 
 
-def add_row(run_name: str, customer) -> None:
-	run = frappe.get_doc("Process Statement Of Accounts", run_name)
-	row = run.append(
-		"customers",
-		{"customer": customer.name, "customer_name": customer.customer_name, "primary_email": customer.email_id or ""},
+def run_customers(group: str, primary_mandatory: int) -> list[dict]:
+	"""A statement run's customer rows for a Customer Group, as ERPNext's Fetch Customers makes them."""
+	from erpnext.accounts.doctype.process_statement_of_accounts.process_statement_of_accounts import (
+		fetch_customers,
 	)
-	row.db_insert()
+
+	try:
+		customers = fetch_customers("Customer Group", group, primary_mandatory)
+	except frappe.ValidationError:
+		frappe.clear_messages()
+		return []
+	return [
+		{"customer": row["name"], "customer_name": row["customer_name"], "primary_email": row["primary_email"],
+		 "billing_email": row["billing_email"]}
+		for row in customers
+	]

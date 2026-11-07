@@ -91,7 +91,7 @@ def order_fields() -> dict:
 		# trade account applications from the store are ERPNext Leads (UTM Source: TRADE_SOURCE)
 		"Lead": [
 			{"fieldname": "shop_trade_section", "fieldtype": "Section Break", "label": "Trade Account Application",
-			 "insert_after": "utm_campaign", "collapsible": 1, "depends_on": "eval:doc.shop_user || doc.shop_tax_id"},
+			 "insert_after": "utm_campaign", "collapsible": 1, "depends_on": "eval:doc.utm_source == 'Store Trade Application'"},
 			{"fieldname": "shop_tax_id", "fieldtype": "Data", "label": "Tax ID", "insert_after": "shop_trade_section",
 			 "description": "GST or VAT number the business gave. Copied to the Customer when approved."},
 			{"fieldname": "shop_company_number", "fieldtype": "Data", "label": "Company Number",

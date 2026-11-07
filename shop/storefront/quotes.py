@@ -130,8 +130,8 @@ def quote_url(name: str, token: str) -> str:
 @frappe.whitelist(methods=["POST"])
 def send_quote(name: str) -> str:
 	"""Email the customer a link to view and accept a submitted quotation."""
-	frappe.only_for(("System Manager", "Sales Manager", "Sales User", "Shop Manager"))
 	quotation = frappe.get_doc("Quotation", name)
+	quotation.check_permission("email")
 	if quotation.docstatus != 1:
 		frappe.throw(_("Submit the quotation first"))
 	email = quotation.contact_email
@@ -177,7 +177,7 @@ def quote_summary(name: str, token: str | None) -> dict:
 		"name": quotation.name,
 		"token": token or "",
 		"status": quote_status(quotation, order, expired, closed),
-		"valid_till": frappe.utils.formatdate(quotation.valid_till) if quotation.valid_till else "",
+		"valid_till": _("Valid until {0}").format(frappe.utils.formatdate(quotation.valid_till)) if quotation.valid_till else "",
 		"lines_html": html,
 		"can_accept": "true" if can_accept else None,
 		"payment_methods": methods,

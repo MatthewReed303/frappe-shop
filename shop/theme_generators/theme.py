@@ -14,7 +14,8 @@ class Theme:
 	head, body, mono: the heading, body and label fonts (mono is used by generators that have one).
 	palette: colours, {name: (light, dark)}, using the generator's palette keys.
 	skip_routes: pages the site already has, which the theme leaves out (e.g. "about").
-	component_ids: the generator's component id -> the theme's own id, e.g. {"shop-navbar": "acme-bar"}.
+	component_ids: the generator's component id -> the theme's own id, e.g. {"shop-navbar": "acme-bar"};
+	  the others are named after the theme's group (shop-hero -> acme-hero).
 	site_components: ids among those that the site already has (e.g. its own footer); they are
 	  placed on the pages but not generated.
 	header_component: a site component placed above every page (e.g. the site's header).
@@ -64,7 +65,14 @@ class Theme:
 		return self.blocks.get(name, default)(refs)
 
 	def component_id(self, component_id):
-		return self.component_ids.get(component_id, component_id)
+		"""The theme's id for one of the generator's components: its own id when it gives one, else,
+		for a theme with its own group, the generator's id under that group (shop-hero -> acme-hero),
+		so a site theme never writes over the generator's own components."""
+		if component_id in self.component_ids:
+			return self.component_ids[component_id]
+		if self.group == self.defaults["group"]:
+			return component_id
+		return f"{self.group}-{component_id.split('-', 1)[1]}"
 
 	def component_ref(self, component_id):
 		"""A component placed on a page: the theme's own id for it when it has one."""

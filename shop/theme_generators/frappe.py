@@ -13,7 +13,7 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
-from shop.theme_generators.store_ui import store_css
+from shop.theme_generators.store_ui import form_error, hint, notice, shown_with_form, store_css, terms_box
 from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "frappe"
@@ -757,9 +757,9 @@ def error_banner(refs):
 		text="",
 		attrs={"data-shop": "error", "role": "alert"},
 		styles={
-			"backgroundColor": "#FEF2F2",
+			"backgroundColor": refs["card"],
 			"borderRadius": "4px",
-			"color": "#B3261E",
+			"color": refs["badge"],
 			"display": "none",
 			"fontSize": "14px",
 			"marginTop": "16px",
@@ -2802,7 +2802,7 @@ def cart_blocks(refs):
 
 
 def input_block(refs, name, label, input_type="text", required=False, half=False, prefill=False):
-	attrs = {"type": input_type, "name": name, "placeholder": label}
+	attrs = {"type": input_type, "name": name, "placeholder": label, "aria-label": label}
 	if required:
 		attrs["required"] = "required"
 	return block(
@@ -2855,11 +2855,6 @@ def field_styles(refs, span=2):
 	}
 
 
-def hint(refs, text="", **extra):
-	return block("p", text=text, classes=["checkout-hint"],
-				 styles={"color": refs["muted"], "fontSize": "12px", "gridColumn": "span 2", "lineHeight": "1.5", "width": "100%"}, **extra)
-
-
 def country_select(refs, span=1):
 	"""ERPNext's countries, the store's own country first selected."""
 	return repeater(
@@ -2873,41 +2868,11 @@ def country_select(refs, span=1):
 	)
 
 
-def terms_box(refs, lead="I accept the", span=2):
-	"""The terms checkbox, with the store's Terms and Conditions link and note (terms.*)."""
-	return block(
-		"div",
-		name="Terms",
-		visibilityCondition={"key": "terms", "comesFrom": "dataScript"},
-		styles={"display": "flex", "flexDirection": "column", "gap": "10px", "gridColumn": f"span {span}", "marginTop": "6px", "width": "100%"},
-		children=[
-			block("label", classes=["checkout-check"], children=[
-				block("input", attrs={"type": "checkbox", "name": "accept_terms", "required": "required"}),
-				block("span", children=[
-					block("span", text=f"{lead} "),
-					block("a", text="Terms and Conditions", attrs={"href": "/terms", "target": "_blank", "data-shop": "terms-link"},
-						  dynamicValues=[dv("terms.url", "href", "attribute")]),
-					block("span", text="", classes=["terms-note"], visibilityCondition={"key": "terms.note", "comesFrom": "dataScript"},
-						  dynamicValues=[dv("terms.note", "innerHTML")]),
-				]),
-			]),
-			block("label", classes=["checkout-check"], visibilityCondition={"key": "terms.business_label", "comesFrom": "dataScript"},
-				  children=[block("input", attrs={"type": "checkbox", "name": "business_buyer"}),
-							block("span", text="", dynamicValues=[dv("terms.business_label", "innerHTML")])]),
-		],
-	)
-
-
 def submit_button(refs, text, **extra):
 	return block("button", text=text, attrs={"type": "submit"}, classes=["form-submit"],
 				 styles={"backgroundColor": refs["ink"], "borderRadius": "2px", "borderWidth": "0px", "color": refs["paper"],
 						 "fontSize": "13px", "fontWeight": "600", "gridColumn": "span 2", "marginTop": "8px",
 						 "padding": "14px 32px", "width": "100%"}, **extra)
-
-
-def form_error():
-	return block("div", attrs={"data-shop": "error", "role": "alert"}, classes=["checkout-error"],
-				 styles={"display": "none", "gridColumn": "span 2"})
 
 
 def checkout_blocks(refs):
@@ -2969,8 +2934,7 @@ def checkout_blocks(refs):
 			),
 			hint(refs, "You'll be redirected to a secure payment page to complete your purchase.",
 				 attrs={"data-shop": "gateway-note", "hidden": "hidden"}),
-			terms_box(refs),
-			form_error(),
+			terms_box(),
 			submit_button(refs, "Place order"),
 			block(
 				"details",
@@ -3622,17 +3586,17 @@ def html_block(key, name, classes=None):
 
 def register_blocks(refs):
 	"""Store sign-up: a Website User and Customer, with the store's terms accepted."""
-	form = block("form", name="Register Form", attrs={"data-shop": "register-form"}, classes=["account-form"], children=[
+	form = shown_with_form(block("form", name="Register Form", attrs={"data-shop": "register-form"}, classes=["account-form"], children=[
 		input_block(refs, "full_name", "Full name", required=True),
 		input_block(refs, "email", "Email address", "email", required=True),
-		terms_box(refs),
+		terms_box(business=False),
 		form_error(),
 		submit_button(refs, "Create account"),
-	])
+	]))
 	return page_shell(refs, "Create an account", [
 		intro(refs, "Track your orders, see invoices and quotes, and check out faster. We'll email you a link to set your password."),
 		form,
-		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]),
+		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
 		hint(refs, 'Already have an account? <a href="/login">Sign in</a>. Buying for a business? '
 				   '<a href="/account/trade">Apply for a trade account</a>.'),
 	], width="560px")
@@ -3646,14 +3610,14 @@ def trade_blocks(refs):
 		field_styles(refs, 1), element="select", name="Industry",
 		attrs={"name": "industry", "aria-label": "What does your business do?"},
 	)
-	form = block("form", name="Trade Form", attrs={"data-shop": "trade-form"}, classes=["account-form"], children=[
+	form = shown_with_form(block("form", name="Trade Form", attrs={"data-shop": "trade-form"}, classes=["account-form"], children=[
 		form_section_label(refs, "Business"),
 		input_block(refs, "company_name", "Business name", required=True),
 		input_block(refs, "company_number", "Company number", half=True),
-		input_block(refs, "tax_id", "Tax ID (e.g. GST or VAT number)", half=True),
+		input_block(refs, "tax_id", "Tax ID", half=True),
 		industry,
 		input_block(refs, "website", "Website (optional)", half=True),
-		block("textarea", attrs={"name": "message", "rows": "3", "placeholder": "What will you use our products for? Rough yearly quantities help."},
+		block("textarea", attrs={"name": "message", "rows": "3", "aria-label": "About your business", "placeholder": "What will you use our products for? Rough yearly quantities help."},
 			  styles=field_styles(refs)),
 		form_section_label(refs, "Contact and address"),
 		input_block(refs, "contact_name", "Your name", required=True, prefill=True),
@@ -3664,14 +3628,14 @@ def trade_blocks(refs):
 		input_block(refs, "pincode", "Postcode", half=True, prefill=True),
 		input_block(refs, "state", "State / region", half=True, prefill=True),
 		country_select(refs),
-		terms_box(refs, "On behalf of the business, I accept the"),
+		terms_box("On behalf of the business, I accept the", business=False),
 		form_error(),
 		submit_button(refs, "Apply for a trade account"),
-	])
+	]))
 	return page_shell(refs, "Trade account", [
 		intro(refs, "For businesses buying regularly: trade prices, quotes, and paying on account by invoice once approved."),
 		form,
-		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]),
+		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
 	])
 
 
@@ -3688,7 +3652,7 @@ def quote_blocks(refs):
 				 children=[
 					 form_section_label(refs, "Pay by"),
 					 repeater("quote.payment_methods", method, {"display": "flex", "flexDirection": "column", "gap": "8px", "gridColumn": "span 2", "width": "100%"}),
-					 terms_box(refs),
+					 terms_box(),
 					 form_error(),
 					 submit_button(refs, "Accept quote and place order"),
 				 ])

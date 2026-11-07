@@ -9,18 +9,23 @@ frappe.ui.form.on("Lead", {
 });
 
 async function approve(frm) {
-	const settings = await frappe.db.get_value("Shop Settings", "Shop Settings", "trade_customer_group");
-	const group = settings.message && settings.message.trade_customer_group;
-	const terms = group ? (await frappe.db.get_value("Customer Group", group, "payment_terms")).message : {};
+	const defaults = (await frappe.xcall("shop.storefront.accounts.trade_defaults", { lead: frm.doc.name })) || {};
 	const dialog = new frappe.ui.Dialog({
 		title: __("Approve Trade Account for {0}", [frm.doc.company_name || frm.doc.lead_name]),
 		fields: [
-			{ fieldname: "customer_group", fieldtype: "Link", options: "Customer Group", label: __("Customer Group"), reqd: 1, default: group },
-			{ fieldname: "payment_terms", fieldtype: "Link", options: "Payment Terms Template", label: __("Payment Terms"), default: terms && terms.payment_terms },
+			{
+				fieldtype: "HTML",
+				options: defaults.existing_customer
+					? `<p class="text-muted">${__("The applicant's customer {0} becomes a trade account. Fields left empty keep its current values.", [frappe.utils.escape_html(defaults.existing_customer)])}</p>`
+					: `<p class="text-muted">${__("A new Customer is made from this Lead.")}</p>`,
+			},
+			{ fieldname: "customer_group", fieldtype: "Link", options: "Customer Group", label: __("Customer Group"), reqd: 1, default: defaults.customer_group },
+			{ fieldname: "payment_terms", fieldtype: "Link", options: "Payment Terms Template", label: __("Payment Terms"), default: defaults.payment_terms },
 			{ fieldname: "allow_on_account", fieldtype: "Check", label: __("Pay on Account at the Store") },
 			{ fieldname: "credit_limit", fieldtype: "Currency", label: __("Credit Limit") },
 			{ fieldname: "price_list", fieldtype: "Link", options: "Price List", label: __("Price List"),
-			  description: __("Optional. Usually leave empty: the Customer Group's Price List and Pricing Rules apply.") },
+			  description: __("Optional. Usually leave empty: the Customer Group's Price List and Pricing Rules apply."),
+			  get_query: () => ({ filters: { selling: 1, enabled: 1 } }) },
 		],
 		primary_action_label: __("Approve"),
 		primary_action(values) {
@@ -32,7 +37,7 @@ async function approve(frm) {
 				callback: (r) => {
 					dialog.hide();
 					frm.reload_doc();
-					frappe.show_alert({ message: __("Customer {0} created", [r.message.customer]), indicator: "green" });
+					frappe.show_alert({ message: __("Trade account approved: {0}", [r.message.customer]), indicator: "green" });
 				},
 			});
 		},

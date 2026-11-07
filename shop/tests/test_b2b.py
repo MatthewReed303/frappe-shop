@@ -19,6 +19,10 @@ def ensure(doctype, name, values):
 	return name
 
 
+def lead_for(email: str) -> str:
+	return frappe.db.get_value("Lead", {"email_id": email})
+
+
 class TestTradeAccounts(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
@@ -67,8 +71,9 @@ class TestTradeAccounts(IntegrationTestCase):
 			accept_terms=1,
 		)
 		frappe.set_user("Administrator")
+		self.assertNotIn("name", result)  # the reply never says which Lead or account it found
 		# the application is an ERPNext Lead from the store
-		lead = frappe.get_doc("Lead", result["name"])
+		lead = frappe.get_doc("Lead", lead_for(email))
 		self.assertEqual(lead.utm_source, "Store Trade Application")
 		self.assertEqual(lead.shop_user, email)
 		self.assertTrue(lead.shop_terms_version)
@@ -89,14 +94,14 @@ class TestTradeAccounts(IntegrationTestCase):
 	def test_guest_application_becomes_a_customer_made_from_the_lead(self):
 		frappe.set_user("Guest")
 		try:
-			result = accounts.apply_trade(
+			accounts.apply_trade(
 				{"company_name": "Guest Trade Ltd", "contact_name": "Gina Guest", "email": "gina.guest@example.com",
 				 "tax_id": "123-456-789", "country": self.address["country"], "address_line1": "1 Depot Road", "city": "Town"},
 				accept_terms=1,
 			)
 		finally:
 			frappe.set_user("Administrator")
-		approved = accounts.approve_trade(result["name"], customer_group="_Test Trade Group")
+		approved = accounts.approve_trade(lead_for("gina.guest@example.com"), customer_group="_Test Trade Group")
 		customer = frappe.get_doc("Customer", approved["customer"])
 		self.assertEqual((customer.customer_name, customer.customer_type, customer.tax_id), ("Guest Trade Ltd", "Company", "123-456-789"))
 		self.assertEqual(customer.customer_group, "_Test Trade Group")
@@ -113,17 +118,35 @@ class TestTradeAccounts(IntegrationTestCase):
 			 "message": "We buy about 50 a year"},
 			accept_terms=1,
 		)
-		with self.assertRaises(frappe.ValidationError):  # one open application at a time
-			accounts.apply_trade({"company_name": "Again", "contact_name": "T", "email": email, "country": self.address["country"]}, accept_terms=1)
+		# applying again updates the same Lead, with the same reply
+		again = accounts.apply_trade({"company_name": "Declined Co", "contact_name": "T", "email": email, "country": self.address["country"]}, accept_terms=1)
+		self.assertEqual(again, result)
+		self.assertEqual(frappe.db.count("Lead", {"email_id": email}), 1)
 		self.assertEqual(accounts.trade_status()["status"], "Pending")
 		frappe.set_user("Administrator")
-		accounts.decline_trade(result["name"], reason="Not a business")
-		lead = frappe.get_doc("Lead", result["name"])
+		accounts.decline_trade(lead_for(email), reason="Not a business")
+		lead = frappe.get_doc("Lead", lead_for(email))
 		self.assertEqual(lead.qualification_status, "Unqualified")
 		self.assertTrue(any("Not a business" in row.note for row in lead.notes))
 		self.assertTrue(any("50 a year" in row.note for row in lead.notes))
 		frappe.set_user(email)
 		self.assertEqual(accounts.trade_status()["status"], "Declined")
+		# after a decline the business can apply again
+		accounts.apply_trade({"company_name": "Declined Co", "contact_name": "T", "email": email, "country": self.address["country"]}, accept_terms=1)
+		self.assertEqual(accounts.trade_status()["status"], "Pending")
+
+	def test_an_unverified_email_does_not_take_over_an_existing_customer(self):
+		existing = accounts.ensure_customer("someone.else@example.com", "Someone Else")
+		frappe.db.set_value("Customer", existing, "payment_terms", "_Test 20th")
+		frappe.set_user("Guest")
+		try:
+			accounts.apply_trade({"company_name": "Imposter Ltd", "contact_name": "I", "email": "someone.else@example.com",
+								  "country": self.address["country"]}, accept_terms=1)
+		finally:
+			frappe.set_user("Administrator")
+		approved = accounts.approve_trade(lead_for("someone.else@example.com"), customer_group="_Test Trade Group")
+		self.assertNotEqual(approved["customer"], existing)
+		self.assertEqual(frappe.db.get_value("Customer", existing, ["customer_name", "payment_terms"]), ("Someone Else", "_Test 20th"))
 
 	def test_sign_up_needs_the_terms_and_records_them(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -275,19 +298,22 @@ class TestCustomerPrices(IntegrationTestCase):
 
 
 class TestStatements(IntegrationTestCase):
-	GROUP, OTHER, RUN = "_Test Statement Group", "_Test Other Group", "_Test Statement Run"
+	GROUP, OTHER = "_Test Statement Group", "_Test Other Group"
 
 	def setUp(self):
 		for group in (self.GROUP, self.OTHER):
 			ensure("Customer Group", group, {"customer_group_name": group, "parent_customer_group": "All Customer Groups"})
-		if not frappe.db.exists("Process Statement Of Accounts", self.RUN):
-			run = frappe.new_doc("Process Statement Of Accounts")
-			run.update({"__newname": self.RUN, "company": frappe.get_cached_doc("Shop Settings").company,
-						"report": "General Ledger", "customer_collection": "Customer Group", "collection_name": self.GROUP,
-						"enable_auto_email": 1, "frequency": "Monthly", "primary_mandatory": 1,
-						"from_date": "2026-01-01", "to_date": "2026-01-31"})
-			run.flags.ignore_validate = run.flags.ignore_mandatory = True
-			run.insert(ignore_permissions=True)
+		settings = frappe.get_doc("Shop Settings")
+		original = {field: settings.get(field) for field in ("trade_customer_group", "email_statements")}
+		self.addCleanup(lambda: frappe.db.set_single_value("Shop Settings", original))
+		frappe.db.set_single_value("Shop Settings", {"trade_customer_group": self.GROUP, "email_statements": 1})
+		frappe.clear_cache(doctype="Shop Settings")
+		self.stays = frappe.get_doc("Customer", accounts.ensure_customer("statement.stays@example.com", "Statement Stays"))
+		self.stays.customer_group = self.GROUP
+		self.stays.save(ignore_permissions=True)
+		self.RUN = frappe.db.get_value(
+			"Process Statement Of Accounts", {"customer_collection": "Customer Group", "collection_name": self.GROUP}
+		)
 
 	def rows(self):
 		return frappe.get_all("Process Statement Of Accounts Customer", filters={"parent": self.RUN}, fields=["customer", "primary_email"])
@@ -297,6 +323,10 @@ class TestStatements(IntegrationTestCase):
 		values = frappe.db.get_value("Customer", customer, ["customer_primary_contact", "email_id"], as_dict=True)
 		self.assertTrue(values.customer_primary_contact)
 		self.assertEqual(values.email_id, "statement.one@example.com")
+
+	def test_the_store_statement_run_is_made_when_the_trade_group_has_a_customer(self):
+		self.assertTrue(self.RUN)
+		self.assertIn("statement.stays@example.com", [r.primary_email for r in self.rows()])
 
 	def test_customer_joins_and_leaves_the_statement_run_with_their_group(self):
 		customer = frappe.get_doc("Customer", accounts.ensure_customer("statement.two@example.com", "Statement Two"))

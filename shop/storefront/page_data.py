@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, escape_html
 
 from shop.routes import store_url
 from shop.storefront import cart, catalog, checkout, orders, pricing, product
@@ -40,8 +40,9 @@ def listing() -> dict:
 		"filters": listing_filters(form, collections),
 		"filters_applied": "true" if applied else None,
 		"filter_count": str(len(applied)) if applied else None,
-		"search": form.get("search") or "",
-		"search_label": f'Results for "{form.get("search")}"' if form.get("search") else None,
+		# page data is put into the page as HTML, so what the shopper typed is escaped
+		"search": escape_html(form.get("search") or ""),
+		"search_label": escape_html(_('Results for "{0}"').format(form.get("search"))) if form.get("search") else None,
 		"no_results": None if result["products"] else "true",
 		"page": page,
 		"has_more": page * PAGE_SIZE < result["total"],
@@ -323,7 +324,13 @@ def account_html(customers: list[str]) -> str:
 def register_page() -> dict:
 	from shop.storefront import checkout
 
-	return {"store": store_details(), "terms": checkout.terms_details(), "signed_in": "true" if frappe.session.user != "Guest" else None}
+	signed_in = frappe.session.user != "Guest"
+	return {
+		"store": store_details(),
+		"terms": checkout.terms_details(),
+		"show_form": None if signed_in else "true",
+		"notice": _("You're signed in. Your orders and invoices are on your account page.") if signed_in else None,
+	}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -336,11 +343,23 @@ def trade_page() -> dict:
 		"countries": checkout.countries(),
 		"default_country": checkout.totals.company_country(),
 		"prefill": checkout.checkout_prefill(),
-		"trade": accounts.trade_status(),
+		**trade_form_state(accounts.trade_status()),
 		# what the business does: ERPNext's Industry Types, as on a Lead
 		"industries": [{"value": "", "label": frappe._("What does your business do?")}]
 		+ [{"value": name, "label": name} for name in frappe.get_all("Industry Type", pluck="name", order_by="name")],
 	}
+
+
+def trade_form_state(trade: dict | None) -> dict:
+	"""Whether the trade application form shows, or what to tell a business that has applied."""
+	status = (trade or {}).get("status")
+	notice = {
+		"Approved": _("Your trade account is open. Sign in to see your trade prices."),
+		"Pending": _("We have your application and will email you once we've reviewed it."),
+	}.get(status)
+	if trade and trade.get("trade"):
+		notice = _("Your trade account is open. Your trade prices show while you're signed in.")
+	return {"trade": trade, "show_form": None if notice else "true", "notice": notice}
 
 
 @frappe.whitelist(allow_guest=True)
