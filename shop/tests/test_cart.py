@@ -1,7 +1,9 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from shop.storefront import cart
+from shop.storefront import cart, stock
 
 
 class TestCart(IntegrationTestCase):
@@ -33,6 +35,52 @@ class TestCart(IntegrationTestCase):
 		)[0]
 		payload = cart.add_item(variant)
 		self.assertEqual(payload["items"][0]["slug"], "crew-neck-t-shirt")
+
+	def in_stock(self, qty, allow_out_of_stock=0, threshold=0):
+		settings = frappe.get_doc("Shop Settings")
+		original = (settings.allow_out_of_stock, settings.low_stock_threshold)
+		frappe.db.set_single_value(
+			"Shop Settings", {"allow_out_of_stock": allow_out_of_stock, "low_stock_threshold": threshold}
+		)
+		frappe.clear_cache(doctype="Shop Settings")
+
+		def restore():
+			frappe.db.set_single_value(
+				"Shop Settings", {"allow_out_of_stock": original[0], "low_stock_threshold": original[1]}
+			)
+			frappe.clear_cache(doctype="Shop Settings")
+
+		self.addCleanup(restore)
+		return patch("shop.storefront.stock.get_stock", return_value={"SHOP-DEMO-003": qty})
+
+	def test_cart_takes_only_what_is_in_stock(self):
+		self.assertTrue(frappe.db.get_value("Item", "SHOP-DEMO-003", "is_stock_item"))
+		with self.in_stock(2):
+			cart.add_item("SHOP-DEMO-003", qty=2)
+			with self.assertRaisesRegex(frappe.ValidationError, "Only 2 of"):
+				cart.add_item("SHOP-DEMO-003")
+			with self.assertRaisesRegex(frappe.ValidationError, "Only 2 of"):
+				cart.set_qty("SHOP-DEMO-003", qty=5)
+		frappe.db.delete("Shop Cart")
+		clear_request()
+		with self.in_stock(0), self.assertRaisesRegex(frappe.ValidationError, "out of stock"):
+			cart.add_item("SHOP-DEMO-003")
+		with self.in_stock(0, allow_out_of_stock=1):
+			self.assertEqual(cart.add_item("SHOP-DEMO-003")["item_count"], 1)
+
+	def test_an_item_without_a_price_is_not_sold(self):
+		with patch("shop.storefront.pricing.get_prices", return_value={}):
+			with self.assertRaisesRegex(frappe.ValidationError, "isn't available online"):
+				cart.add_item("SHOP-DEMO-003")
+			self.assertEqual(stock.availability("SHOP-DEMO-003", priced=False)["stock_status"], "Not available online")
+
+	def test_what_the_product_page_says_about_stock(self):
+		with self.in_stock(3, threshold=5):
+			self.assertEqual(stock.availability("SHOP-DEMO-003"), stock.state(True, "low", "Only 3 left"))
+		with self.in_stock(9, threshold=5):
+			self.assertEqual(stock.availability("SHOP-DEMO-003")["stock_state"], "in")
+		with self.in_stock(0):
+			self.assertEqual(stock.availability("SHOP-DEMO-003"), stock.state(False, "out", "Out of stock"))
 
 	def test_template_item_rejected(self):
 		with self.assertRaises(frappe.ValidationError):

@@ -197,10 +197,16 @@ def display_stock(products: list) -> dict:
 	if settings.allow_out_of_stock:
 		return dict.fromkeys([p.item for p in products], True)
 	simple = [p.item for p in products if not p.has_variants]
-	availability = {code: qty > 0 for code, qty in stock.get_stock(simple).items()}
 	templates = [p.item for p in products if p.has_variants]
-	for template, codes in variants_by_template(templates).items():
-		availability[template] = any(qty > 0 for qty in stock.get_stock(codes).values())
+	variants = variants_by_template(templates)
+	codes = simple + [code for group in variants.values() for code in group]
+	stocked = set(frappe.get_all("Item", filters={"name": ["in", codes], "is_stock_item": 1}, pluck="name")) if codes else set()
+	quantities = stock.get_stock([code for code in codes if code in stocked])
+	# services aren't counted in stock
+	available = {code: code not in stocked or quantities.get(code, 0) > 0 for code in codes}
+	availability = {code: available[code] for code in simple}
+	for template, group in variants.items():
+		availability[template] = any(available[code] for code in group)
 	return availability
 
 

@@ -224,8 +224,24 @@
 		if (first) first.dataset.selected = "true";
 	}
 
+	function syncAvailability(item) {
+		const buttons = document.querySelectorAll('[data-shop="add-to-cart"], [data-shop="buy-now"]');
+		buttons.forEach((button) => {
+			if (item.item_code) button.dataset.itemCode = item.item_code;
+			button.disabled = !item.purchasable;
+			if (!item.purchasable) button.textContent = item.stock_status || button.dataset.outOfStockLabel;
+			else if (button.dataset.label) button.textContent = button.dataset.label;
+		});
+		document.querySelectorAll('[data-shop="stock-status"]').forEach((line) => {
+			line.dataset.stockState = item.stock_state || "";
+			const text = line.querySelector('[data-shop="stock-status-text"]');
+			if (text) text.textContent = item.stock_status || "";
+		});
+	}
+
 	function initVariantPicker() {
 		const product = state.product;
+		if (product && !product.has_variants && product.stock_status) syncAvailability(product);
 		if (!product || !product.has_variants) return;
 		const defaultVariant = product.variants.find(
 			(variant) => variant.item_code === product.default_item_code
@@ -261,13 +277,7 @@
 			buttons.forEach((button) => (button.disabled = true));
 			return;
 		}
-		buttons.forEach((button) => {
-			button.dataset.itemCode = variant.item_code;
-			button.disabled = !variant.in_stock;
-			if (!variant.in_stock)
-				button.textContent = button.dataset.outOfStockLabel || "Out of stock";
-			else if (button.dataset.label) button.textContent = button.dataset.label;
-		});
+		syncAvailability(variant);
 		if (variant.formatted_price) {
 			document.querySelectorAll('[data-shop="pdp-price"]').forEach((price) => {
 				price.textContent = variant.formatted_price;
@@ -554,6 +564,7 @@
 			const wanted = (pageData.prefill && pageData.prefill.country) || pageData.default_country;
 			if (wanted) country.value = wanted;
 		}
+		restoreCheckoutDraft(form);
 		form.addEventListener("input", (event) => {
 			if (ADDRESS_FIELDS.includes(event.target.name)) scheduleQuote();
 		});
@@ -685,6 +696,44 @@
 		}
 	}
 
+	// what the shopper typed at checkout is kept over the reload a coupon change makes
+	const DRAFT_KEY = "shop_checkout_draft";
+
+	function saveCheckoutDraft() {
+		const form = checkoutForm();
+		if (!form) return;
+		const draft = {};
+		form.querySelectorAll("input[name], select[name], textarea[name]").forEach((field) => {
+			if (field.type === "radio" || field.type === "checkbox") {
+				if (field.checked) draft[field.name] = field.type === "checkbox" ? true : field.value;
+			} else if (field.value) draft[field.name] = field.value;
+		});
+		try {
+			sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+		} catch (error) {
+			// private windows may refuse storage; the shopper retypes
+		}
+	}
+
+	function restoreCheckoutDraft(form) {
+		let draft = null;
+		try {
+			draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null");
+			sessionStorage.removeItem(DRAFT_KEY);
+		} catch (error) {
+			return;
+		}
+		if (!draft) return;
+		Object.entries(draft).forEach(([name, value]) => {
+			form.querySelectorAll(`[name="${name}"]`).forEach((field) => {
+				if (field.type === "radio") field.checked = field.value === value;
+				else if (field.type === "checkbox") field.checked = !!value;
+				else field.value = value;
+				if (name === "currency" || name === "bank_route") field.dataset.chosen = "1";
+			});
+		});
+	}
+
 	async function applyCoupon(form) {
 		const input = form.querySelector('[name="code"]');
 		if (!input || !input.value.trim()) return;
@@ -692,6 +741,7 @@
 		if (submit) submit.disabled = true;
 		try {
 			await call("shop.storefront.cart.apply_coupon", { code: input.value.trim() });
+			saveCheckoutDraft();
 			window.location.reload();
 		} catch (error) {
 			showError(error.message);
@@ -702,6 +752,7 @@
 	async function removeCoupon() {
 		try {
 			await call("shop.storefront.cart.remove_coupon", {});
+			saveCheckoutDraft();
 			window.location.reload();
 		} catch (error) {
 			showError(error.message);

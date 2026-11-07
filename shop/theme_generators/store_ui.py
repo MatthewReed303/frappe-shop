@@ -27,6 +27,10 @@ def store_css(refs, radius: str = "2px"):
 @media (max-width: 640px) {{ input, select, textarea {{ font-size:16px !important; }} }}
 .visually-hidden {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }}
 .store-currency:empty {{ display:none; }}
+[data-shop="stock-status"] {{ color:{ok}; }}
+[data-shop="stock-status"] .stock-dot {{ background:{ok}; }}
+[data-shop="stock-status"][data-stock-state="out"], [data-shop="stock-status"][data-stock-state="unavailable"] {{ color:{muted}; }}
+[data-shop="stock-status"][data-stock-state="out"] .stock-dot, [data-shop="stock-status"][data-stock-state="unavailable"] .stock-dot {{ background:{muted}; }}
 .currency-picker select {{ font: inherit; font-size:13px; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:{radius}; padding:5px 7px; cursor:pointer; }}
 .checkout-option {{ display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid {line}; border-radius:{radius}; cursor:pointer; width:100%; font-size:13px; }}
 .checkout-option input {{ accent-color:{ink}; width:15px; height:15px; flex-shrink:0; }}

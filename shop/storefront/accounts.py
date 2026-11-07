@@ -292,7 +292,11 @@ def approve_trade(
 		customer.credit_limits = [
 			row for row in customer.get("credit_limits") or [] if row.company != settings.company
 		]
-		customer.append("credit_limits", {"company": settings.company, "credit_limit": flt(credit_limit)})
+		# the limit applies to what is invoiced on account; orders paid up front aren't held by it
+		customer.append(
+			"credit_limits",
+			{"company": settings.company, "credit_limit": flt(credit_limit), "bypass_credit_limit_check": 1},
+		)
 	user = (
 		doc.shop_user
 		or (doc.email_id if frappe.db.exists("User", doc.email_id) else None)

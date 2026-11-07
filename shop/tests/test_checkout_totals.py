@@ -30,6 +30,7 @@ SETTINGS_FIELDS = (
 	"bank_charges_account",
 	"bank_transfer_days",
 	"require_terms",
+	"allow_quote_requests",
 	"terms_url",
 	"terms_and_conditions",
 	"terms_checkbox_note",
@@ -59,6 +60,17 @@ def rates_with_tax(context):
 
 def inactive_rates(context):
 	return None
+
+
+BUSY = {"busy": True}
+
+
+def busy_then_rates(context):
+	"""A shipping app that is busy the first time it is asked."""
+	if BUSY["busy"]:
+		BUSY["busy"] = False
+		return {"options": [], "messages": ["Live shipping prices aren't available right now"]}
+	return test_rates(context)
 
 
 def line(quote, kind):
@@ -308,6 +320,71 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertIn("BIC/SWIFT: TESTXX22", info["details"])
 		self.assertIn("Pay by ACH", info["details"])
 
+	def quantity_break(self, qty: int, percent: float) -> str:
+		"""An ERPNext Pricing Rule: buy `qty` or more of the test item, get `percent` off."""
+		title = f"Test {qty}+ break"
+		name = frappe.db.get_value("Pricing Rule", {"title": title})
+		if not name:
+			rule = frappe.get_doc(
+				{
+					"doctype": "Pricing Rule",
+					"title": title,
+					"apply_on": "Item Code",
+					"items": [{"item_code": ITEM}],
+					"selling": 1,
+					"min_qty": qty,
+					"rate_or_discount": "Discount Percentage",
+					"discount_percentage": percent,
+					"company": self.company,
+					"currency": self.company_currency,
+				}
+			).insert(ignore_permissions=True)
+			name = rule.name
+		self.addCleanup(frappe.db.set_value, "Pricing Rule", name, "disable", 1)
+		frappe.db.set_value("Pricing Rule", name, "disable", 0)
+		return name
+
+	def test_pricing_rule_discount_is_charged_as_quoted(self):
+		self.quantity_break(3, 15)
+		self.basket(3)
+		for method in ("bank", "cod"):
+			with self.subTest(method=method):
+				quote = totals.compute(cart.resolve_cart(), self.home_address, None, method)
+				item = next(row for row in quote.order.items if row.item_code == ITEM)
+				self.assertEqual(flt(item.discount_percentage), 15)
+				name = self.place(payment_method=method, expected_total=quote.total)
+				order = frappe.get_doc("Sales Order", name)
+				line = next(row for row in order.items if row.item_code == ITEM)
+				self.assertEqual(flt(line.rate), flt(item.rate))
+				self.assertEqual(totals.order_total(order), quote.total)
+				self.basket(3)
+
+	def test_quote_keeps_its_pricing_rule(self):
+		from shop.storefront import quotes
+
+		self.quantity_break(3, 15)
+		self.set(allow_quote_requests=1)
+		self.basket(3)
+		result = quotes.request_quote(customer=BUYER, address=self.home_address)
+		quotation = frappe.get_doc("Quotation", result["quote"])
+		line = next(row for row in quotation.items if row.item_code == ITEM)
+		self.assertEqual(flt(line.discount_percentage), 15)
+		quoted = flt(line.rate)
+		# staff review the quote in the desk and send it
+		quotation.save()
+		quotation.submit()
+		line = next(row for row in quotation.items if row.item_code == ITEM)
+		self.assertEqual(flt(line.rate), quoted)
+		# the customer opens the emailed link without signing in
+		with self.set_user("Guest"):
+			summary = quotes.quote_summary(quotation.name, quotation.shop_access_token)
+		self.assertTrue(summary["can_accept"])
+		self.assertIn("bank", [method["method"] for method in summary["payment_methods"]])
+		order = quotes.make_order(quotation)
+		order.insert(ignore_permissions=True)
+		order.submit()
+		self.assertEqual(flt(order.grand_total), flt(quotation.grand_total))
+
 	def test_international_transfer_adds_the_banks_fee(self):
 		basket = self.basket(1)
 		local = totals.compute(basket, self.abroad_address, None, "bank", self.foreign)
@@ -418,8 +495,17 @@ class TestCheckoutTotals(IntegrationTestCase):
 		quote = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
 		order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
 		self.assertEqual(totals.order_total(order), quote.total)
-		self.assertEqual(order.apply_discount_on, "Net Total")
-		self.assertAlmostEqual(order.discount_amount, flt(order.total * 0.1, 2), delta=0.01)
+		self.assertEqual(order.coupon_code, frappe.db.get_value("Coupon Code", {"coupon_code": "WELCOME10"}))
+		# the coupon's Pricing Rule says what the discount is taken from
+		rule = frappe.db.get_value("Coupon Code", order.coupon_code, "pricing_rule")
+		on = frappe.db.get_value("Pricing Rule", rule, "apply_discount_on")
+		self.assertEqual(order.apply_discount_on, on)
+		base = (
+			order.net_total + order.discount_amount
+			if on == "Net Total"
+			else order.grand_total + order.discount_amount
+		)
+		self.assertAlmostEqual(order.discount_amount, flt(base * 0.1, 2), delta=0.01)
 
 	def test_flat_shipping_on_the_shipping_account_is_charged_as_quoted(self):
 		self.without_tax()
@@ -580,6 +666,32 @@ class TestCheckoutTotals(IntegrationTestCase):
 			with self.assertRaises(frappe.ValidationError):
 				self.place(address=address)
 
+	def test_a_busy_shipping_app_is_asked_again(self):
+		BUSY["busy"] = True
+		with patch(
+			"frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.busy_then_rates"])
+		):
+			self.basket(1)
+			first = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
+			self.assertIsNone(first.shipping)
+			second = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
+			self.assertEqual(second.shipping["id"], "test:courier")
+
+	def test_a_service_needs_no_delivery(self):
+		from shop.storefront import shipping
+
+		services = frappe.get_doc(
+			{
+				"doctype": "Shop Cart",
+				"items": [{"item_code": service("TEST-INSTALL", self.company), "qty": 1}],
+			}
+		)
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			options = shipping.get_options(services, shipping.normalize_address(self.home_address), 100)
+		self.assertEqual(
+			[(o["label"], o["amount"]) for o in options["options"]], [("No delivery needed", 0.0)]
+		)
+
 	def test_switched_off_provider_means_free_shipping(self):
 		with patch(
 			"frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.inactive_rates"])
@@ -677,6 +789,52 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.basket(1)
 		name = self.place()
 		self.assertFalse(payment.cancel_if_unpaid(name))
+
+	def test_an_order_is_kept_while_the_customer_has_an_unmatched_payment(self):
+		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+		self.set(cancel_unpaid_orders=1)
+		self.basket(1)
+		name = self.place()
+		order = frappe.get_doc("Sales Order", name)
+		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
+		# staff record the deposit from the bank without linking it to the order
+		entry = get_payment_entry("Sales Order", name)
+		entry.references = []
+		entry.reference_no, entry.reference_date = "BANK-DEPOSIT", nowdate()
+		entry.insert(ignore_permissions=True)
+		entry.submit()
+		self.addCleanup(entry.cancel)
+		self.assertFalse(payment.cancel_if_unpaid(name))
+		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 1)
+		self.assertTrue(
+			frappe.db.exists("Comment", {"reference_name": order.name, "content": ["like", "%not matched%"]})
+		)
+
+	def test_a_customer_who_left_the_payment_page_is_reminded_once(self):
+		from frappe.utils import add_to_date, now_datetime
+
+		self.basket(1)
+		name = self.place(payment_method="cod")
+		frappe.db.set_value(
+			"Sales Order",
+			name,
+			{
+				"shop_payment_method": totals.GATEWAY,
+				"shop_payment_due": add_days(nowdate(), 1),
+				"creation": add_to_date(now_datetime(), hours=-2),
+			},
+		)
+		with (
+			patch("shop.storefront.orders.pay_url", return_value="https://pay.example.com/x"),
+			patch("frappe.sendmail") as sendmail,
+		):
+			payment.remind_unpaid_online_orders()
+			payment.remind_unpaid_online_orders()
+		mine = [c for c in sendmail.call_args_list if c.kwargs.get("reference_name") == name]
+		self.assertEqual(len(mine), 1)
+		self.assertEqual(mine[0].kwargs["subject"], f"Your order {name} is waiting for payment")
+		self.assertIn("https://pay.example.com/x", mine[0].kwargs["message"])
 
 	def test_store_emails_are_editable_email_templates(self):
 		from shop.storefront import emails

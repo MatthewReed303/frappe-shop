@@ -36,6 +36,28 @@ class TestAdminApi(IntegrationTestCase):
 		self.assertEqual(detail["payment_status"], "Paid")
 		self.assertIn("Payment recorded", [event["label"] for event in detail["timeline"]])
 
+	def test_part_payment_into_a_chosen_bank_account(self):
+		from shop.storefront import payment
+		from shop.tests.utils import company_bank_account
+
+		name = self.place_order()
+		order = frappe.get_doc("Sales Order", name)
+		account = company_bank_account(order.company, order.currency)
+		due = orders.get_order(name)["amount_due"]
+		detail = orders.mark_paid(name, bank_account=account, amount=frappe.utils.flt(due / 2, 2))
+		self.assertEqual(detail["payment_status"], "Part paid")
+		entry = frappe.get_last_doc("Payment Entry", filters={"reference_no": name})
+		self.assertEqual(entry.bank_account, account)
+		self.assertEqual(entry.paid_to, frappe.db.get_value("Bank Account", account, "account"))
+		detail = orders.mark_paid(name, bank_account=account, amount=detail["amount_due"])
+		self.assertEqual(detail["payment_status"], "Paid")
+		with self.assertRaises(frappe.ValidationError):
+			orders.mark_paid(name)
+		# invoicing moves the payments to the invoice; the order is still paid
+		order.reload()
+		payment.invoice_paid_order(order)
+		self.assertEqual(orders.get_order(name)["payment_status"], "Paid")
+
 	def test_fulfillment(self):
 		name = self.place_order()
 		detail = orders.fulfill(name)

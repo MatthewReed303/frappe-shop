@@ -46,6 +46,46 @@ class TestCoupons(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			cart.apply_coupon(code)
 
+	def test_coupon_for_a_customer_group_is_only_for_that_group(self):
+		group = "_Test Coupon Group"
+		if not frappe.db.exists("Customer Group", group):
+			frappe.get_doc(
+				{
+					"doctype": "Customer Group",
+					"customer_group_name": group,
+					"parent_customer_group": "All Customer Groups",
+				}
+			).insert(ignore_permissions=True)
+		if not frappe.db.exists("Coupon Code", {"coupon_code": "GROUPONLY"}):
+			company = frappe.db.get_single_value("Shop Settings", "company")
+			rule = frappe.get_doc(
+				{
+					"doctype": "Pricing Rule",
+					"title": "Group only offer",
+					"apply_on": "Transaction",
+					"selling": 1,
+					"coupon_code_based": 1,
+					"applicable_for": "Customer Group",
+					"customer_group": group,
+					"rate_or_discount": "Discount Percentage",
+					"discount_percentage": 15,
+					"company": company,
+					"currency": frappe.get_cached_value("Company", company, "default_currency"),
+				}
+			).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Coupon Code",
+					"coupon_name": "GROUPONLY",
+					"coupon_code": "GROUPONLY",
+					"coupon_type": "Promotional",
+					"pricing_rule": rule.name,
+				}
+			).insert(ignore_permissions=True)
+		cart.add_item("SHOP-DEMO-003")
+		with self.assertRaisesRegex(frappe.ValidationError, "doesn't apply"):
+			cart.apply_coupon("GROUPONLY")
+
 	def test_remove_coupon(self):
 		cart.add_item("SHOP-DEMO-003")
 		cart.apply_coupon("WELCOME10")

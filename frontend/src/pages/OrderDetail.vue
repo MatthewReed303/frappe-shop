@@ -116,14 +116,28 @@
 		<Dialog v-model="showConfirm" :options="dialogOptions">
 			<template #body-content>
 				<p class="text-p-base text-ink-gray-7">{{ pending?.message }}</p>
+				<div v-if="pending?.method === 'shop.api.orders.mark_paid'" class="mt-4 flex flex-col gap-3">
+					<FormControl
+						v-model="payment.bank_account"
+						type="select"
+						label="Paid into"
+						:options="bankAccountOptions"
+					/>
+					<FormControl
+						v-model.number="payment.amount"
+						type="number"
+						label="Amount received"
+						:description="`Still owed: ${doc.formatted_amount_due}`"
+					/>
+				</div>
 			</template>
 		</Dialog>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Dialog, Spinner, call, createResource, toast } from 'frappe-ui'
+import { computed, reactive, ref } from 'vue'
+import { Dialog, FormControl, Spinner, call, createResource, toast } from 'frappe-ui'
 
 import FulfillmentPanel from '@/components/FulfillmentPanel.vue'
 import ReturnsPanel from '@/components/ReturnsPanel.vue'
@@ -153,7 +167,7 @@ const canCancel = computed(() => doc.value.docstatus !== 2)
 const actions = {
 	markPaid: {
 		title: 'Mark as paid',
-		message: `Record a payment entry for ${props.name}?`,
+		message: `Record the payment for ${props.name} as an ERPNext Payment Entry.`,
 		buttonLabel: 'Mark paid',
 		theme: 'gray',
 		method: 'shop.api.orders.mark_paid',
@@ -185,8 +199,21 @@ type ActionKey = keyof typeof actions
 const showConfirm = ref(false)
 const pending = ref<(typeof actions)[ActionKey] | null>(null)
 
+const payment = reactive({ bank_account: '', amount: 0 })
+
+const bankAccountOptions = computed(() =>
+	(doc.value?.bank_accounts || []).map((account: { name: string; currency: string }) => ({
+		label: `${account.name} (${account.currency})`,
+		value: account.name,
+	})),
+)
+
 function confirmAction(key: ActionKey) {
 	pending.value = actions[key]
+	if (key === 'markPaid') {
+		payment.bank_account = doc.value.bank_accounts?.[0]?.name || ''
+		payment.amount = doc.value.amount_due
+	}
 	showConfirm.value = true
 }
 
@@ -205,11 +232,13 @@ const dialogOptions = computed(() => ({
 async function runPending() {
 	if (!pending.value) return
 	try {
-		await call(pending.value.method, { name: props.name })
+		const extra = pending.value.method === 'shop.api.orders.mark_paid' ? { ...payment } : {}
+		await call(pending.value.method, { name: props.name, ...extra })
 		toast.success(pending.value.success)
 		order.reload()
 	} catch (error) {
-		toast.error(pending.value.failure)
+		const messages = (error as { messages?: string[] }).messages
+		toast.error(messages?.[0] || pending.value.failure)
 	} finally {
 		showConfirm.value = false
 	}

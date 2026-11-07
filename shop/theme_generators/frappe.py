@@ -1592,18 +1592,17 @@ def pdp_details(refs):
 	stock_line = block(
 		"div",
 		name="Stock",
-		visibilityCondition={"key": "product.in_stock", "comesFrom": "dataScript"},
+		attrs={"data-shop": "stock-status"},
+		visibilityCondition={"key": "product.stock_status", "comesFrom": "dataScript"},
 		styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "6px", "width": "fit-content"},
+		dynamicValues=[dv("product.stock_state", "data-stock-state", "attribute")],
 		children=[
 			block(
 				"span",
 				text="In stock",
-				styles={"color": refs["success"], "fontSize": "13px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
-			),
-			block(
-				"span",
-				text="· Ready to dispatch",
-				styles={"color": refs["muted"], "fontSize": "13px", "height": "fit-content", "width": "fit-content"},
+				attrs={"data-shop": "stock-status-text"},
+				styles={"fontSize": "13px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
+				dynamicValues=[dv("product.stock_status", "innerHTML")],
 			),
 		],
 	)
@@ -2874,11 +2873,10 @@ def field_styles(refs, span=2):
 
 
 def country_select(refs, span=1):
-	"""ERPNext's countries, the store's own country first selected."""
+	"""ERPNext's countries, the store's own country first, so it is the one chosen to begin with."""
 	return repeater(
 		"countries",
-		block("option", text="Country", dynamicValues=[dv("name", "value", "attribute"), dv("name", "innerHTML"),
-													   dv("selected", "selected", "attribute")]),
+		block("option", text="Country", dynamicValues=[dv("name", "value", "attribute"), dv("name", "innerHTML")]),
 		field_styles(refs, span),
 		element="select",
 		name="Country",
@@ -3310,6 +3308,7 @@ def confirmation_blocks(refs):
 					"textAlign": "center",
 					"width": "100%",
 				},
+				dynamicValues=[dv("order.confirmation_note", "innerHTML")],
 			),
 			block(
 				"div",

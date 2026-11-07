@@ -46,9 +46,10 @@ def bank_currency_note() -> str | None:
 
 
 def countries() -> list[dict]:
+	"""ERPNext's countries, the store's own first: a select starts on its first option."""
 	default = totals.company_country()
 	names = frappe.get_all("Country", pluck="name", order_by="name")
-	return [{"name": name, "selected": "selected" if name == default else None} for name in names]
+	return [{"name": name} for name in sorted(names, key=lambda name: name != default)]
 
 
 def terms_details() -> dict | None:
@@ -390,16 +391,12 @@ def validate_order(cart, customer: dict, payment_method: str, accept_terms: int 
 
 
 def validate_stock(cart):
-	settings = frappe.get_cached_doc("Shop Settings")
 	for row in cart.items:
 		cart_module.validate_purchasable(row.item_code)
-		if settings.allow_out_of_stock:
-			continue
-		if not frappe.get_cached_value("Item", row.item_code, "is_stock_item"):
-			continue
-		available = stock.get_stock([row.item_code]).get(row.item_code, 0)
-		if available < flt(row.qty):
-			frappe.throw(_("Only {0} of {1} left in stock").format(int(available), row.item_code))
+		available = stock.available_qty(row.item_code)
+		if available is not None and available < flt(row.qty):
+			name = frappe.get_cached_value("Item", row.item_code, "item_name") or row.item_code
+			frappe.throw(_("Only {0} of {1} left in stock").format(int(max(available, 0)), name))
 
 
 def get_or_create_customer(customer: dict) -> str:
@@ -533,8 +530,6 @@ def create_sales_order(
 		order_quote = totals.compute(cart)
 	sales_order = order_quote.order
 	sales_order.customer = party
-	# keep the prices the shopper was quoted, which ERPNext worked out for them
-	sales_order.ignore_pricing_rule = 1
 	sales_order.customer_address = shipping_address.name
 	sales_order.shipping_address_name = shipping_address.name
 	if email:
@@ -546,24 +541,19 @@ def create_sales_order(
 	check_total(sales_order, order_quote)
 	check_credit_limit(sales_order)
 	sales_order.submit()
-	if order_quote.coupon and cart.coupon_code:
-		from shop.storefront import coupons
-
-		coupons.redeem(cart.coupon_code)
 	return sales_order
 
 
 def check_credit_limit(sales_order) -> None:
-	"""ERPNext's credit limit check for the customer, with a message meant for the shopper."""
-	from erpnext.selling.doctype.customer.customer import (
-		get_credit_limit,
-		get_customer_outstanding,
-		is_sales_order_credit_check_bypassed,
-	)
+	"""ERPNext's credit limit check for an order paid on account, with a message meant for the shopper.
+	It is invoiced straight away, so the limit is checked as ERPNext checks it on the invoice."""
+	from erpnext.selling.doctype.customer.customer import get_credit_limit, get_customer_outstanding
 
+	if sales_order.get("shop_payment_method") != totals.ACCOUNT:
+		return
 	customer, company = sales_order.customer, sales_order.company
 	limit = flt(get_credit_limit(customer, company))
-	if not limit or is_sales_order_credit_check_bypassed(customer, company):
+	if not limit:
 		return
 	if flt(get_customer_outstanding(customer, company)) + flt(sales_order.base_grand_total) > limit:
 		frappe.throw(_("This order is over your account's credit limit. Please contact us to place it."))

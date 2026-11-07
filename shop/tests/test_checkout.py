@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests import IntegrationTestCase
 
@@ -86,8 +88,14 @@ class TestCheckout(IntegrationTestCase):
 		)
 
 	def test_out_of_stock_rejected(self):
-		cart.add_item("SHOP-DEMO-003", qty=9999)
-		with self.assertRaises(frappe.ValidationError):
+		with self.assertRaisesRegex(frappe.ValidationError, "left in stock"):
+			cart.add_item("SHOP-DEMO-003", qty=9999)
+		# stock sold in the meantime
+		cart.add_item("SHOP-DEMO-003")
+		with (
+			patch("shop.storefront.stock.get_stock", return_value={"SHOP-DEMO-003": 0}),
+			self.assertRaisesRegex(frappe.ValidationError, "left in stock"),
+		):
 			checkout.place_order(customer=BUYER, address=ADDRESS)
 
 	def test_prefill_empty_for_guests(self):

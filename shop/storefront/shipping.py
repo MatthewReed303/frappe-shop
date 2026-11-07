@@ -48,25 +48,34 @@ def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = Fa
 	"""Shipping options for this cart and address: {"options": [...], "messages": [...]}.
 
 	Rates from shipping providers are cached on the cart for half an hour, keyed by the items and
-	address; the store's flat rate depends on the order value, so it is worked out every time."""
+	address; an answer without rates (a provider busy or down) is asked again next time. The store's
+	flat rate depends on the order value, so it is worked out every time."""
 	if not is_complete(address):
 		return {"options": [], "messages": [], "pending": True}
+	if not ships(cart):
+		return {
+			"options": [
+				{"id": FLAT_RATE_ID, "label": _("No delivery needed"), "amount": 0.0, "tax_included": True}
+			],
+			"messages": [],
+		}
 	key = quote_key(cart, address)
 	cached = cached_quotes(cart)
 	if not refresh and cached.get("key") == key and fresh(cached):
 		options, messages, active = cached["options"], cached.get("messages", []), cached.get("active", False)
 	else:
 		options, messages, active = provider_options(cart, address, subtotal)
-		store_quotes(
-			cart,
-			{
-				"key": key,
-				"created": str(now_datetime()),
-				"options": options,
-				"messages": messages,
-				"active": active,
-			},
-		)
+		if options:
+			store_quotes(
+				cart,
+				{
+					"key": key,
+					"created": str(now_datetime()),
+					"options": options,
+					"messages": messages,
+					"active": active,
+				},
+			)
 	options = list(options)
 	flat = flat_rate_option(subtotal)
 	if flat:
@@ -76,6 +85,17 @@ def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = Fa
 		options.append({"id": FLAT_RATE_ID, "label": _("Free shipping"), "amount": 0.0, "tax_included": True})
 	options.sort(key=lambda option: option["amount"])
 	return {"options": options, "messages": messages}
+
+
+def ships(cart) -> bool:
+	"""Whether anything in the cart is sent: services aren't."""
+	return bool(
+		frappe.get_all(
+			"Item",
+			filters={"name": ["in", [row.item_code for row in cart.items]], "is_stock_item": 1},
+			limit=1,
+		)
+	)
 
 
 def provider_options(cart, address: frappe._dict, subtotal: float) -> tuple[list[dict], list[str], bool]:

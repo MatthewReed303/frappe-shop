@@ -1909,14 +1909,23 @@ def pdp_details(refs):
 	stock_line = block(
 		"div",
 		name="Stock",
-		visibilityCondition={"key": "product.in_stock", "comesFrom": "dataScript"},
+		attrs={"data-shop": "stock-status"},
+		visibilityCondition={"key": "product.stock_status", "comesFrom": "dataScript"},
 		styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "8px", "width": "fit-content"},
+		dynamicValues=[dv("product.stock_state", "data-stock-state", "attribute")],
 		children=[
 			block(
 				"span",
-				styles={"backgroundColor": refs["success"], "borderRadius": "50%", "flexShrink": 0, "height": "7px", "width": "7px"},
+				classes=["stock-dot"],
+				styles={"borderRadius": "50%", "flexShrink": 0, "height": "7px", "width": "7px"},
 			),
-			block("span", text="In stock, ready to dispatch", styles=mono(size="10px", color=refs["ink"], spacing="0.12em")),
+			block(
+				"span",
+				text="In stock",
+				attrs={"data-shop": "stock-status-text"},
+				styles=mono(size="10px", color=refs["ink"], spacing="0.12em"),
+				dynamicValues=[dv("product.stock_status", "innerHTML")],
+			),
 		],
 	)
 	highlight = block(
@@ -2544,11 +2553,10 @@ def section_label(refs, text):
 
 
 def country_select(refs, span=1):
-	"""ERPNext's countries, the store's own country first selected."""
+	"""ERPNext's countries, the store's own country first, so it is the one chosen to begin with."""
 	return repeater(
 		"countries",
-		block("option", text="Country", dynamicValues=[dv("name", "value", "attribute"), dv("name", "innerHTML"),
-													   dv("selected", "selected", "attribute")]),
+		block("option", text="Country", dynamicValues=[dv("name", "value", "attribute"), dv("name", "innerHTML")]),
 		{**field_styles(refs), "gridColumn": f"span {span}"},
 		element="select",
 		name="Country",
@@ -2972,7 +2980,12 @@ def confirmation_blocks(refs):
 						refs,
 						"( Confirmed )",
 						"Thank you for your order!",
-						"We've emailed you a copy of this order.",
+						extra=[
+							{
+								**prose(refs, "We've emailed you a copy of this order.", width="min(520px, 100%)"),
+								"dynamicValues": [dv("order.confirmation_note", "innerHTML")],
+							}
+						],
 					),
 					block("div", text="", name="Order Payment", classes=["order-payment-box"], styles={"width": "100%"},
 						  dynamicValues=[dv("order.payment_html", "innerHTML")]),

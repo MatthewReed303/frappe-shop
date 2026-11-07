@@ -64,6 +64,7 @@ scheduler_events = {
 	],
 	"hourly": [
 		"shop.fulfillment.service.sync_open_shipments",
+		"shop.storefront.payment.remind_unpaid_online_orders",
 	],
 }
 

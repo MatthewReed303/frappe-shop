@@ -108,7 +108,7 @@ class TestTradeAccounts(IntegrationTestCase):
 			accounts.register(full_name=name, email=email, accept_terms=1)
 		return email
 
-	def approved_trade_customer(self, email, on_account=1):
+	def approved_trade_customer(self, email, on_account=1, credit_limit=None):
 		self.register(email)
 		frappe.set_user(email)
 		result = accounts.apply_trade(
@@ -134,6 +134,7 @@ class TestTradeAccounts(IntegrationTestCase):
 			customer_group="_Test Trade Group",
 			allow_on_account=on_account,
 			payment_terms="_Test 20th" if on_account else None,
+			credit_limit=credit_limit,
 		)
 		lead.reload()
 		self.assertEqual(lead.status, "Converted")
@@ -323,6 +324,28 @@ class TestTradeAccounts(IntegrationTestCase):
 		self.assertEqual(
 			frappe.db.get_value("Sales Invoice", invoice, "payment_terms_template"), "_Test 20th"
 		)
+
+	def test_credit_limit_holds_only_orders_on_account(self):
+		email = "limited.buyer@example.com"
+		customer = self.approved_trade_customer(email, credit_limit=flt(self.retail))
+		frappe.set_user(email)
+		cart.add_item(ITEM, qty=3)
+		with self.assertRaisesRegex(frappe.ValidationError, "credit limit"):
+			checkout.place_order(
+				customer={"email": email, "full_name": "Trade Tester"},
+				address=self.address,
+				payment_method=totals.ACCOUNT,
+				accept_terms=1,
+			)
+		# paid up front, the same order goes through
+		result = checkout.place_order(
+			customer={"email": email, "full_name": "Trade Tester"},
+			address=self.address,
+			payment_method=totals.BANK,
+			accept_terms=1,
+		)
+		frappe.set_user("Administrator")
+		self.assertEqual(frappe.db.get_value("Sales Order", result["sales_order"], "customer"), customer)
 
 	def test_retail_customers_cannot_pay_on_account(self):
 		self.register("retail.only@example.com")

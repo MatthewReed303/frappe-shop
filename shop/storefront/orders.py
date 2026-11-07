@@ -110,6 +110,10 @@ def order_summary(order, token: str | None = None) -> dict:
 		"name": order.name,
 		"status": order.status,
 		"display_status": display_status(order, paid),
+		# an order waiting on an online payment is emailed once it is paid
+		"confirmation_note": _("Your order is waiting for payment.")
+		if order.docstatus == 1 and not paid and method == totals.GATEWAY
+		else _("We've emailed you a copy of this order."),
 		"progress": order_progress(order, shipment),
 		"shipment": shipment,
 		# paid, or to be paid on account or on delivery, and not sent yet
@@ -138,7 +142,7 @@ def order_summary(order, token: str | None = None) -> dict:
 		"paid": "true" if paid else None,
 		"unpaid": None if paid or order.docstatus == 2 else "true",
 		"bank_transfer": None if paid or order.docstatus == 2 else payment.bank_instructions(order),
-		"pay_url": pay_url(order, token) if not paid and method == totals.GATEWAY and order.docstatus == 1 else None,
+		"pay_url": pay_url(order) if not paid and method == totals.GATEWAY and order.docstatus == 1 else None,
 		"totals_html": totals_html(order, lines, notes, charges),
 		"payment_html": payment_html(order, paid, method, token),
 		"items": [
@@ -224,7 +228,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 			f'<div class="bank-details">{details}</div>{due}'
 			f'<p>{esc(_("We send your order as soon as the payment arrives."))}</p></div>'
 		)
-	url = pay_url(order, token) if method == totals.GATEWAY else None
+	url = pay_url(order) if method == totals.GATEWAY else None
 	if url:
 		return (
 			f'<div class="order-payment card"><p>{esc(_("This order is waiting for payment."))}</p>'
@@ -250,10 +254,9 @@ def display_status(order, paid: bool) -> str:
 	return STATUS_LABELS.get(order.status, order.status)
 
 
-def pay_url(order, token: str | None) -> str | None:
-	"""Where to pay an order still owed online: its Payment Request's gateway page."""
-	if not token:
-		return None
+def pay_url(order) -> str | None:
+	"""Where to pay an order still owed online: its Payment Request's gateway page. Only shown to
+	whoever may see the order."""
 	return frappe.db.get_value(
 		"Payment Request",
 		{"reference_doctype": "Sales Order", "reference_name": order.name, "docstatus": 1, "status": ["!=", "Paid"]},

@@ -1,9 +1,9 @@
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import add_days, flt, nowdate
+from frappe.utils import add_days, cint, flt, nowdate
 
-from shop.storefront import pricing
+from shop.storefront import pricing, stock
 
 CART_COOKIE = "shop_cart_token"
 MAX_CART_ITEMS = 50
@@ -22,12 +22,14 @@ def add_item(item_code: str, qty: float = 1) -> dict:
 	shop_product = validate_purchasable(item_code)
 	cart = resolve_cart(create=True)
 	row = find_row(cart, item_code)
+	wanted = (flt(row.qty) if row else 0) + max(flt(qty), 1)
+	check_available(item_code, wanted)
 	if row:
-		row.qty += max(flt(qty), 1)
+		row.qty = wanted
 	elif len(cart.items) >= MAX_CART_ITEMS:
 		frappe.throw(_("Cart is full"))
 	else:
-		cart.append("items", {"item_code": item_code, "shop_product": shop_product, "qty": max(flt(qty), 1)})
+		cart.append("items", {"item_code": item_code, "shop_product": shop_product, "qty": wanted})
 	save_cart(cart)
 	return cart_payload(cart)
 
@@ -41,6 +43,7 @@ def set_qty(item_code: str, qty: float) -> dict:
 	row = find_row(cart, item_code)
 	if row:
 		if flt(qty) > 0:
+			check_available(item_code, flt(qty))
 			row.qty = flt(qty)
 		else:
 			cart.remove(row)
@@ -58,8 +61,10 @@ def apply_coupon(code: str) -> dict:
 		frappe.throw(_("Your cart is empty"))
 	refresh_rates(cart)
 	coupon = coupons.resolve(code)
-	coupons.discount_for(coupon, sum(flt(row.rate) * flt(row.qty) for row in cart.items))
+	coupons.check_minimum(coupon, sum(flt(row.rate) * flt(row.qty) for row in cart.items))
 	cart.coupon_code = coupon.name
+	if not preview_coupon(cart)[0]:
+		frappe.throw(_("That coupon doesn't apply to your order"))
 	cart.save(ignore_permissions=True)
 	return cart_payload(cart)
 
@@ -203,13 +208,27 @@ def applied_discount(cart, subtotal: float):
 	from shop.storefront import coupons
 
 	try:
-		code = frappe.db.get_value("Coupon Code", cart.coupon_code, "coupon_code")
-		coupon = coupons.resolve(code)
-		discount = coupons.discount_for(coupon, subtotal)
+		coupons.resolve(frappe.db.get_value("Coupon Code", cart.coupon_code, "coupon_code") or "")
+		coupon, discount = preview_coupon(cart)
 	except Exception:
+		frappe.clear_messages()
 		forget_coupon(cart)
 		return None, 0.0
-	return {"code": coupon.code, "formatted_discount": pricing.display_amount(discount)}, discount
+	if not coupon:
+		return None, 0.0
+	return dict(coupon, formatted_discount=pricing.display_amount(discount)), discount
+
+
+def preview_coupon(cart):
+	"""The cart's coupon and what it takes off, as ERPNext prices the order for the shopper."""
+	from shop.storefront import totals
+	from shop.storefront.checkout import elevated
+
+	with elevated():
+		order = totals.new_order(cart, pricing.session_customer(), totals.company_currency(), None)
+		totals.calculate(order)
+		coupon = totals.apply_coupon(order)
+		return coupon, totals.coupon_discount(order) if coupon else 0.0
 
 
 def display_qty(qty: float) -> float | int:
@@ -251,6 +270,19 @@ def validate_purchasable(item_code: str) -> str:
 	if not shop_product:
 		frappe.throw(_("Item {0} is not available").format(item_code))
 	return shop_product
+
+
+def check_available(item_code: str, qty: float) -> None:
+	"""The shopper can buy this many: the item has a price for them and enough stock."""
+	name = frappe.get_cached_value("Item", item_code, "item_name") or item_code
+	if item_code not in pricing.get_prices([item_code], {item_code: qty}):
+		frappe.throw(_("{0} isn't available online").format(name))
+	available = stock.available_qty(item_code)
+	if available is None or available >= qty:
+		return
+	if available <= 0:
+		frappe.throw(_("{0} is out of stock").format(name))
+	frappe.throw(_("Only {0} of {1} left in stock").format(cint(available), name))
 
 
 def find_row(cart, item_code: str):

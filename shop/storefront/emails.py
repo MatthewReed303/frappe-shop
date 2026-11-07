@@ -31,6 +31,15 @@ TEMPLATES = {
 		"<p>Order: <b>{{ doc.name }}</b></p>{{ lines_html }}{{ payment_html }}"
 		'<p><a href="{{ order_url }}">View your order</a></p>{{ terms_html }}',
 	),
+	"payment_reminder": (
+		"Shop: Order Payment Reminder",
+		ORDER,
+		"Your order {{ doc.name }} is waiting for payment",
+		"<p>Your order {{ doc.name }} at {{ store_name }} hasn't been paid yet.</p>{{ lines_html }}"
+		'<p><a href="{{ pay_url }}">Pay now</a></p>'
+		"{% if due_date %}<p>Unpaid orders are cancelled after {{ due_date }}.</p>{% endif %}"
+		'<p><a href="{{ order_url }}">View your order</a></p>',
+	),
 	"payment_received": (
 		"Shop: Payment Received",
 		ORDER,

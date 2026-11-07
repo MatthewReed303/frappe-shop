@@ -3,7 +3,7 @@ from frappe import _
 from frappe.utils import cint, flt
 
 from shop.api import only_managers
-from shop.storefront import pricing
+from shop.storefront import payment, pricing
 
 MAX_SCAN = 500
 
@@ -71,11 +71,10 @@ def get_orders(
 
 
 def decorate(orders: list) -> None:
-	paid = paid_orders([order.name for order in orders])
 	for order in orders:
 		order["formatted_total"] = pricing.format_amount(order.grand_total)
 		order["display_status"] = DISPLAY_STATUS.get(order.status, order.status)
-		order["payment_status"] = "Paid" if order.name in paid else "Unpaid"
+		order["payment_status"] = payment.payment_status(frappe.get_doc("Sales Order", order.name))
 		order["fulfillment_status"] = fulfillment_label(order)
 
 
@@ -87,17 +86,6 @@ def fulfillment_label(order) -> str:
 	if flt(order.per_delivered) > 0:
 		return "Partly fulfilled"
 	return "Unfulfilled"
-
-
-def paid_orders(names: list[str]) -> set:
-	if not names:
-		return set()
-	rows = frappe.get_all(
-		"Payment Entry Reference",
-		filters={"reference_doctype": "Sales Order", "reference_name": ["in", names], "docstatus": 1},
-		pluck="reference_name",
-	)
-	return set(rows)
 
 
 @frappe.whitelist()
@@ -114,7 +102,12 @@ def get_order(name: str) -> dict:
 		"status": order.status,
 		"display_status": "Cancelled" if order.docstatus == 2 else DISPLAY_STATUS.get(order.status, order.status),
 		"docstatus": order.docstatus,
-		"payment_status": "Paid" if paid_orders([order.name]) else "Unpaid",
+		"payment_status": payment.payment_status(order),
+		"amount_due": payment.amount_due(order),
+		"formatted_amount_due": pricing.format_amount(payment.amount_due(order))
+		if order.currency == frappe.get_cached_doc("Shop Settings").currency
+		else f"{payment.totals.money(payment.amount_due(order), order.currency)} {order.currency}",
+		"bank_accounts": bank_accounts(order),
 		"fulfillment_status": fulfillment_label(order),
 		"address": address_display(order.shipping_address_name),
 		"formatted_total": pricing.format_amount(order.total),
@@ -165,14 +158,39 @@ def address_display(name: str | None) -> str | None:
 	return get_address_display(name)
 
 
-@frappe.whitelist(methods=["POST"])
-def mark_paid(name: str, mode_of_payment: str | None = None) -> dict:
-	only_managers()
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+def bank_accounts(order) -> list[dict]:
+	"""The company's Bank Accounts a payment for the order can be recorded into, the one the
+	customer was told to pay into first."""
+	from shop.storefront import totals
 
-	if paid_orders([name]):
-		frappe.throw(_("This order is already marked paid"))
-	entry = get_payment_entry("Sales Order", name)
+	told = totals.bank_account(order.currency, order.get("shop_payment_method"))
+	rows = frappe.get_all(
+		"Bank Account",
+		filters={"company": order.company, "is_company_account": 1, "disabled": 0, "account": ["is", "set"]},
+		fields=["name", "account"],
+	)
+	accounts = [
+		{"name": row.name, "currency": frappe.get_cached_value("Account", row.account, "account_currency")}
+		for row in rows
+	]
+	accounts.sort(key=lambda row: (row["name"] != (told and told.bank_account), row["currency"] != order.currency))
+	return accounts
+
+
+@frappe.whitelist(methods=["POST"])
+def mark_paid(
+	name: str, bank_account: str | None = None, amount: float | None = None, mode_of_payment: str | None = None
+) -> dict:
+	"""Record a payment for the order with ERPNext's Payment Entry: what arrived, in the bank account
+	it arrived in."""
+	only_managers()
+	order = frappe.get_doc("Sales Order", name)
+	if payment.payment_status(order) == "Paid":
+		frappe.throw(_("This order is already paid"))
+	account = frappe.db.get_value("Bank Account", bank_account, "account") if bank_account else None
+	entry, _rate = payment.payment_entry_for(order, account, flt(amount) or None)
+	if bank_account:
+		entry.bank_account = bank_account
 	if mode_of_payment:
 		entry.mode_of_payment = mode_of_payment
 	entry.reference_no = name
@@ -180,9 +198,6 @@ def mark_paid(name: str, mode_of_payment: str | None = None) -> dict:
 	entry.flags.ignore_permissions = True
 	entry.insert(ignore_permissions=True)
 	entry.submit()
-	from shop.fulfillment.service import auto_send
-
-	auto_send(name)
 	return get_order(name)
 
 

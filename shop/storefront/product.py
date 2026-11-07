@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.utils import flt
 
 from shop.storefront import pricing, stock
@@ -34,12 +35,14 @@ def get_product(slug: str) -> dict:
 		price = pricing.get_price(doc.item) or {}
 		if price.get("retail"):  # a trade or customer price: show the store price struck through
 			payload["compare_at_price"] = max(flt(doc.compare_at_price), flt(price["retail"]))
+		available = stock.availability(doc.item, priced=price.get("rate") is not None)
 		payload.update(
 			{
 				"price": price.get("rate"),
 				"formatted_price": price.get("display"),
 				"price_note": price.get("display_excl"),
-				"in_stock": stock.is_in_stock(doc.item),
+				"in_stock": available["purchasable"],
+				**available,
 			}
 		)
 	from shop.storefront.catalog import apply_compare_at, star_string
@@ -64,14 +67,17 @@ def product_collections(doc) -> list[dict]:
 def variant_details(template: str, compare_at: float | None = None) -> dict:
 	variants = load_variants(template, compare_at)
 	rates = [v["price"] for v in variants if v["price"] is not None]
-	default = next((v for v in variants if v["in_stock"]), variants[0] if variants else None)
+	default = next((v for v in variants if v["purchasable"]), variants[0] if variants else None)
 	return {
 		"attributes": attribute_options(template, variants),
 		"variants": variants,
 		"price": min(rates) if rates else None,
 		"formatted_price": pricing.display_price(min(rates)) if rates else None,
 		"price_note": pricing.display_price_without_tax(min(rates)) if rates else None,
-		"in_stock": any(v["in_stock"] for v in variants),
+		"in_stock": any(v["purchasable"] for v in variants),
+		"purchasable": bool(default and default["purchasable"]),
+		"stock_status": default["stock_status"] if default else _("Not available online"),
+		"stock_state": default["stock_state"] if default else "unavailable",
 		"default_item_code": default["item_code"] if default else None,
 	}
 
@@ -100,7 +106,7 @@ def load_variants(template: str, compare_at: float | None = None) -> list[dict]:
 				"price": price.get("rate"),
 				"formatted_price": price.get("display"),
 				"price_note": price.get("display_excl"),
-				"in_stock": stock.is_in_stock(item_code),
+				**stock.availability(item_code, priced=price.get("rate") is not None),
 				"image": images.get(item_code),
 				**variant_savings(price.get("rate"), compare_at),
 			}

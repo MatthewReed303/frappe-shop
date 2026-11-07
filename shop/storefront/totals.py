@@ -285,7 +285,7 @@ def compute(
 
 	cart_module.refresh_rates(cart)
 	order = new_order(cart, pricing.session_customer(), currency, template)
-	coupon = apply_coupon(order, cart)
+	coupon = apply_coupon(order)
 	calculate(order)
 
 	options = shipping_module.get_options(
@@ -365,6 +365,8 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 	)
 	if not customer:
 		order.customer_group = frappe.db.get_single_value("Selling Settings", "customer_group")
+	# ERPNext applies the coupon's Pricing Rule, which says who and what it is for
+	order.coupon_code = cart.get("coupon_code")
 	for row in cart.items:
 		order.append(
 			"items",
@@ -416,18 +418,33 @@ def included_rate(template: str | None) -> float:
 	)
 
 
-def apply_coupon(order, cart) -> dict | None:
-	"""The cart's coupon as a discount on the order: on the net total when tax is added to prices,
-	on the grand total when prices include it, so the shopper saves the coupon's amount."""
-	from shop.storefront import cart as cart_module
+def apply_coupon(order) -> dict | None:
+	"""The order's coupon, when ERPNext applied its Pricing Rule; a coupon that doesn't apply to this
+	order is taken off it."""
+	from erpnext.accounts.doctype.pricing_rule.utils import get_applied_pricing_rules
 
-	calculate(order)
-	coupon, discount = cart_module.applied_discount(cart, flt(order.base_total))
-	if not discount:
+	if not order.get("coupon_code"):
 		return None
-	order.apply_discount_on = "Grand Total" if settings().prices_include_tax else "Net Total"
-	order.discount_amount = flt(discount / flt(order.conversion_rate), order.precision("discount_amount"))
-	return coupon
+	code, rule = frappe.db.get_value("Coupon Code", order.coupon_code, ["coupon_code", "pricing_rule"])
+	applied = {row.pricing_rule for row in order.get("pricing_rules") or []}
+	for item in order.items:
+		applied.update(get_applied_pricing_rules(item.get("pricing_rules")))
+	if rule not in applied:
+		order.coupon_code = None
+		return None
+	return {"code": code, "name": order.coupon_code}
+
+
+def coupon_discount(order) -> float:
+	"""What the coupon takes off the order, in the order currency."""
+	from erpnext.accounts.doctype.pricing_rule.utils import get_applied_pricing_rules
+
+	rule = frappe.db.get_value("Coupon Code", order.coupon_code, "pricing_rule")
+	discount = flt(order.discount_amount)
+	for item in order.items:
+		if rule in get_applied_pricing_rules(item.get("pricing_rules")):
+			discount += (flt(item.price_list_rate) - flt(item.rate)) * flt(item.qty)
+	return discount
 
 
 def calculate(order) -> None:
@@ -491,19 +508,20 @@ def add_shipping(order, option: dict) -> None:
 
 
 def add_line(order, item_code: str, rate: float, description: str):
+	"""A charge line: its details from ERPNext, with no rate yet, so working out a quote never saves
+	an Item Price for it."""
 	row = order.append(
 		"items",
-		{
-			"item_code": item_code,
-			"qty": 1,
-			"rate": rate,
-			"description": description,
-			"delivery_date": order.delivery_date,
-		},
+		{"item_code": item_code, "qty": 1, "description": description, "delivery_date": order.delivery_date},
 	)
 	order.set_missing_item_details(for_validate=True)
-	row.rate = rate
+	set_charge(row, rate)
 	return row
+
+
+def set_charge(row, rate: float) -> None:
+	"""A charge line is charged at its own amount, not as a discount on a list price."""
+	row.update({"price_list_rate": rate, "rate": rate, "discount_percentage": 0, "discount_amount": 0})
 
 
 def add_card_fee(order, export: bool) -> list[frappe._dict]:
@@ -517,7 +535,7 @@ def add_card_fee(order, export: bool) -> list[frappe._dict]:
 	before = flt(order.grand_total)
 	row, gross, net = probe_line(order, s.card_fee_item, _("Card fee"))
 	kept = (percent * before + fixed / flt(order.conversion_rate)) / (1 - percent * gross / net)
-	row.rate = round_up(kept / net, row.precision("rate"))
+	set_charge(row, round_up(kept / net, row.precision("rate")))
 	return [frappe._dict(kind="card_fee", label=_("Card fee"), item=s.card_fee_item)]
 
 
@@ -531,7 +549,7 @@ def add_conversion_fee(order, account: frappe._dict | None) -> list[frappe._dict
 	before = flt(order.grand_total)
 	label = _("Currency conversion ({0}%)").format(f"{flt(percent * 100, 2):g}")
 	row, _gross, net = probe_line(order, s.conversion_fee_item, label)
-	row.rate = round_up(percent * before / net, row.precision("rate"))
+	set_charge(row, round_up(percent * before / net, row.precision("rate")))
 	return [frappe._dict(kind="conversion_fee", label=label, item=s.conversion_fee_item)]
 
 
@@ -544,7 +562,7 @@ def add_transfer_fee(order, account: frappe._dict | None, method: str) -> list[f
 		return []
 	label = _("International transfer fee (Swift)") if method == SWIFT else _("Bank transfer fee")
 	row, _gross, net = probe_line(order, s.transfer_fee_item, label)
-	row.rate = round_up(fee / net, row.precision("rate"))
+	set_charge(row, round_up(fee / net, row.precision("rate")))
 	return [frappe._dict(kind="transfer_fee", label=label, item=s.transfer_fee_item)]
 
 

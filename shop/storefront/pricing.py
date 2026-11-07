@@ -24,7 +24,8 @@ def get_prices(item_codes: list[str], qtys: dict | None = None, customer: str | 
 		qty = flt((qtys or {}).get(code)) or 1
 		rate = customer_rate(code, customer, price_list, qty)
 		if rate is None:
-			if code in retail:
+			# a customer's own price list is the one their orders use: what isn't on it isn't for sale to them
+			if code in retail and price_list == frappe.get_cached_doc("Shop Settings").price_list:
 				prices[code] = retail[code]
 			continue
 		entry = {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)}

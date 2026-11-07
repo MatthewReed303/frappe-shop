@@ -40,6 +40,32 @@ def is_paid(order) -> bool:
 	)
 
 
+def payment_status(order) -> str:
+	"""Paid, Part paid or Unpaid: from what ERPNext records on the order, and for an order paid on
+	account, from its invoices."""
+	if is_paid(order) or invoices_paid(order.name):
+		return "Paid"
+	if flt(order.advance_paid) > 0:
+		return "Part paid"
+	return "Unpaid"
+
+
+def invoices_paid(order_name: str) -> bool:
+	invoices = frappe.get_all(
+		"Sales Invoice Item",
+		filters={"sales_order": order_name, "docstatus": 1},
+		pluck="parent",
+		distinct=True,
+	)
+	if not invoices:
+		return False
+	return not frappe.get_all(
+		"Sales Invoice",
+		filters={"name": ["in", invoices], "is_return": 0, "outstanding_amount": [">", 0]},
+		limit=1,
+	)
+
+
 def method(order) -> str | None:
 	return order.get("shop_payment_method") or None
 
@@ -189,24 +215,10 @@ def order_paid_by(transaction):
 def make_payment_entry(order, transaction):
 	"""ERPNext's Payment Entry for the order, for what the customer sent: the deposit plus the fee the
 	bank took, which is booked to the store's Bank Charges Account."""
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-
 	account = frappe.db.get_value("Bank Account", transaction.bank_account, "account")
 	charges_account = frappe.get_cached_doc("Shop Settings").get("bank_charges_account")
 	fee = flt(transaction.included_fee) if charges_account else 0
-	sent = flt(transaction.unallocated_amount) + fee
-
-	payment_entry = get_payment_entry("Sales Order", order.name, bank_account=account, bank_amount=sent)
-	# in the customer's account currency, at the rate of the payment
-	rate = flt(payment_entry.target_exchange_rate) / flt(payment_entry.source_exchange_rate)
-	if sent < amount_due(order):
-		payment_entry = get_payment_entry(
-			"Sales Order",
-			order.name,
-			bank_account=account,
-			bank_amount=sent,
-			party_amount=flt(sent * rate, payment_entry.precision("paid_amount")),
-		)
+	payment_entry, rate = payment_entry_for(order, account, flt(transaction.unallocated_amount) + fee)
 	if fee:
 		payment_entry.append(
 			"taxes",
@@ -225,6 +237,24 @@ def make_payment_entry(order, transaction):
 	payment_entry.insert()
 	payment_entry.submit()
 	return payment_entry
+
+
+def payment_entry_for(order, account: str | None, received: float | None = None):
+	"""ERPNext's Payment Entry for the order, for what was received into the bank account (all that
+	is owed when not given), and the rate from the bank's currency to the customer's account."""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	payment_entry = get_payment_entry("Sales Order", order.name, bank_account=account, bank_amount=received)
+	rate = flt(payment_entry.target_exchange_rate) / flt(payment_entry.source_exchange_rate)
+	if received and received < amount_due(order):
+		payment_entry = get_payment_entry(
+			"Sales Order",
+			order.name,
+			bank_account=account,
+			bank_amount=received,
+			party_amount=flt(received * rate, payment_entry.precision("paid_amount")),
+		)
+	return payment_entry, rate
 
 
 def money_text(amount: float, currency: str) -> str:
@@ -350,6 +380,16 @@ def cancel_if_unpaid(name: str) -> bool:
 		return False
 	if flt(order.per_delivered) > 0 or flt(order.per_billed) > 0:
 		return False
+	unmatched = unmatched_payments(order)
+	if unmatched:
+		# the customer may have paid without the payment being matched to the order
+		order.add_comment(
+			"Info",
+			_(
+				"Not cancelled: {0} has payments not matched to an order yet ({1}). Match them in ERPNext's Payment Reconciliation."
+			).format(order.customer, ", ".join(unmatched)),
+		)
+		return False
 	for request in frappe.get_all(
 		"Payment Request",
 		filters={
@@ -361,11 +401,76 @@ def cancel_if_unpaid(name: str) -> bool:
 		pluck="name",
 	):
 		frappe.get_doc("Payment Request", request).cancel()
+	# cancelling a Payment Request updates the order
+	order.reload()
 	order.flags.ignore_permissions = True
 	order.cancel()
 	order.add_comment("Info", _("Cancelled automatically: not paid by {0}.").format(order.shop_payment_due))
 	notify_cancelled(order)
 	return True
+
+
+def unmatched_payments(order) -> list[str]:
+	"""The customer's Payment Entries since the order with money not allocated to anything."""
+	return frappe.get_all(
+		"Payment Entry",
+		filters={
+			"party_type": "Customer",
+			"party": order.customer,
+			"docstatus": 1,
+			"payment_type": "Receive",
+			"unallocated_amount": [">", 0],
+			"posting_date": [">=", order.transaction_date],
+		},
+		pluck="name",
+	)
+
+
+REMINDER = "Payment reminder sent."
+
+
+def remind_unpaid_online_orders() -> None:
+	"""Remind once a customer who left the payment page: an hour after an online order was placed."""
+	from frappe.utils import add_to_date, now_datetime
+
+	for name in frappe.get_all(
+		"Sales Order",
+		filters={
+			"docstatus": 1,
+			"shop_payment_method": totals.GATEWAY,
+			"advance_payment_status": ["!=", "Fully Paid"],
+			"creation": ["<", add_to_date(now_datetime(), hours=-1)],
+			"shop_payment_due": [">=", nowdate()],
+		},
+		pluck="name",
+	):
+		if frappe.db.exists(
+			"Comment", {"reference_doctype": "Sales Order", "reference_name": name, "content": REMINDER}
+		):
+			continue
+		order = frappe.get_doc("Sales Order", name)
+		if not is_paid(order):
+			remind(order)
+
+
+def remind(order) -> None:
+	from shop.storefront import emails
+	from shop.storefront.checkout import order_email_parts
+	from shop.storefront.orders import order_url, pay_url
+
+	url = pay_url(order)
+	if not url:
+		return
+	parts = order_email_parts(order, order_url(order.name))
+	emails.send(
+		"payment_reminder",
+		order.contact_email,
+		order,
+		pay_url=url,
+		due_date=frappe.utils.formatdate(order.shop_payment_due) if order.get("shop_payment_due") else "",
+		**{key: parts[key] for key in ("lines_html", "order_url") if key in parts},
+	)
+	order.add_comment("Info", REMINDER)
 
 
 def notify_cancelled(order) -> None:

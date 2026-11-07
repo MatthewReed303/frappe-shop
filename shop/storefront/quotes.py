@@ -113,8 +113,6 @@ def quotation_from(order, party: str, address: str, email: str):
 			"selling_price_list": order.selling_price_list,
 			"price_list_currency": order.price_list_currency,
 			"plc_conversion_rate": order.plc_conversion_rate,
-			# the prices the shopper was shown
-			"ignore_pricing_rule": 1,
 			"customer_address": address,
 			"shipping_address_name": address,
 			"contact_email": email,
@@ -181,17 +179,18 @@ def quote_summary(name: str, token: str | None) -> dict:
 		order = frappe.db.get_value(
 			"Sales Order Item", {"prevdoc_docname": quotation.name, "docstatus": 1}, "parent"
 		)
+		expired = bool(quotation.valid_till and getdate(quotation.valid_till) < getdate(nowdate()))
+		closed = quotation.status in ("Lost", "Cancelled") or quotation.docstatus == 2
+		can_accept = (
+			quotation.docstatus == 1
+			and not closed
+			and quotation.status != "Ordered"
+			and not expired
+			and not order
+		)
+		# the fee for each way to pay is worked out on the order the quote would make
+		methods = quote_payment_methods(quotation) if can_accept else []
 	html = lines_html(quotation)
-	expired = bool(quotation.valid_till and getdate(quotation.valid_till) < getdate(nowdate()))
-	closed = quotation.status in ("Lost", "Cancelled") or quotation.docstatus == 2
-	can_accept = (
-		quotation.docstatus == 1
-		and not closed
-		and quotation.status != "Ordered"
-		and not expired
-		and not order
-	)
-	methods = quote_payment_methods(quotation) if can_accept else []
 	return {
 		"name": quotation.name,
 		"token": token or "",
