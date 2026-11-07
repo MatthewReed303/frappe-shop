@@ -102,7 +102,7 @@ def get_product(name: str) -> dict:
 		"has_variants": doc.has_variants,
 		"images": [{"image": row.image, "alt_text": row.alt_text} for row in doc.images],
 		"collections": [row.collection for row in doc.collections],
-		"item_group": frappe.db.get_value("Item", doc.item, "item_group"),
+		**item_details(doc.item),
 		"price": prices.get(doc.item, {}).get("rate") if not doc.has_variants else None,
 		"variants": [
 			{
@@ -142,11 +142,46 @@ def save_product(payload: dict) -> dict:
 	)
 	if payload.get("price") is not None and not doc.has_variants:
 		set_price(doc.item, flt(payload["price"]))
-	if payload.get("item_group") and payload["item_group"] != frappe.db.get_value("Item", doc.item, "item_group"):
-		item = frappe.get_doc("Item", doc.item)
-		item.item_group = payload["item_group"]
-		item.save(ignore_permissions=True)
+	set_item_details(doc.item, payload)
 	return get_product(doc.name)
+
+
+def item_details(item_code: str) -> dict:
+	"""The ERPNext Item fields the product editor shows: its group, weight, tax and stock keeping."""
+	item = frappe.get_cached_doc("Item", item_code)
+	return {
+		"item_group": item.item_group,
+		"weight": item.weight_per_unit,
+		"weight_uom": item.weight_uom,
+		"item_tax_template": item.taxes[0].item_tax_template if item.taxes else None,
+		"track_stock": item.is_stock_item,
+	}
+
+
+def set_item_details(item_code: str, payload: dict) -> None:
+	item = frappe.get_doc("Item", item_code)
+	before = item.as_dict()
+	if payload.get("item_group"):
+		item.item_group = payload["item_group"]
+	if "weight" in payload:
+		item.weight_per_unit = flt(payload["weight"])
+		if item.weight_per_unit and not item.weight_uom:
+			item.weight_uom = default_weight_uom()
+	if "item_tax_template" in payload:
+		# one template for the item; ERPNext applies it wherever the store's taxes name its accounts
+		item.taxes = []
+		if payload["item_tax_template"]:
+			item.append("taxes", {"item_tax_template": payload["item_tax_template"]})
+	if item.as_dict() != before:
+		item.save(ignore_permissions=True)
+
+
+def default_weight_uom() -> str | None:
+	"""Kilograms, as ERPNext names them."""
+	for uom in ("Kg", "Kilogram"):
+		if frappe.db.exists("UOM", uom):
+			return uom
+	return None
 
 
 def set_images(doc, images) -> None:
@@ -195,6 +230,7 @@ def create_product(
 	collections: list | None = None,
 	published: bool = True,
 	item_group: str | None = None,
+	track_stock: bool = True,
 ) -> dict:
 	"""Create the ERPNext Item, its price and stock, and the storefront product in one step."""
 	only_managers()
@@ -207,12 +243,12 @@ def create_product(
 			"item_name": product_name,
 			"item_group": item_group or default_item_group(),
 			"stock_uom": "Nos",
-			"is_stock_item": 1,
+			"is_stock_item": 1 if track_stock else 0,
 			"description": short_description or product_name,
 		}
 	).insert(ignore_permissions=True)
 	set_price(item_code, flt(price))
-	if flt(opening_stock) > 0:
+	if track_stock and flt(opening_stock) > 0:
 		receive_stock(item_code, flt(opening_stock), flt(price), settings)
 	return save_product(
 		{
@@ -251,9 +287,13 @@ def default_item_group() -> str:
 def get_item_groups() -> dict:
 	"""The Item Groups a product can be in, and the one new products get."""
 	only_managers()
+	company = frappe.get_cached_doc("Shop Settings").company
 	return {
 		"item_groups": frappe.get_all("Item Group", order_by="lft", pluck="name"),
 		"default": default_item_group(),
+		"item_tax_templates": frappe.get_all(
+			"Item Tax Template", filters={"company": company, "disabled": 0}, pluck="name"
+		),
 	}
 
 

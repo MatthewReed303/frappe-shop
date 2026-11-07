@@ -140,9 +140,39 @@
 					/>
 				</CatalogSection>
 
+				<CatalogSection
+					v-if="isEdit || !isLink"
+					title="Shipping and tax"
+					description="Kept on the product's ERPNext Item."
+				>
+					<FormControl
+						v-model.number="form.weight"
+						type="number"
+						:label="`Weight per item (${form.weight_uom || 'kg'})`"
+						description="Carriers price shipping by weight."
+					/>
+					<FormControl
+						v-model="form.item_tax_template"
+						type="select"
+						label="Tax"
+						:options="taxOptions"
+						description="An Item Tax Template changes the tax rate for this product, e.g. zero-rated."
+					/>
+				</CatalogSection>
+
 				<CatalogSection v-if="!isLink" title="Inventory">
+					<Switch
+						v-if="!isEdit"
+						v-model="form.track_stock"
+						label="Track stock"
+						description="Off for services and digital products, which are never out of stock."
+						class="!w-auto"
+					/>
+					<p v-else-if="detail && !detail.track_stock" class="text-sm text-ink-gray-6">
+						This product's stock isn't tracked.
+					</p>
 					<CatalogStockControl
-						v-if="isEdit && detail"
+						v-if="isEdit && detail && detail.track_stock"
 						:item-code="detail.item"
 						:stock="detail.stock"
 						:has-variants="!!detail.has_variants"
@@ -150,7 +180,7 @@
 						@show-variants="showVariants"
 					/>
 					<FormControl
-						v-else
+						v-else-if="!isEdit && form.track_stock"
 						v-model.number="form.opening_stock"
 						type="number"
 						:label="withOptions ? 'Opening stock per variant' : 'Opening stock'"
@@ -218,6 +248,11 @@ const baseline = ref('')
 const detail = ref<ProductDetail | null>(null)
 const collectionOptions = ref<Option[]>([])
 const itemGroupOptions = ref<Option[]>([])
+const itemTaxTemplates = ref<string[]>([])
+const taxOptions = computed(() => [
+	{ label: "The store's tax", value: '' },
+	...itemTaxTemplates.value.map((name) => ({ label: name, value: name })),
+])
 const defaultItemGroup = ref('')
 const itemHasVariants = ref(false)
 const withOptions = ref(false)
@@ -238,6 +273,10 @@ const form = reactive({
 	images: [] as string[],
 	collections: [] as string[],
 	item_group: '',
+	weight: 0,
+	weight_uom: '',
+	item_tax_template: '',
+	track_stock: true,
 })
 
 const title = computed(() => {
@@ -316,6 +355,10 @@ function resetForm() {
 		images: [],
 		collections: [],
 		item_group: '',
+		weight: 0,
+		weight_uom: '',
+		item_tax_template: '',
+		track_stock: true,
 	})
 	detail.value = null
 	itemHasVariants.value = false
@@ -336,6 +379,7 @@ async function loadItemGroups() {
 	itemGroupOptions.value = result.item_groups.map((name: string) => ({ label: name, value: name }))
 	defaultItemGroup.value = result.default
 	if (!form.item_group) form.item_group = result.default
+	itemTaxTemplates.value = result.item_tax_templates || []
 }
 
 async function loadProduct(name: string) {
@@ -354,6 +398,10 @@ async function loadProduct(name: string) {
 		images: (doc.images || []).map((row: { image: string }) => row.image),
 		collections: doc.collections || [],
 		item_group: doc.item_group || '',
+		weight: doc.weight || 0,
+		weight_uom: doc.weight_uom || '',
+		item_tax_template: doc.item_tax_template || '',
+		track_stock: !!doc.track_stock,
 	})
 }
 
@@ -428,6 +476,7 @@ async function createFresh() {
 			collections: form.collections,
 			published: form.published,
 			item_group: form.item_group,
+			track_stock: form.track_stock,
 		})
 		return finishCreate(doc.name)
 	}
@@ -444,15 +493,23 @@ async function createFresh() {
 		collections: form.collections,
 		published: form.published,
 		item_group: form.item_group,
+		track_stock: form.track_stock,
 	})
 	return finishCreate(result.product)
 }
 
-// create_product and create_variant_product take neither highlights nor ranking.
+// create_product and create_variant_product take neither highlights, ranking, weight nor tax.
 async function finishCreate(name: string) {
-	if (form.highlights || form.ranking) {
+	if (form.highlights || form.ranking || form.weight || form.item_tax_template) {
 		await call('shop.api.products.save_product', {
-			payload: { name, highlights: form.highlights, ranking: form.ranking, published: form.published },
+			payload: {
+				name,
+				highlights: form.highlights,
+				ranking: form.ranking,
+				published: form.published,
+				weight: form.weight,
+				item_tax_template: form.item_tax_template,
+			},
 		})
 	}
 	return name
@@ -473,6 +530,8 @@ function payload() {
 		images: form.images,
 		collections: form.collections,
 		item_group: isEdit.value ? form.item_group : undefined,
+		weight: isEdit.value ? form.weight : undefined,
+		item_tax_template: isEdit.value ? form.item_tax_template : undefined,
 		price: variantPricing.value ? undefined : form.price,
 	}
 }

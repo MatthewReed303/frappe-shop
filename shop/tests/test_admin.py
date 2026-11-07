@@ -152,6 +152,30 @@ class TestAdminApi(IntegrationTestCase):
 			steps["email"]["done"], bool(frappe.db.exists("Email Account", {"enable_outgoing": 1}))
 		)
 
+	def test_a_service_product_with_its_weight_and_tax(self):
+		created = products.create_product(
+			product_name="Test Calibration", price=30, track_stock=False, opening_stock=5
+		)
+		self.addCleanup(products.delete_product, created["name"])
+		self.assertFalse(created["track_stock"])
+		self.assertFalse(frappe.db.exists("Stock Ledger Entry", {"item_code": created["item"]}))
+		template = frappe.get_all(
+			"Item Tax Template",
+			filters={"company": frappe.get_cached_doc("Shop Settings").company},
+			pluck="name",
+			limit=1,
+		)
+		saved = products.save_product(
+			{
+				"name": created["name"],
+				"weight": 0.25,
+				"item_tax_template": template[0] if template else None,
+				"published": True,
+			}
+		)
+		self.assertEqual(saved["weight"], 0.25)
+		self.assertEqual(saved["item_tax_template"], template[0] if template else None)
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

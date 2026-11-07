@@ -225,7 +225,7 @@ def generate(product: str, price: float | None = None, opening_stock: float = 0)
 		variant.insert(ignore_permissions=True)
 		if template_price:
 			set_price(variant.name, template_price)
-		if flt(opening_stock) > 0:
+		if flt(opening_stock) > 0 and variant.is_stock_item:
 			receive_stock(variant.name, flt(opening_stock), template_price or 1, settings)
 	return get_variants(product)
 
@@ -297,6 +297,7 @@ def create_variant_product(
 	collections: list | None = None,
 	published: bool = True,
 	item_group: str | None = None,
+	track_stock: bool = True,
 ) -> dict:
 	"""Create a product that varies by options, with every combination ready to sell."""
 	only_managers()
@@ -310,7 +311,7 @@ def create_variant_product(
 			"item_name": product_name,
 			"item_group": item_group or default_item_group(),
 			"stock_uom": "Nos",
-			"is_stock_item": 1,
+			"is_stock_item": 1 if track_stock else 0,
 			"has_variants": 1,
 			"description": short_description or product_name,
 		}
