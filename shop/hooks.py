@@ -31,10 +31,8 @@ doctype_js = {"Quotation": "public/js/quotation.js", "Lead": "public/js/lead.js"
 doc_events = {
 	# a bank transfer recorded in the desk pays the order like a card payment does
 	"Payment Entry": {"on_submit": "shop.storefront.payment.on_payment_entry"},
-	# Store Discounts tables become ERPNext pricing rules
-	# Store Discounts become pricing rules; statement runs follow the Customer Group
-	"Customer": {"on_update": ["shop.storefront.discounts.sync", "shop.storefront.statements.sync_customer"]},
-	"Customer Group": {"on_update": "shop.storefront.discounts.sync"},
+	# statement runs follow the Customer Group
+	"Customer": {"on_update": "shop.storefront.statements.sync_customer"},
 }
 
 override_doctype_class = {

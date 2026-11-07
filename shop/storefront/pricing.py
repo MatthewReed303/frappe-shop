@@ -1,19 +1,11 @@
-"""Storefront prices.
-
-Guests see the store's price list. A signed-in customer sees their own prices: their price list
-(Customer, else their Customer Group's default, else the store's) with ERPNext's pricing rules
-applied, such as a trade discount for their group or customer and quantity breaks. When that
-is lower than the store price, the store price is returned as "retail" so pages can show both.
-
-Prices are kept and charged in the store currency. A shopper can pick another currency the
-store can be paid in (the currencies of its bank accounts) to see approximate prices in it, at
-ERPNext's exchange rate. Signed-in customers keep the choice as their Billing Currency.
-format_amount is the store-currency amount for staff screens; display_amount is what shoppers see.
-"""
+"""Storefront prices: the store's price list for guests; for a signed-in customer their own price
+list with ERPNext's pricing rules applied. format_amount is the store-currency amount for staff
+screens, display_amount what shoppers see (optionally with tax, or in another currency)."""
 
 import frappe
 from frappe import _
-from frappe.utils import flt, fmt_money, nowdate
+from frappe.rate_limiter import rate_limit
+from frappe.utils import flt, fmt_money, getdate, nowdate
 
 CURRENCY_COOKIE = "shop_currency"
 
@@ -44,19 +36,23 @@ def get_prices(item_codes: list[str], qtys: dict | None = None, customer: str | 
 
 
 def store_prices(item_codes: list[str]) -> dict:
+	"""The store's price list rates that apply to anyone today (not a customer's own price)."""
 	settings = frappe.get_cached_doc("Shop Settings")
-	rates = frappe.get_all(
+	today = getdate()
+	rates = {}
+	for row in frappe.get_all(
 		"Item Price",
-		filters={"item_code": ["in", item_codes], "price_list": settings.price_list},
-		fields=["item_code", "price_list_rate"],
-	)
+		filters={"item_code": ["in", item_codes], "price_list": settings.price_list, "customer": ["is", "not set"]},
+		fields=["item_code", "price_list_rate", "valid_from", "valid_upto"],
+		order_by="valid_from desc",
+	):
+		if row.item_code in rates:
+			continue
+		if (row.valid_from and getdate(row.valid_from) > today) or (row.valid_upto and getdate(row.valid_upto) < today):
+			continue
+		rates[row.item_code] = row.price_list_rate
 	return {
-		row.item_code: {
-			"rate": row.price_list_rate,
-			"formatted": format_amount(row.price_list_rate),
-			**display_fields(row.price_list_rate),
-		}
-		for row in rates
+		code: {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)} for code, rate in rates.items()
 	}
 
 
@@ -74,8 +70,12 @@ def format_amount(amount: float) -> str:
 
 
 def store_amount(amount: float) -> str:
-	"""An exact store-currency amount with its code, e.g. "$ 189.00 NZD"."""
-	return f"{format_amount(amount)} {store_currency()}"
+	"""An exact store-currency amount, with the currency code when the store shows several."""
+	return with_code(format_amount(amount), store_currency())
+
+
+def with_code(formatted: str, currency: str) -> str:
+	return f"{formatted} {currency}" if len(display_currencies()) > 1 else formatted
 
 
 def store_currency() -> str:
@@ -127,7 +127,7 @@ def display_rate(currency: str) -> float | None:
 
 
 def domestic_taxes() -> list:
-	"""The rows of the store's own tax template (e.g. NZ GST 15%), read once per request.
+	"""The rows of the store's own tax template, read once per request.
 
 	Read directly: ERPNext's template lookup is for staff, and these pages are public."""
 	cache = request_cache("shop_domestic_taxes")
@@ -148,10 +148,16 @@ def domestic_tax_rate() -> float:
 
 
 def tax_name() -> str:
-	"""The tax's short name from the store's tax template, e.g. "GST" from "GST @ 15.0"."""
+	"""The short name of the store's tax, from its tax template."""
+	from shop.storefront.totals import tax_name as short_name
+
 	rows = domestic_taxes()
-	words = (rows[0].description or "").split() if rows else []
-	return words[0] if words else _("tax")
+	return (short_name(rows[0].description) if rows else "") or _("tax")
+
+
+def shows_tax() -> bool:
+	"""Whether prices are shown with the store's tax, the price without tax under them."""
+	return bool(frappe.get_cached_doc("Shop Settings").get("show_prices_with_tax") and domestic_tax_rate())
 
 
 def with_and_without_tax(amount: float) -> tuple[float, float]:
@@ -168,14 +174,13 @@ def shows_store_currency() -> bool:
 
 
 def display_amount(amount: float) -> str:
-	"""A price-list amount as the shopper sees it.
-
-	In the store currency the price includes the store's tax (as home buyers pay it). In another
-	currency the buyer is overseas and pays no local tax: the price without tax, converted at
-	ERPNext's rate and marked approximate."""
+	"""A price-list amount as the shopper sees it: in the store currency as the price list has it,
+	or with tax when the store shows prices with tax. In another currency the buyer pays no local
+	tax: the price without tax, converted at ERPNext's rate and marked approximate."""
 	including, excluding = with_and_without_tax(amount)
 	if shows_store_currency():
-		return f"{fmt_money(flt(including, 2), currency=store_currency())} {store_currency()}"
+		shown = including if shows_tax() else flt(amount)
+		return with_code(fmt_money(flt(shown, 2), currency=store_currency()), store_currency())
 	currency = display_currency()
 	return f"≈ {fmt_money(excluding * display_rate(currency), currency=currency)} {currency}"
 
@@ -183,30 +188,46 @@ def display_amount(amount: float) -> str:
 def display_price(amount: float) -> str:
 	"""A product's headline price: display_amount, saying it includes tax when it does."""
 	shown = display_amount(amount)
-	if shows_store_currency() and domestic_tax_rate():
+	if shows_store_currency() and shows_tax():
 		return _("{0} incl. {1}").format(shown, tax_name())
 	return shown
 
 
 def display_price_without_tax(amount: float) -> str | None:
-	"""The line under a headline price in the store currency: the price without tax."""
-	if not shows_store_currency() or not domestic_tax_rate():
+	"""The line under a headline price shown with tax: the price without it."""
+	if not shows_store_currency() or not shows_tax():
 		return None
 	excluding = with_and_without_tax(amount)[1]
-	return _("{0} excl. {1}").format(f"{fmt_money(flt(excluding, 2), currency=store_currency())} {store_currency()}", tax_name())
+	return _("{0} excl. {1}").format(with_code(fmt_money(flt(excluding, 2), currency=store_currency()), store_currency()), tax_name())
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=30, seconds=60)
 def set_currency(currency: str) -> str:
-	"""The shopper picks the currency prices are shown in. Signed-in customers keep it as
-	their Billing Currency."""
+	"""The shopper picks the currency prices are shown in. A signed-in customer keeps it as their
+	Billing Currency where ERPNext allows it for their account."""
 	if currency not in display_currencies():
 		frappe.throw(_("Prices can't be shown in {0}").format(currency))
 	frappe.local.cookie_manager.set_cookie(CURRENCY_COOKIE, currency, max_age=60 * 60 * 24 * 365, samesite="Lax")
 	customer = session_customer()
 	if customer and frappe.db.get_value("Customer", customer, "default_currency") != currency:
-		frappe.db.set_value("Customer", customer, "default_currency", currency)
+		save_billing_currency(customer, currency)
 	return currency
+
+
+def save_billing_currency(customer: str, currency: str) -> None:
+	from shop.storefront.checkout import elevated
+
+	frappe.db.savepoint("shop_billing_currency")
+	try:
+		with elevated():
+			doc = frappe.get_doc("Customer", customer)
+			doc.default_currency = currency
+			doc.save(ignore_permissions=True)
+	except frappe.ValidationError:
+		# ERPNext only allows a Billing Currency the customer's accounts are kept in
+		frappe.db.rollback(save_point="shop_billing_currency")
+		frappe.clear_messages()
 
 
 def currency_picker_html() -> str:

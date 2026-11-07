@@ -52,6 +52,8 @@ def discount_for(coupon: dict, subtotal: float) -> float:
 
 
 def redeem(name: str):
-	frappe.db.set_value(
-		"Coupon Code", name, "used", frappe.db.get_value("Coupon Code", name, "used") + 1
-	)
+	"""Count a use of the coupon, as ERPNext does for an order with a coupon code."""
+	from erpnext.accounts.doctype.pricing_rule.utils import update_coupon_code_count
+
+	frappe.db.get_value("Coupon Code", name, "used", for_update=True)
+	update_coupon_code_count(name, "used")

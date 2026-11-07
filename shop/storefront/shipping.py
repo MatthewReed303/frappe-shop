@@ -63,20 +63,34 @@ def quote_key(cart, address: frappe._dict) -> str:
 def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = False) -> dict:
 	"""Shipping options for this cart and address: {"options": [...], "messages": [...]}.
 
-	Quotes are cached on the cart for half an hour, keyed by the items and address.
-	"""
+	Rates from shipping providers are cached on the cart for half an hour, keyed by the items and
+	address; the store's flat rate depends on the order value, so it is worked out every time."""
 	if not is_complete(address):
 		return {"options": [], "messages": [], "pending": True}
 	key = quote_key(cart, address)
 	cached = cached_quotes(cart)
 	if not refresh and cached.get("key") == key and fresh(cached):
-		return {"options": cached["options"], "messages": cached.get("messages", [])}
-	options, messages = collect(cart, address, subtotal)
-	store_quotes(cart, {"key": key, "created": str(now_datetime()), "options": options, "messages": messages})
+		options, messages, active = cached["options"], cached.get("messages", []), cached.get("active", False)
+	else:
+		options, messages, active = provider_options(cart, address, subtotal)
+		store_quotes(
+			cart,
+			{"key": key, "created": str(now_datetime()), "options": options, "messages": messages, "active": active},
+		)
+	options = list(options)
+	flat = flat_rate_option(subtotal)
+	if flat:
+		options.append(flat)
+	if not options and not active and not messages:
+		# a store with no shipping set up ships for free
+		options.append({"id": FLAT_RATE_ID, "label": _("Free shipping"), "amount": 0.0, "tax_included": True})
+	options.sort(key=lambda option: option["amount"])
 	return {"options": options, "messages": messages}
 
 
-def collect(cart, address: frappe._dict, subtotal: float) -> tuple[list[dict], list[str]]:
+def provider_options(cart, address: frappe._dict, subtotal: float) -> tuple[list[dict], list[str], bool]:
+	"""Rates from the shop_shipping_rate_providers hooks, the messages they gave, and whether any
+	of them is switched on."""
 	settings = frappe.get_cached_doc("Shop Settings")
 	context = frappe._dict(
 		cart_items=[{"item_code": row.item_code, "qty": flt(row.qty), "rate": flt(row.rate)} for row in cart.items],
@@ -105,14 +119,7 @@ def collect(cart, address: frappe._dict, subtotal: float) -> tuple[list[dict], l
 			result = result.get("options") or []
 		for option in result or []:
 			options.append(clean_option(option))
-	flat = flat_rate_option(subtotal)
-	if flat:
-		options.append(flat)
-	if not options and not active and not messages:
-		# a store with no shipping set up ships for free, as Shop always has
-		options.append({"id": FLAT_RATE_ID, "label": _("Free shipping"), "amount": 0.0, "tax_included": True})
-	options.sort(key=lambda option: option["amount"])
-	return options, list(dict.fromkeys(messages))
+	return options, list(dict.fromkeys(messages)), active
 
 
 def clean_option(option: dict) -> dict:

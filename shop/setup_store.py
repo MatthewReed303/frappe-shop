@@ -9,9 +9,9 @@ what is missing and keeps what exists (and anything a store owner has changed).
   conversion_fee_item)
 - card payments: a "Stripe Clearing" bank account and the Payment Gateway Account for the Stripe
   gateway, when one has been set up in the desk
-- taxes: the company's default sales taxes for home orders, and a zero-rated template with ERPNext
-  Tax Rules for orders shipped abroad
-- trade customers: a Customer Group with default Payment Terms and Store Discounts
+- taxes: the company's default sales taxes for home orders, and a zero-rated Export Tax Template
+  for orders shipped abroad
+- trade customers: a Customer Group with default Payment Terms and Pricing Rule discounts
 - new customers: Selling Settings' default Customer Group
 - statements: a statement letterhead and a monthly ERPNext Process Statement Of Accounts for the
   trade group
@@ -56,6 +56,8 @@ def set_up(
 	numbers = account_numbers or {}
 
 	for field, code, name, account_name in CHARGE_ITEMS:
+		if settings.get(field):
+			continue
 		income = account(company_doc, account_name, income_parent(company_doc), "Income Account", numbers.get(account_name))
 		settings.set(field, charge_item(company_doc, code, name, income))
 
@@ -64,10 +66,8 @@ def set_up(
 		settings.payment_gateway_account = gateway
 
 	settings.tax_template = settings.tax_template or default_sales_taxes(company_doc.name)
-	if export_zero_rated and settings.tax_template:
-		from shop.storefront.totals import ensure_tax_rules
-
-		ensure_tax_rules(company_doc.name, settings.tax_template, zero_rated_template(company_doc, settings.tax_template))
+	if export_zero_rated and settings.tax_template and not settings.get("export_tax_template"):
+		settings.export_tax_template = zero_rated_template(company_doc, settings.tax_template)
 
 	if trade_group:
 		settings.trade_customer_group = customer_group(trade_group, trade_payment_terms, trade_discounts)
@@ -84,7 +84,10 @@ def set_up(
 
 
 def income_parent(company) -> str:
-	return frappe.db.get_value("Account", company.default_income_account, "parent_account")
+	"""Where new income accounts go: beside the company's default income account."""
+	if company.default_income_account:
+		return frappe.db.get_value("Account", company.default_income_account, "parent_account")
+	return frappe.db.get_value("Account", {"company": company.name, "root_type": "Income", "is_group": 1}, "name", order_by="lft desc")
 
 
 def account(company, name: str, parent: str, account_type: str, number: str | None = None, currency: str | None = None) -> str:
@@ -185,8 +188,8 @@ def zero_rated_template(company, home_template: str) -> str:
 
 
 def customer_group(name: str, payment_terms: str | None = None, discounts: dict | None = None) -> str:
-	"""A Customer Group for trade customers, with its default Payment Terms and Store Discounts
-	(set once; changes made in the desk are kept)."""
+	"""A Customer Group for trade customers with its default Payment Terms, and an ERPNext Pricing
+	Rule for each Item Group discount (made once; changes made in the desk are kept)."""
 	if not frappe.db.exists("Customer Group", name):
 		frappe.get_doc({"doctype": "Customer Group", "customer_group_name": name, "parent_customer_group": "All Customer Groups"}).insert(
 			ignore_permissions=True
@@ -194,11 +197,33 @@ def customer_group(name: str, payment_terms: str | None = None, discounts: dict 
 	group = frappe.get_doc("Customer Group", name)
 	if payment_terms and not group.payment_terms:
 		group.payment_terms = payment_terms
-	if discounts and group.meta.has_field("shop_discounts") and not group.get("shop_discounts"):
-		for item_group, percent in discounts.items():
-			group.append("shop_discounts", {"item_group": item_group, "discount_percentage": percent})
-	group.save(ignore_permissions=True)
+		group.save(ignore_permissions=True)
+	for item_group, percent in (discounts or {}).items():
+		group_discount(name, item_group, percent)
 	return name
+
+
+def group_discount(customer_group: str, item_group: str, percent: float) -> str:
+	"""An ERPNext Pricing Rule: percent off an Item Group for a Customer Group."""
+	title = f"{customer_group}: {item_group}"
+	existing = frappe.db.get_value("Pricing Rule", {"title": title, "customer_group": customer_group})
+	if existing:
+		return existing
+	rule = frappe.get_doc(
+		{
+			"doctype": "Pricing Rule",
+			"title": title,
+			"apply_on": "Item Group",
+			"item_groups": [{"item_group": item_group}],
+			"applicable_for": "Customer Group",
+			"customer_group": customer_group,
+			"selling": 1,
+			"rate_or_discount": "Discount Percentage",
+			"discount_percentage": percent,
+			"company": frappe.db.get_single_value("Shop Settings", "company"),
+		}
+	)
+	return rule.insert(ignore_permissions=True).name
 
 
 def set_default_customer_group(name: str) -> None:

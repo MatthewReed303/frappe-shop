@@ -20,7 +20,7 @@ async function approve(frm) {
 			{ fieldname: "allow_on_account", fieldtype: "Check", label: __("Pay on Account at the Store") },
 			{ fieldname: "credit_limit", fieldtype: "Currency", label: __("Credit Limit") },
 			{ fieldname: "price_list", fieldtype: "Link", options: "Price List", label: __("Price List"),
-			  description: __("Optional. Usually leave empty: the Customer Group's Price List and Store Discounts apply.") },
+			  description: __("Optional. Usually leave empty: the Customer Group's Price List and Pricing Rules apply.") },
 		],
 		primary_action_label: __("Approve"),
 		primary_action(values) {

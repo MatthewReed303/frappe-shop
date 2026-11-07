@@ -12,8 +12,11 @@ class ShopPaymentRequest(PaymentRequest):
 		if status not in AUTHORIZED_STATUSES:
 			return None
 		self.flags.ignore_permissions = True
-		newly_paid = self.status != "Paid"
+		# a gateway can report one payment twice at once (the shopper's return and its webhook)
+		newly_paid = frappe.db.get_value(self.doctype, self.name, "status", for_update=True) != "Paid"
 		if newly_paid:
+			self.reload()
+			self.flags.ignore_permissions = True
 			self.set_as_paid()
 		if self.reference_doctype == "Sales Order" and newly_paid:
 			from shop.storefront.checkout import send_confirmation
@@ -28,9 +31,8 @@ class ShopPaymentRequest(PaymentRequest):
 	def confirmation_url(self) -> str | None:
 		if self.reference_doctype != "Sales Order":
 			return None
-		token = frappe.db.get_value("Shop Cart", {"sales_order": self.reference_name}, "token") or frappe.db.get_value(
-			"Sales Order", self.reference_name, "shop_access_token"
-		)
-		if token:
-			return store_url(f"order-confirmation/{self.reference_name}?token={token}")
+		from shop.storefront.orders import access_token, order_url
+
+		if access_token(self.reference_name):
+			return order_url(self.reference_name)
 		return store_url("account/orders")

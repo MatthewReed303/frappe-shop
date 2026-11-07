@@ -2,10 +2,9 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from shop.routes import store_url
+from shop.routes import store_url, token_matches
 from shop.storefront import cart as cart_module
 from shop.storefront import pricing
-
 
 STATUS_LABELS = {
 	"To Deliver and Bill": "Processing",
@@ -53,7 +52,7 @@ def get_order(name: str) -> dict:
 def get_order_summary(name: str, token: str | None = None) -> dict:
 	if not can_view(name, token):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
-	return order_summary(frappe.get_doc("Sales Order", name))
+	return order_summary(frappe.get_doc("Sales Order", name), token)
 
 
 def valid_token(name: str, token: str | None) -> bool:
@@ -65,8 +64,23 @@ def valid_token(name: str, token: str | None) -> bool:
 		return True
 	return bool(
 		frappe.get_meta("Sales Order").has_field("shop_access_token")
-		and frappe.db.get_value("Sales Order", name, "shop_access_token") == token
+		and token_matches(frappe.db.get_value("Sales Order", name, "shop_access_token"), token)
 	)
+
+
+def access_token(order_name: str) -> str | None:
+	"""The secret that opens an order's page without signing in: the checkout's cart token, or the
+	order's own token (orders made from an accepted quote)."""
+	token = frappe.db.get_value("Shop Cart", {"sales_order": order_name}, "token")
+	if not token and frappe.get_meta("Sales Order").has_field("shop_access_token"):
+		token = frappe.db.get_value("Sales Order", order_name, "shop_access_token")
+	return token
+
+
+def order_url(order_name: str) -> str:
+	"""The order's page, with its token when it has one."""
+	token = access_token(order_name)
+	return store_url(f"order-confirmation/{order_name}" + (f"?token={token}" if token else ""))
 
 
 def can_view(name: str, token: str | None) -> bool:
@@ -77,7 +91,7 @@ def can_view(name: str, token: str | None) -> bool:
 	return bool(customers) and frappe.db.get_value("Sales Order", name, "customer") in customers
 
 
-def order_summary(order) -> dict:
+def order_summary(order, token: str | None = None) -> dict:
 	from shop.storefront import payment, returns, totals
 
 	shipment = shipment_summary(order.name)
@@ -87,11 +101,10 @@ def order_summary(order) -> dict:
 
 	products = [row for row in order.items if not totals.is_charge_item(row.item_code)]
 	charges = [row for row in order.items if totals.is_charge_item(row.item_code)]
-	included = sum(frappe.utils.flt(tax.tax_amount_after_discount_amount) for tax in order.taxes if tax.included_in_print_rate)
+	lines, notes = totals.summary_lines(order)
 	product_total = sum(frappe.utils.flt(row.amount) for row in products)
 	paid = payment.is_paid(order)
 	method = payment.method(order)
-	token = frappe.form_dict.get("token")
 	return {
 		"returns": returns.summary(order.name),
 		"name": order.name,
@@ -107,8 +120,8 @@ def order_summary(order) -> dict:
 		"formatted_shipping": shipping_label(order, charges),
 		"discount_amount": order.discount_amount or None,
 		"formatted_discount": fmt(order.discount_amount) if order.discount_amount else None,
-		"grand_total": order.grand_total,
-		"formatted_grand_total": fmt(order.grand_total),
+		"grand_total": totals.order_total(order),
+		"formatted_grand_total": fmt(totals.order_total(order)),
 		"charges": [
 			{"label": row.description or row.item_name, "formatted_amount": fmt(row.amount)} for row in charges
 		],
@@ -117,13 +130,13 @@ def order_summary(order) -> dict:
 			for tax in order.taxes
 			if not tax.included_in_print_rate and tax.tax_amount
 		],
-		"tax_note": _("Includes {0} GST").format(fmt(included)) if included else None,
+		"tax_note": " ".join(notes) or None,
 		"payment_method": method,
 		"paid": "true" if paid else None,
 		"unpaid": None if paid or order.docstatus == 2 else "true",
 		"bank_transfer": None if paid or order.docstatus == 2 else payment.bank_instructions(order),
-		"pay_url": pay_url(order, token) if not paid and method == totals.CARD and order.docstatus == 1 else None,
-		"totals_html": totals_html(order, products, charges, included),
+		"pay_url": pay_url(order, token) if not paid and method == totals.GATEWAY and order.docstatus == 1 else None,
+		"totals_html": totals_html(order, lines, notes, charges),
 		"payment_html": payment_html(order, paid, method, token),
 		"items": [
 			{
@@ -141,8 +154,10 @@ def order_summary(order) -> dict:
 	}
 
 
-def totals_html(order, products, charges, included) -> str:
+def totals_html(order, lines: list[dict], notes: list[str], charges) -> str:
 	"""The order's money lines as ready-made HTML, so every theme shows the same breakdown."""
+	from shop.storefront import totals
+
 	esc = frappe.utils.escape_html
 
 	def fmt(amount):
@@ -151,20 +166,13 @@ def totals_html(order, products, charges, included) -> str:
 	def line(label, amount, kind=""):
 		return f'<div class="order-line {kind}"><span>{esc(label)}</span><span>{esc(amount)}</span></div>'
 
-	html = line(_("Subtotal"), fmt(sum(frappe.utils.flt(row.amount) for row in products)))
-	if order.discount_amount:
-		html += line(_("Discount"), "-" + fmt(order.discount_amount), "discount")
-	if not any(row.item_code == frappe.get_cached_doc("Shop Settings").get("shipping_item") for row in charges):
+	html = line(lines[0]["label"], fmt(lines[0]["amount"]))
+	if not any(row["kind"] == "shipping" for row in lines):
 		html += line(_("Shipping"), shipping_label(order, charges))
-	for row in charges:
-		html += line(row.description or row.item_name, fmt(row.amount))
-	for tax in order.taxes:
-		if not tax.included_in_print_rate and tax.tax_amount:
-			html += line(tax.description, fmt(tax.tax_amount))
-	html += line(_("Total"), f"{fmt(order.grand_total)} {order.currency}", "total")
-	if included:
-		html += f'<p class="order-note">{esc(_("Includes {0} GST").format(fmt(included)))}</p>'
-	return html
+	for row in lines[1:]:
+		html += line(row["label"], fmt(row["amount"]), row["kind"])
+	html += line(_("Total"), f"{fmt(totals.order_total(order))} {order.currency}", "total")
+	return html + "".join(f'<p class="order-note">{esc(note)}</p>' for note in notes)
 
 
 def invoice_url(invoice: str, order_name: str, token: str | None) -> str:
@@ -213,7 +221,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 			f'<div class="bank-details">{details}</div>{due}'
 			f'<p>{esc(_("We send your order as soon as the payment arrives."))}</p></div>'
 		)
-	url = pay_url(order, token) if method == totals.CARD else None
+	url = pay_url(order, token) if method == totals.GATEWAY else None
 	if url:
 		return (
 			f'<div class="order-payment card"><p>{esc(_("This order is waiting for payment."))}</p>'
@@ -227,7 +235,7 @@ def display_status(order, paid: bool) -> str:
 
 	if order.docstatus == 2:
 		return _("Cancelled")
-	if not paid and order.get("shop_payment_method") in (totals.BANK, totals.CARD):
+	if not paid and order.get("shop_payment_method") in (totals.BANK, totals.GATEWAY):
 		return _("Awaiting payment")
 	shipment = shipment_summary(order.name)
 	if shipment and shipment.status in ("Pending", "Accepted"):
@@ -264,7 +272,7 @@ def order_progress(order, shipment: dict | None) -> list[dict]:
 		payment_label, paid = _("Invoiced"), True
 	elif paid:
 		payment_label = _("Paid")
-	elif method in (totals.BANK, totals.CARD) or expects_online_payment(order.name):
+	elif method in (totals.BANK, totals.GATEWAY) or expects_online_payment(order.name):
 		payment_label = _("Awaiting payment")
 	else:
 		payment_label = _("Payment on delivery")
@@ -330,13 +338,13 @@ def session_customers(user: str | None = None) -> list[str]:
 	user = user or getattr(frappe.local, "shop_shopper", None) or frappe.session.user
 	if user in ("Guest", None):
 		return []
-	contacts = frappe.get_all(
-		"Contact Email", filters={"email_id": user}, pluck="parent"
-	)
-	if not contacts:
-		return []
-	return frappe.get_all(
-		"Dynamic Link",
-		filters={"parenttype": "Contact", "parent": ["in", contacts], "link_doctype": "Customer"},
-		pluck="link_name",
-	)
+	# customers the user is a Portal User of come first: they were given the account explicitly
+	customers = frappe.get_all("Portal User", filters={"parenttype": "Customer", "user": user}, pluck="parent")
+	contacts = frappe.get_all("Contact Email", filters={"email_id": user}, pluck="parent")
+	if contacts:
+		customers += frappe.get_all(
+			"Dynamic Link",
+			filters={"parenttype": "Contact", "parent": ["in", contacts], "link_doctype": "Customer"},
+			pluck="link_name",
+		)
+	return list(dict.fromkeys(customers))

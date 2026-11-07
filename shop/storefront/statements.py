@@ -50,7 +50,9 @@ def letter_head_for(customers: list[str]) -> str | None:
 @frappe.whitelist(methods=["GET"])
 def statement_pdf():
 	"""The signed-in customer's statement for the last 12 months, with ageing."""
-	from erpnext.accounts.doctype.process_statement_of_accounts.process_statement_of_accounts import get_report_pdf
+	from erpnext.accounts.doctype.process_statement_of_accounts.process_statement_of_accounts import (
+		get_report_pdf,
+	)
 
 	from shop.storefront.checkout import elevated
 	from shop.storefront.orders import session_customers

@@ -186,9 +186,9 @@ def place_order(
 	expected_total: float | None = None,
 ) -> dict:
 	cart = cart_module.resolve_cart()
-	payment_method = totals.normalize_method(payment_method)
 	validate_order(cart, customer, payment_method, accept_terms)
 	with elevated():
+		lock_cart(cart)
 		order_quote = totals.compute(cart, address, shipping_option, payment_method, currency)
 		validate_quote(order_quote, expected_total)
 		party = get_or_create_customer(customer)
@@ -208,18 +208,31 @@ def place_order(
 			"sales_order": sales_order.name,
 			"confirmation_url": confirmation_url,
 		}
-		if payment_method == totals.CARD:
-			# the confirmation goes out once the card payment succeeds (ShopPaymentRequest)
+		if payment_method == totals.GATEWAY and totals.order_total(sales_order) > 0:
+			# the confirmation goes out once the payment succeeds (ShopPaymentRequest)
 			response["payment_url"] = create_payment_request(sales_order, customer, cart.token)
 		else:
 			send_confirmation_for(sales_order, confirmation_url)
 	return response
 
 
+def lock_cart(cart) -> None:
+	"""Hold the cart for this order, so a second submit can't order it twice."""
+	status = frappe.db.get_value("Shop Cart", cart.name, "status", for_update=True)
+	if status != "Active":
+		frappe.throw(_("This cart has already been ordered. Check your email for the order."))
+
+
 def send_confirmation_for(sales_order, confirmation_url: str) -> None:
-	"""Orders not paid by card: invoice on-account orders, then email the confirmation."""
-	if sales_order.get("shop_payment_method") == totals.ACCOUNT:
+	"""Orders not waiting on an online payment: invoice on-account orders, treat an order with
+	nothing to pay as paid, then email the confirmation."""
+	from shop.storefront import payment
+
+	method = sales_order.get("shop_payment_method")
+	if method == totals.ACCOUNT:
 		invoice_on_account(sales_order)
+	elif method in (totals.GATEWAY, totals.BANK) and totals.order_total(sales_order) <= 0:
+		payment.order_paid(sales_order)
 	queue_confirmation_email(sales_order, sales_order.contact_email, confirmation_url)
 
 
@@ -240,13 +253,12 @@ def invoice_on_account(sales_order) -> str:
 
 def send_confirmation(order_name: str) -> None:
 	"""Email the order confirmation for an order placed through the store."""
-	token = frappe.db.get_value("Shop Cart", {"sales_order": order_name}, "token")
+	from shop.storefront.orders import access_token, order_url
+
 	email = frappe.db.get_value("Sales Order", order_name, "contact_email")
-	token = token or frappe.db.get_value("Sales Order", order_name, "shop_access_token")
-	if not token or not email:
+	if not email or not access_token(order_name):
 		return
-	confirmation_url = store_url(f"order-confirmation/{order_name}?token={token}")
-	queue_confirmation_email(frappe.get_doc("Sales Order", order_name), email, confirmation_url)
+	queue_confirmation_email(frappe.get_doc("Sales Order", order_name), email, order_url(order_name))
 
 
 def validate_quote(order_quote, expected_total: float | None) -> None:
@@ -254,9 +266,12 @@ def validate_quote(order_quote, expected_total: float | None) -> None:
 		if order_quote.shipping_messages:
 			frappe.throw("<br>".join(order_quote.shipping_messages))
 		frappe.throw(_("We can't ship to this address. Check the address, or contact us."))
+	for item in order_quote.order.items:
+		if not flt(item.rate) and not item.get("is_free_item") and not totals.is_charge_item(item.item_code):
+			frappe.throw(_("{0} can't be ordered right now. Remove it to continue.").format(item.item_name or item.item_code))
 	if expected_total is not None and abs(flt(expected_total) - order_quote.total) > 0.009:
 		frappe.throw(
-			_("The total changed to {0}. Check your order and place it again.").format(
+			_("The total is {0}. Check your order and place it again.").format(
 				totals.money(order_quote.total, order_quote.currency)
 			),
 			title=_("Total changed"),
@@ -265,9 +280,7 @@ def validate_quote(order_quote, expected_total: float | None) -> None:
 
 def queue_confirmation_email(sales_order, email: str, confirmation_url: str):
 	try:
-		from shop.storefront import payment
-
-		from shop.storefront import emails
+		from shop.storefront import emails, payment
 
 		bank = payment.method(sales_order) == totals.BANK and not payment.is_paid(sales_order)
 		emails.send(
@@ -298,21 +311,14 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 		)
 
 	rows = "".join(
-		row(f"{line.description or line.item_name}" if totals.is_charge_item(line.item_code) else f"{line.item_name} × {frappe.utils.cint(line.qty)}", fmt(line.amount))
+		row(f"{line.item_name} × {cart_module.display_qty(line.qty)}", fmt(line.amount))
 		for line in sales_order.items
+		if not totals.is_charge_item(line.item_code)
 	)
-	if sales_order.discount_amount:
-		rows += row(_("Discount"), "-" + fmt(sales_order.discount_amount))
-	for tax in sales_order.taxes:
-		if not tax.included_in_print_rate and tax.tax_amount:
-			rows += row(tax.description, fmt(tax.tax_amount))
-	rows += row(_("Total"), f"{fmt(sales_order.grand_total)} {sales_order.currency}", bold=True)
-	included_rows = [t for t in sales_order.taxes if t.included_in_print_rate]
-	included = sum(frappe.utils.flt(t.tax_amount_after_discount_amount) for t in included_rows)
-	tax_note = (
-		f"<p style='color:#666;font-size:13px'>{esc(_('Includes {0}: {1}').format(included_rows[0].description, fmt(included)))}</p>"
-		if included else ""
-	)
+	lines, notes = totals.summary_lines(sales_order)
+	rows += "".join(row(line["label"], fmt(line["amount"])) for line in lines[1:])
+	rows += row(_("Total"), f"{fmt(totals.order_total(sales_order))} {sales_order.currency}", bold=True)
+	tax_note = "".join(f"<p style='color:#666;font-size:13px'>{esc(note)}</p>" for note in notes)
 	pay = ""
 	if sales_order.get("shop_payment_method") == totals.ACCOUNT:
 		invoice = frappe.db.get_value(
@@ -323,15 +329,11 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 			pay = f"<p>{esc(_('Invoice {0} is attached, due {1}.').format(invoice, frappe.utils.formatdate(due)))}</p>"
 	elif payment.is_paid(sales_order) and payment.order_invoice(sales_order.name):
 		pay = f"<p>{esc(_('Paid. Your invoice {0} is attached.').format(payment.order_invoice(sales_order.name)))}</p>"
-	if sales_order.get("shop_payment_method") == totals.CARD and not payment.is_paid(sales_order):
-		token = frappe.db.get_value("Shop Cart", {"sales_order": sales_order.name}, "token")
-		from shop.payments import stripe_checkout
-
-		if token and stripe_checkout.is_stripe():
-			pay = (
-				f"<p>{esc(_('If you did not finish paying, you can pay here:'))} "
-				f"<a href='{stripe_checkout.pay_url(sales_order.name, token)}'>{esc(_('Pay by card'))}</a></p>"
-			)
+	if sales_order.get("shop_payment_method") == totals.GATEWAY and not payment.is_paid(sales_order):
+		pay = (
+			f"<p>{esc(_('If you did not finish paying, you can pay from your order page:'))} "
+			f"<a href='{frappe.utils.get_url(confirmation_url)}'>{esc(_('View your order'))}</a></p>"
+		)
 	terms = ""
 	from shop.storefront import terms as store_terms
 
@@ -351,13 +353,15 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 
 @contextmanager
 def elevated():
-	# ERPNext's SO validation requires Item read perms no shopper role has.
-	# Inputs are fully validated before elevation; scope approved for guest checkout.
-	# set_user mutates session.sid/data in place, so restore the whole identity
-	# or the response reissues a broken sid cookie and logs the shopper out.
+	"""Run as Administrator for the storefront's own reads and writes: ERPNext's Sales Order,
+	Quotation and pricing code needs permissions no shopper role has. Callers check what the
+	shopper may do before entering it."""
+	# set_user changes session.sid and data in place, so the whole identity is restored, or the
+	# response would reissue a broken sid cookie and sign the shopper out
 	session = frappe.local.session
 	original = (session.user, session.sid, session.data)
-	# remember who is shopping, so their prices and accounts still apply while elevated
+	form_dict = frappe.local.form_dict
+	# who is shopping, so their prices and accounts still apply while elevated
 	outer = getattr(frappe.local, "shop_shopper", None)
 	frappe.local.shop_shopper = outer or session.user
 	frappe.set_user("Administrator")
@@ -366,6 +370,7 @@ def elevated():
 	finally:
 		frappe.local.shop_shopper = outer
 		session.user, session.sid, session.data = original
+		frappe.local.form_dict = form_dict
 		frappe.local.cache = {}
 		frappe.local.role_permissions = {}
 
@@ -404,6 +409,9 @@ def get_or_create_customer(customer: dict) -> str:
 	email = customer["email"].strip().lower()
 	existing = find_customer_by_email(email)
 	if existing:
+		# a guest can't place orders on someone's account, or see its prices and addresses
+		if pricing.shopper() == "Guest" and frappe.db.exists("User", {"name": email, "enabled": 1}):
+			frappe.throw(_("There is an account for {0}. Please sign in to order with it.").format(email), title=_("Sign in"))
 		return existing
 	party = frappe.get_doc(
 		{
@@ -417,12 +425,17 @@ def get_or_create_customer(customer: dict) -> str:
 
 
 def find_customer_by_email(email: str) -> str | None:
-	contact = frappe.db.get_value("Contact Email", {"email_id": email}, "parent")
-	if not contact:
+	"""The customer an email belongs to: a Customer it is a Portal User of, else one linked to any
+	Contact with that email."""
+	portal = frappe.db.get_value("Portal User", {"parenttype": "Customer", "user": email}, "parent")
+	if portal:
+		return portal
+	contacts = frappe.get_all("Contact Email", filters={"email_id": email}, pluck="parent")
+	if not contacts:
 		return None
 	return frappe.db.get_value(
 		"Dynamic Link",
-		{"parenttype": "Contact", "parent": contact, "link_doctype": "Customer"},
+		{"parenttype": "Contact", "parent": ["in", contacts], "link_doctype": "Customer"},
 		"link_name",
 	)
 
@@ -515,68 +528,59 @@ def create_sales_order(
 	business_buyer: int = 0,
 	email: str | None = None,
 ):
-	settings = frappe.get_cached_doc("Shop Settings")
+	"""Place the order the shopper was quoted, for their customer."""
 	if order_quote is None:
-		order_quote = totals.compute(cart, None)
-	company_currency = frappe.get_cached_value("Company", settings.company, "default_currency")
-	currency = order_quote.currency
-	sales_order = frappe.get_doc(
-		{
-			"doctype": "Sales Order",
-			"company": settings.company,
-			"customer": party,
-			"order_type": "Sales",
-			"delivery_date": add_days(nowdate(), 3),
-			"selling_price_list": pricing.customer_price_list(party),
-			"currency": currency,
-			"conversion_rate": totals.exchange_rate(currency, company_currency),
-			"plc_conversion_rate": 1,
-			"ignore_pricing_rule": 1,
-			"disable_rounded_total": 1,
-			"customer_address": shipping_address.name,
-			"shipping_address_name": shipping_address.name,
-			"items": [
-				{
-					"item_code": row.item_code,
-					"qty": row.qty,
-					"rate": row.rate,
-					"warehouse": settings.default_warehouse,
-				}
-				for row in order_quote.order_items
-			],
-		}
-	)
+		order_quote = totals.compute(cart)
+	sales_order = order_quote.order
+	sales_order.customer = party
+	# keep the prices the shopper was quoted, which ERPNext worked out for them
+	sales_order.ignore_pricing_rule = 1
+	sales_order.customer_address = shipping_address.name
+	sales_order.shipping_address_name = shipping_address.name
 	if email:
-		# the order's contact, for receipts and payment reminders
-		contact = frappe.db.get_value("Contact Email", {"email_id": email}, "parent")
-		sales_order.contact_person = contact
+		sales_order.contact_person = frappe.db.get_value("Contact Email", {"email_id": email}, "parent")
 		sales_order.contact_email = email
-	if order_quote.discount:
-		sales_order.apply_discount_on = "Grand Total"
-		sales_order.discount_amount = order_quote.discount
-	apply_taxes(sales_order, settings, order_quote.tax_template)
-	apply_shipping(sales_order, settings, order_quote)
-	for fee in order_quote.fees:
-		sales_order.append("items", {"item_code": fee.item, "qty": 1, "rate": fee.amount, "description": fee.label})
 	set_shop_details(sales_order, order_quote, terms_accepted, business_buyer)
 	sales_order.flags.ignore_permissions = True
 	sales_order.insert(ignore_permissions=True)
 	check_total(sales_order, order_quote)
+	check_credit_limit(sales_order)
 	sales_order.submit()
-	if order_quote.discount and cart.coupon_code:
+	if order_quote.coupon and cart.coupon_code:
 		from shop.storefront import coupons
 
 		coupons.redeem(cart.coupon_code)
 	return sales_order
 
 
+def check_credit_limit(sales_order) -> None:
+	"""ERPNext's credit limit check for the customer, with a message meant for the shopper."""
+	from erpnext.selling.doctype.customer.customer import (
+		get_credit_limit,
+		get_customer_outstanding,
+		is_sales_order_credit_check_bypassed,
+	)
+
+	customer, company = sales_order.customer, sales_order.company
+	limit = flt(get_credit_limit(customer, company))
+	if not limit or is_sales_order_credit_check_bypassed(customer, company):
+		return
+	if flt(get_customer_outstanding(customer, company)) + flt(sales_order.base_grand_total) > limit:
+		frappe.throw(_("This order is over your account's credit limit. Please contact us to place it."))
+
+
 def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buyer: int) -> None:
 	settings = frappe.get_cached_doc("Shop Settings")
 	if not frappe.get_meta("Sales Order").has_field("shop_payment_method"):
 		return
-	days = frappe.utils.cint(settings.get("bank_transfer_days")) or 7
-	sales_order.shop_payment_method = order_quote.payment_method
-	sales_order.shop_payment_due = add_days(nowdate(), days if order_quote.payment_method == totals.BANK else 2)
+	method = order_quote.payment_method
+	sales_order.shop_payment_method = method
+	days = {
+		totals.BANK: frappe.utils.cint(settings.get("bank_transfer_days")),
+		totals.GATEWAY: frappe.utils.cint(settings.get("online_payment_days")),
+	}.get(method)
+	if days:
+		sales_order.shop_payment_due = add_days(nowdate(), days)
 	if order_quote.shipping:
 		sales_order.shop_shipping_option = json.dumps(
 			{key: order_quote.shipping.get(key) for key in ("id", "label", "amount", "carrier", "service", "meta")},
@@ -584,7 +588,9 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 		)
 	from shop.storefront import terms
 
-	terms.apply_to(sales_order)
+	# an order made from a quote keeps the quote's terms
+	if not (sales_order.get("tc_name") or sales_order.get("terms")):
+		terms.apply_to(sales_order)
 	if terms_accepted:
 		sales_order.shop_terms_version = terms.version()
 		sales_order.shop_terms_accepted_on = frappe.utils.now_datetime()
@@ -593,43 +599,12 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 
 def check_total(sales_order, order_quote) -> None:
 	"""The order must cost what the shopper was shown."""
-	if abs(flt(sales_order.grand_total) - flt(order_quote.total)) > 0.011 * max(len(sales_order.items), 1):
+	if abs(totals.order_total(sales_order) - flt(order_quote.total)) > 0.009:
 		frappe.log_error(
 			title="Shop order total differs from checkout",
-			message=f"{sales_order.grand_total} vs {order_quote.total}\n{frappe.as_json(order_quote, indent=1)}",
+			message=f"{totals.order_total(sales_order)} vs {order_quote.total}",
 		)
 		frappe.throw(_("We couldn't work out your total. Please try again or contact us."))
-
-
-def apply_taxes(sales_order, settings, template: str | None = None):
-	template = template or settings.tax_template
-	if not template:
-		return
-	from shop.compat import get_sales_taxes
-
-	sales_order.taxes_and_charges = template
-	for tax in get_sales_taxes(template):
-		sales_order.append("taxes", tax)
-
-
-def apply_shipping(sales_order, settings, order_quote):
-	if not order_quote.shipping or not order_quote.shipping.customer_amount:
-		return
-	amount = order_quote.shipping.customer_amount
-	if settings.get("shipping_item"):
-		sales_order.append(
-			"items", {"item_code": settings.shipping_item, "qty": 1, "rate": amount, "description": order_quote.shipping["label"]}
-		)
-		return
-	sales_order.append(
-		"taxes",
-		{
-			"charge_type": "Actual",
-			"account_head": settings.shipping_account,
-			"description": order_quote.shipping["label"] or _("Shipping"),
-			"tax_amount": amount,
-		},
-	)
 
 
 def convert_cart(cart, sales_order):

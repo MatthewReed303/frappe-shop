@@ -28,7 +28,7 @@ class TestTradeAccounts(IntegrationTestCase):
 			if hasattr(frappe.local, name):
 				delattr(frappe.local, name)
 		self.settings = frappe.get_doc("Shop Settings")
-		from shop.tests.test_checkout_totals import terms_record
+		from shop.tests.utils import terms_record
 
 		self.original = {f: self.settings.get(f) for f in ("require_terms", "terms_and_conditions", "card_fee_item", "card_fee_percent", "card_fee_fixed")}
 		frappe.db.set_single_value("Shop Settings", {"require_terms": 1, "terms_and_conditions": terms_record()})
@@ -188,7 +188,7 @@ class TestTradeAccounts(IntegrationTestCase):
 		settings.card_fee_item = None
 		settings.enable_bank_transfer = 1
 		settings.bank_accounts = []
-		from shop.tests.test_checkout_totals import company_bank_account
+		from shop.tests.utils import company_bank_account
 
 		settings.append("bank_accounts", {"bank_account": company_bank_account(settings.company, settings.currency)})
 		settings.save(ignore_permissions=True)
@@ -226,25 +226,28 @@ class TestTradeAccounts(IntegrationTestCase):
 			quotes.accept_quote(quotation.name, quotation.shop_access_token, totals.BANK, accept_terms=1)
 
 	def test_card_fee_is_added_to_quotes_paid_by_card(self):
-		total = 100.0
 		frappe.db.set_single_value("Shop Settings", {"card_fee_item": "SHOP-DEMO-003", "card_fee_percent": 2.65, "card_fee_fixed": 0.3})
 		frappe.clear_cache(doctype="Shop Settings")
-		fee = totals.card_fee_for(total, export=False)
+		cart.add_item(ITEM, qty=1)
+		result = quotes.request_quote(customer={"email": "fee.buyer@example.com", "full_name": "Fee Buyer"}, address=self.address)
+		quotation = frappe.get_doc("Quotation", result["quote"])
+		quotation.submit()
+		fee = quotes.card_fee(quotation)
 		self.assertGreater(fee, 0)
-		factor = 1 + (totals.included_tax_rate() / 100 if self.settings.prices_include_tax else 0)
-		self.assertAlmostEqual(fee / factor, 0.0265 * (total + fee) + 0.3, delta=0.01)
+		total = flt(quotation.grand_total)
+		self.assertAlmostEqual(fee, 0.0265 * (total + fee) + 0.3, delta=0.02)
 
 
-class TestStoreDiscounts(IntegrationTestCase):
+class TestCustomerPrices(IntegrationTestCase):
 	def setUp(self):
 		for name in ("shop_session_customer", "shop_customer_rates"):
 			if hasattr(frappe.local, name):
 				delattr(frappe.local, name)
 		self.parent = ensure("Item Group", "_Test Store Hardware", {"item_group_name": "_Test Store Hardware",
 																	"parent_item_group": "All Item Groups", "is_group": 1})
-		self.child = ensure("Item Group", "_Test Store HATs", {"item_group_name": "_Test Store HATs",
+		self.child = ensure("Item Group", "_Test Store Tools", {"item_group_name": "_Test Store Tools",
 															   "parent_item_group": "_Test Store Hardware"})
-		self.item = "_Test Store HAT Item"
+		self.item = "_Test Store Tool Item"
 		if not frappe.db.exists("Item", self.item):
 			frappe.get_doc({"doctype": "Item", "item_code": self.item, "item_name": self.item, "item_group": self.child,
 							"stock_uom": "Nos", "is_stock_item": 0}).insert(ignore_permissions=True)
@@ -261,26 +264,14 @@ class TestStoreDiscounts(IntegrationTestCase):
 		frappe.local.shop_customer_rates = {}
 		return pricing.customer_rate(self.item, self.customer, frappe.get_cached_doc("Shop Settings").price_list, 1)
 
-	def test_group_discount_reaches_sub_groups_and_customer_overrides_it(self):
-		group = frappe.get_doc("Customer Group", self.group)
-		group.set("shop_discounts", [{"item_group": self.parent, "discount_percentage": 15}])
-		group.save()
-		self.assertEqual(self.rate(), 85)
-		customer = frappe.get_doc("Customer", self.customer)
-		customer.set("shop_discounts", [{"item_group": self.child, "discount_percentage": 25}])
-		customer.save()
-		self.assertEqual(self.rate(), 75)
-		customer.set("shop_discounts", [])
-		customer.save()
-		self.assertEqual(self.rate(), 85)
-		self.assertFalse(frappe.db.exists("Pricing Rule", {"title": f"Store discount: {self.customer} / {self.child}"}))
+	def test_a_customer_group_pricing_rule_gives_its_customers_their_price(self):
+		from shop import setup_store
 
-	def test_same_group_twice_is_refused(self):
-		customer = frappe.get_doc("Customer", self.customer)
-		customer.set("shop_discounts", [{"item_group": self.child, "discount_percentage": 5},
-										{"item_group": self.child, "discount_percentage": 10}])
-		with self.assertRaises(frappe.ValidationError):
-			customer.save()
+		self.assertEqual(self.rate(), 100)
+		setup_store.group_discount(self.group, self.parent, 15)
+		self.assertEqual(self.rate(), 85)  # the rule's Item Group includes its sub-groups
+		setup_store.group_discount(self.group, self.parent, 30)
+		self.assertEqual(self.rate(), 85)  # an existing rule is left as the store set it
 
 
 class TestStatements(IntegrationTestCase):

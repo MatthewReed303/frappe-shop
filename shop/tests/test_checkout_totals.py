@@ -1,5 +1,5 @@
-"""Checkout totals: tax included in prices, exports, shipping providers, card fees, bank transfers
-in other currencies, terms acceptance and unpaid order cancellation."""
+"""Checkout totals worked out by ERPNext: tax in or on top of prices, exports, coupons, shipping,
+card and conversion fees, other currencies, and what happens once an order is placed."""
 
 import hashlib
 import hmac
@@ -11,16 +11,18 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, nowdate
 
 from shop.payments import stripe_checkout
-from shop.storefront import cart, checkout, payment, shipping, totals
+from shop.storefront import cart, checkout, payment, totals
+from shop.tests.utils import company_bank_account, service, template, terms_record
 
 BUYER = {"email": "totals.buyer@example.com", "full_name": "Totals Buyer", "phone": "021000000"}
 ITEM = "SHOP-DEMO-003"
 SETTINGS_FIELDS = (
-	"prices_include_tax", "tax_template", "shipping_item", "card_fee_item",
-	"card_fee_percent", "card_fee_fixed", "card_fee_percent_international", "card_fee_fixed_international",
-	"enable_bank_transfer", "conversion_fee_item", "bank_transfer_days", "require_terms", "terms_url",
-	"terms_and_conditions", "terms_checkbox_note", "business_buyer_label", "flat_shipping_rate", "free_shipping_above", "enable_cod",
-	"payment_gateway_account",
+	"prices_include_tax", "show_prices_with_tax", "tax_template", "export_tax_template", "shipping_item",
+	"shipping_account", "card_fee_item", "card_fee_percent", "card_fee_fixed", "card_fee_percent_international",
+	"card_fee_fixed_international", "enable_bank_transfer", "conversion_fee_item", "bank_transfer_days",
+	"require_terms", "terms_url", "terms_and_conditions", "terms_checkbox_note", "business_buyer_label",
+	"flat_shipping_rate", "free_shipping_above", "enable_cod", "payment_gateway_account", "invoice_paid_orders",
+	"cancel_unpaid_orders",
 )
 
 TEST_PROVIDER = "shop.tests.test_checkout_totals.test_rates"
@@ -38,63 +40,21 @@ def rates_with_tax(context):
 	return [{"id": "test:taxed", "label": "Taxed Courier", "amount": 13.80, "tax_included": True}]
 
 
-def company_bank_account(company: str, currency: str) -> str:
-	"""An ERPNext company Bank Account in a currency, with test details, as a store would set up."""
-	name = f"_Test Shop {currency}"
-	if frappe.db.exists("Bank Account", {"account_name": name, "company": company}):
-		return frappe.db.get_value("Bank Account", {"account_name": name, "company": company})
-	if not frappe.db.exists("Bank", "_Test Shop Bank"):
-		frappe.get_doc({"doctype": "Bank", "bank_name": "_Test Shop Bank", "swift_number": "TESTXX22"}).insert(ignore_permissions=True)
-	parent = frappe.db.get_value("Account", {"company": company, "account_type": "Bank", "is_group": 1}) or frappe.db.get_value(
-		"Account", {"company": company, "root_type": "Asset", "is_group": 1}
-	)
-	account = frappe.db.get_value("Account", {"company": company, "account_name": name})
-	if not account:
-		account = frappe.get_doc(
-			{"doctype": "Account", "account_name": name, "company": company, "parent_account": parent,
-			 "account_type": "Bank", "account_currency": currency}
-		).insert(ignore_permissions=True).name
-	return frappe.get_doc(
-		{"doctype": "Bank Account", "account_name": name, "bank": "_Test Shop Bank", "is_company_account": 1,
-		 "company": company, "account": account, "branch_code": "2", "bank_account_no": "3"}
-	).insert(ignore_permissions=True).name
-
-
-def terms_record() -> str:
-	"""An ERPNext Terms and Conditions record for the store, using Jinja as ERPNext allows."""
-	if not frappe.db.exists("Terms and Conditions", "_Test Store Terms"):
-		frappe.get_doc(
-			{"doctype": "Terms and Conditions", "title": "_Test Store Terms", "selling": 1,
-			 "terms": "<p>Terms for {{ customer_name }}</p>"}
-		).insert(ignore_permissions=True)
-	return "_Test Store Terms"
-
-
 def inactive_rates(context):
 	return None
 
 
-def service(name: str, company: str) -> str:
-	if not frappe.db.exists("Item", name):
-		frappe.get_doc(
-			{"doctype": "Item", "item_code": name, "item_name": name, "item_group": "All Item Groups",
-			 "stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1}
-		).insert(ignore_permissions=True)
-	return name
+def line(quote, kind):
+	return [row["amount"] for row in totals.summary_lines(quote.order)[0] if row["kind"] == kind]
 
 
-def template(company: str, title: str, rate: float, included: int) -> str:
-	name = frappe.db.exists("Sales Taxes and Charges Template", {"title": title, "company": company})
-	if name:
-		return name
-	account = frappe.db.get_value("Account", {"company": company, "account_type": "Tax", "is_group": 0})
-	doc = frappe.get_doc(
-		{"doctype": "Sales Taxes and Charges Template", "title": title, "company": company,
-		 "taxes": [{"charge_type": "On Net Total", "account_head": account, "rate": rate,
-					"description": f"VAT {rate:g}%", "included_in_print_rate": included}]}
-	)
-	doc.insert(ignore_permissions=True)
-	return doc.name
+def grand(quote) -> float:
+	"""The order total before any rounding, for checking the sums."""
+	return flt(quote.order.grand_total)
+
+
+def fee_row(quote, item):
+	return next(row for row in quote.order.items if row.item_code == item)
 
 
 class TestCheckoutTotals(IntegrationTestCase):
@@ -108,12 +68,14 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.company = settings.company
 		self.company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
 		self.home = frappe.get_cached_value("Company", self.company, "country")
-		self.abroad = "Antarctica" if self.home != "Antarctica" else "New Zealand"
 		self.other = "United States" if self.home != "United States" else "Australia"
 		self.foreign = "USD" if self.company_currency != "USD" else "EUR"
+		self.export_template = template(self.company, "Test VAT 0 export", 0, 0)
 		self.set(
 			prices_include_tax=1,
+			show_prices_with_tax=0,
 			tax_template=template(self.company, "Test VAT 15 included", 15, 1),
+			export_tax_template=self.export_template,
 			shipping_item=service("TEST-SHIPPING", self.company),
 			card_fee_item=service("TEST-CARD-FEE", self.company),
 			conversion_fee_item=service("TEST-CONVERSION", self.company),
@@ -121,10 +83,8 @@ class TestCheckoutTotals(IntegrationTestCase):
 			card_fee_percent_international=3.5, card_fee_fixed_international=0.30,
 			enable_bank_transfer=1, bank_transfer_days=7, enable_cod=1,
 			require_terms=0, flat_shipping_rate=0, free_shipping_above=0,
+			invoice_paid_orders=0, cancel_unpaid_orders=0,
 		)
-		# taxes by ERPNext Tax Rule: home orders the store's template, everywhere else zero-rated
-		self.export_template = template(self.company, "Test VAT 0 export", 0, 0)
-		totals.ensure_tax_rules(self.company, frappe.get_cached_doc("Shop Settings").tax_template, self.export_template)
 		settings = frappe.get_doc("Shop Settings")
 		settings.bank_accounts = []
 		settings.append("bank_accounts", {"bank_account": company_bank_account(self.company, self.company_currency), "label": "Home"})
@@ -132,14 +92,10 @@ class TestCheckoutTotals(IntegrationTestCase):
 										  "conversion_fee_percent": 1, "instructions": "Pay by ACH"})
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
-		if not frappe.db.exists("Currency Exchange", {"from_currency": self.company_currency, "to_currency": self.foreign}):
-			frappe.get_doc({"doctype": "Currency Exchange", "date": add_days(nowdate(), -1),
-							"from_currency": self.company_currency, "to_currency": self.foreign,
-							"exchange_rate": 0.5, "for_selling": 1}).insert(ignore_permissions=True)
-		if not frappe.db.exists("Currency Exchange", {"from_currency": self.foreign, "to_currency": self.company_currency}):
-			frappe.get_doc({"doctype": "Currency Exchange", "date": add_days(nowdate(), -1),
-							"from_currency": self.foreign, "to_currency": self.company_currency,
-							"exchange_rate": 2.0, "for_selling": 1}).insert(ignore_permissions=True)
+		for source, target, rate in ((self.company_currency, self.foreign, 0.5), (self.foreign, self.company_currency, 2.0)):
+			if not frappe.db.exists("Currency Exchange", {"from_currency": source, "to_currency": target}):
+				frappe.get_doc({"doctype": "Currency Exchange", "date": add_days(nowdate(), -1), "from_currency": source,
+								"to_currency": target, "exchange_rate": rate, "for_selling": 1}).insert(ignore_permissions=True)
 		self.price = flt(frappe.db.get_value("Item Price", {"item_code": ITEM, "price_list": settings.price_list}, "price_list_rate"))
 		self.home_address = {"address_line1": "5 High Street", "city": "Town", "pincode": "9016", "country": self.home}
 		self.abroad_address = {"address_line1": "1 Ice Shelf", "city": "Base", "pincode": "0001", "country": self.other}
@@ -157,240 +113,33 @@ class TestCheckoutTotals(IntegrationTestCase):
 		frappe.db.set_single_value("Shop Settings", values)
 		frappe.clear_cache(doctype="Shop Settings")
 
-	def basket(self, qty=2):
-		cart.add_item(ITEM, qty=qty)
+	def free_coupon(self) -> str:
+		"""A coupon for 100% off, as ERPNext's coupons are set up."""
+		code = "TESTFREE100"
+		if not frappe.db.exists("Coupon Code", {"coupon_code": code}):
+			rule = frappe.get_doc(
+				{"doctype": "Pricing Rule", "title": "Test free order", "apply_on": "Transaction", "selling": 1,
+				 "coupon_code_based": 1, "rate_or_discount": "Discount Percentage", "discount_percentage": 100,
+				 "company": self.company, "currency": self.company_currency}
+			).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{"doctype": "Coupon Code", "coupon_name": code, "coupon_code": code, "coupon_type": "Promotional",
+				 "pricing_rule": rule.name}
+			).insert(ignore_permissions=True)
+		return code
+
+	def basket(self, qty=2, item=ITEM):
+		cart.add_item(item, qty=qty)
 		return cart.resolve_cart()
 
-	# --- totals ---------------------------------------------------------------
-
-	def test_card_fee_covers_the_provider_fee_on_the_final_total(self):
-		quote = totals.compute(self.basket(), self.home_address, None, "card")
-		goods = self.price * 2
-		fee = quote.fees[0].amount
-		self.assertEqual(quote.total, flt(goods + fee, 2))
-		# the fee, less its own tax, pays the provider's charge on the whole total (to the cent)
-		provider_charge = 0.0265 * quote.total + 0.30
-		self.assertAlmostEqual(fee / 1.15, provider_charge, delta=0.01)
-		self.assertGreaterEqual(fee / 1.15, provider_charge - 0.005)
-		self.assertAlmostEqual(quote.tax_included, quote.total - quote.total / 1.15, delta=0.01)
-
-	def test_bank_transfer_has_no_card_fee(self):
-		quote = totals.compute(self.basket(), self.home_address, None, "bank")
-		self.assertEqual(quote.fees, [])
-		self.assertEqual(quote.total, flt(self.price * 2, 2))
-
-	def test_export_takes_included_tax_off_and_uses_the_export_template(self):
-		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
-		self.assertTrue(quote.export)
-		self.assertEqual(quote.order_items[0].rate, flt(self.price / 1.15, 2))
-		self.assertEqual(quote.tax_template, self.export_template)  # from the Tax Rule for other countries
-		card = totals.compute(cart.resolve_cart(), self.abroad_address, None, "card")
-		self.assertAlmostEqual(card.fees[0].amount, 0.035 * card.total + 0.30, delta=0.01)
-
-	def test_foreign_currency_bank_transfer(self):
-		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.foreign)
-		self.assertEqual(quote.currency, self.foreign)
-		converted = flt(flt(self.price / 1.15 * quote.exchange_rate, 2), 2)
-		self.assertEqual(quote.subtotal, converted)
-		self.assertEqual(quote.fees[0].kind, "conversion_fee")
-		self.assertEqual(quote.fees[0].amount, totals.round_up(converted * 0.01))
-		result = checkout.place_order(customer=BUYER, address=self.abroad_address, payment_method="bank", currency=self.foreign)
-		order = frappe.get_doc("Sales Order", result["sales_order"])
-		self.assertEqual(order.currency, self.foreign)
-		self.assertEqual(flt(order.grand_total, 2), quote.total)
-		self.assertEqual(order.shop_payment_method, "bank")
-		self.assertEqual(order.contact_email, BUYER["email"])
-		info = payment.bank_instructions(order)
-		self.assertEqual(info["reference"], order.name)
-		# the details come from the ERPNext Bank Account, Bank and the account's currency
-		branch = "ACH routing number" if self.foreign == "USD" else "Branch code"
-		self.assertIn(f"{branch}: 2", info["details"])
-		self.assertIn("Account number: 3", info["details"])
-		self.assertIn("BIC/SWIFT: TESTXX22", info["details"])
-		self.assertIn("Pay by ACH", info["details"])
-
-	# --- shipping ----------------------------------------------------------------
-
-	def test_provider_rates_are_charged_as_quoted_with_tax(self):
-		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
-			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
-			self.assertEqual(quote.shipping["id"], "test:courier")
-			self.assertEqual(quote.shipping.customer_amount, 13.80)  # 12.00 plus 15% tax, as prices include tax
-			result = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank",
-										  shipping_option="test:courier")
-			order = frappe.get_doc("Sales Order", result["sales_order"])
-			shipping_line = [row for row in order.items if row.item_code == "TEST-SHIPPING"]
-			self.assertEqual(shipping_line[0].rate, 13.80)
-			self.assertIn("test:courier", order.shop_shipping_option)
-
-	# --- prices without tax ------------------------------------------------------------
-
 	def without_tax(self):
-		added = template(self.company, "Test VAT 15 added", 15, 0)
-		self.set(prices_include_tax=0, tax_template=added)
-		totals.ensure_tax_rules(self.company, added, self.export_template)
+		"""A store whose prices exclude tax, which is added on top."""
+		self.set(prices_include_tax=0, tax_template=template(self.company, "Test VAT 15 added", 15, 0))
 
-	def test_prices_without_tax_get_tax_added_on_every_line_and_the_invoice_matches(self):
-		self.without_tax()
-		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
-			quote = totals.compute(self.basket(1), self.home_address, "test:courier", "card")
-			self.assertEqual(quote.subtotal, flt(self.price, 2))
-			self.assertEqual(quote.shipping.customer_amount, 12.0)  # the carrier's price, tax added below
-			fee = quote.fees[0].amount
-			lines = flt(self.price + 12.0 + fee, 2)
-			self.assertEqual(quote.tax_added, flt(lines * 0.15, 2))
-			self.assertEqual(quote.total, flt(lines + quote.tax_added, 2))
-			# the fee (its tax is passed on) pays the provider's charge on the whole total
-			self.assertAlmostEqual(fee, 0.0265 * quote.total + 0.30, delta=0.01)
-			# the buyer sees every line with tax, adding up to the total, and the tax it includes
-			shown = totals.payload(quote)
-			self.assertNotIn("tax", [line["kind"] for line in shown["lines"]])
-			self.assertEqual(flt(sum(line["amount"] for line in shown["lines"]), 2), quote.total)
-			self.assertEqual([l["amount"] for l in shown["lines"] if l["kind"] == "shipping"], [13.80])
-			self.assertIn(f"{totals.money(quote.tax_added, quote.currency)}", " ".join(shown["notes"]))
-			self.assertEqual([o["formatted"] for o in shown["shipping_options"]], [totals.money(13.80, quote.currency)])
-
-			bank = totals.compute(cart.resolve_cart(), self.home_address, "test:courier", "bank")
-			name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank",
-										shipping_option="test:courier")["sales_order"]
-		order = frappe.get_doc("Sales Order", name)
-		rows = {row.item_code: row for row in order.items}
-		self.assertEqual(rows[ITEM].rate, flt(self.price, 2))
-		self.assertEqual(rows["TEST-SHIPPING"].rate, 12.0)
-		self.assertEqual(rows["TEST-SHIPPING"].description, "Test Courier")
-		self.assertEqual(flt(order.total_taxes_and_charges, 2), bank.tax_added)
-		self.assertEqual(flt(order.grand_total, 2), bank.total)
-		with patch("frappe.sendmail"):
-			self.pay(name)
-		invoice = frappe.get_doc("Sales Invoice", payment.order_invoice(name))
-		self.assertEqual({row.item_code: row.rate for row in invoice.items}, {ITEM: flt(self.price, 2), "TEST-SHIPPING": 12.0})
-		self.assertEqual(flt(invoice.total_taxes_and_charges, 2), bank.tax_added)
-		self.assertEqual(flt(invoice.grand_total, 2), bank.total)
-		self.assertEqual(flt(invoice.outstanding_amount), 0)
-
-	def test_store_currency_shows_price_with_tax_and_without_abroad_shows_it_without(self):
-		from frappe.utils import fmt_money
-
-		from shop.storefront import pricing
-
-		self.without_tax()
-		home = self.company_currency
-		# as a guest: the store's pages are public
-		frappe.set_user("Guest")
-		self.addCleanup(frappe.set_user, "Administrator")
-		self.assertEqual(pricing.display_price(100), f"{fmt_money(115, currency=home)} {home} incl. VAT")
-		self.assertEqual(pricing.display_price_without_tax(100), f"{fmt_money(100, currency=home)} {home} excl. VAT")
-		self.with_currency_cookie(self.foreign)
-		rate = pricing.display_rate(self.foreign)
-		self.assertEqual(pricing.display_price(100), f"≈ {fmt_money(100 * rate, currency=self.foreign)} {self.foreign}")
-		self.assertIsNone(pricing.display_price_without_tax(100))
-
-	def test_carrier_price_with_tax_goes_on_the_order_without_it(self):
-		self.without_tax()
-		with patch("frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.rates_with_tax"])):
-			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
-			self.assertEqual(quote.shipping.customer_amount, 12.0)
-			self.assertEqual(quote.total, flt((self.price + 12.0) * 1.15, 2))
-			export = totals.compute(cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency)
-			self.assertEqual(export.shipping.customer_amount, 12.0)
-			self.assertEqual(export.order_items[0].rate, flt(self.price, 2))  # nothing to take off
-			self.assertEqual(export.tax_added, 0)
-			# an export is shown without tax, as it is charged
-			self.assertEqual([l["amount"] for l in totals.payload(export)["lines"] if l["kind"] == "shipping"], [12.0])
-
-	def test_no_rates_means_no_order_and_says_why(self):
-		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
-			self.basket(1)
-			address = dict(self.abroad_address, country="Antarctica")
-			quote = totals.compute(cart.resolve_cart(), address, None, "bank")
-			self.assertIsNone(quote.shipping)
-			self.assertEqual(quote.shipping_messages, ["We don't ship there"])
-			with self.assertRaises(frappe.ValidationError):
-				checkout.place_order(customer=BUYER, address=address, payment_method="bank")
-
-	def test_switched_off_provider_means_free_shipping(self):
-		with patch("frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.inactive_rates"])):
-			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
-			self.assertEqual(quote.shipping["amount"], 0)
-
-	# --- order rules ---------------------------------------------------------------
-
-	def test_terms_must_be_accepted_and_are_recorded(self):
-		from shop.storefront import terms
-
-		self.set(require_terms=1, terms_url="", terms_and_conditions=terms_record())
-		self.basket(1)
-		with self.assertRaises(frappe.ValidationError):
-			checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")
-		result = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank",
-									  accept_terms=1, business_buyer=1)
-		order = frappe.get_doc("Sales Order", result["sales_order"])
-		self.assertEqual(order.shop_terms_version, terms.version())
-		self.assertTrue(order.shop_terms_version.startswith("_Test Store Terms ("))
-		self.assertTrue(order.shop_terms_accepted_on)
-		# the ERPNext terms go on the order; ERPNext fills in their text for the order when printing it
-		self.assertEqual(order.tc_name, "_Test Store Terms")
-		order.set_missing_terms()
-		self.assertIn(f"Terms for {order.customer_name}", order.terms)
-		self.assertTrue(terms.url().endswith("/terms"))  # the store's own terms page
-		self.assertEqual(order.shop_business_buyer, 1)
-
-	def test_changed_total_stops_the_order(self):
-		self.basket(1)
-		with self.assertRaises(frappe.ValidationError):
-			checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank", expected_total=1)
-
-	def test_unpaid_bank_order_is_cancelled_after_its_due_date(self):
-		self.basket(1)
-		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
-		self.assertFalse(payment.cancel_if_unpaid(name))  # not due yet
-		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
-		with patch("frappe.sendmail") as sendmail:
-			self.assertTrue(payment.cancel_if_unpaid(name))
-		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 2)
-		self.assertEqual(sendmail.call_args.kwargs["recipients"], [BUYER["email"]])
-
-	def test_store_emails_are_editable_email_templates(self):
-		from shop.storefront import emails
-
-		emails.ensure_templates()
-		for name, *_rest in emails.TEMPLATES.values():
-			self.assertTrue(frappe.db.exists("Email Template", name), name)
-		template = frappe.get_doc("Email Template", "Shop: Order Cancelled")
-		template.subject = "Order {{ doc.name }} was cancelled ({{ store_name }})"
-		template.save(ignore_permissions=True)
-		self.basket(1)
-		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
-		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
-		with patch("frappe.sendmail") as sendmail:
-			payment.cancel_if_unpaid(name)
-		kwargs = sendmail.call_args.kwargs
-		self.assertTrue(kwargs["subject"].startswith(f"Order {name} was cancelled ("))
-		self.assertEqual((kwargs["reference_doctype"], kwargs["reference_name"]), ("Sales Order", name))
-		emails.ensure_templates()  # an edited template is never overwritten
-		self.assertEqual(frappe.db.get_value("Email Template", "Shop: Order Cancelled", "subject"), template.subject)
-
-	def test_shopper_text_is_escaped_in_emails(self):
-		from shop.storefront import emails
-
-		doc = frappe._dict(doctype="Lead", name="X", company_name="<b>Evil</b> Ltd", country="")
-		subject, body = emails.render("trade_application_declined", doc, reason="<script>x</script>")
-		self.assertNotIn("<script>", body)
-		self.assertNotIn("<b>Evil</b>", body)
-
-	def test_paid_bank_order_is_not_cancelled(self):
-		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-
-		self.basket(1)
-		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
-		entry = get_payment_entry("Sales Order", name)
-		entry.reference_no, entry.reference_date = "TEST", nowdate()
-		entry.insert(ignore_permissions=True)
-		entry.submit()
-		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
-		order = frappe.get_doc("Sales Order", name)
-		self.assertTrue(payment.is_paid(order))
-		self.assertFalse(payment.cancel_if_unpaid(name))
+	def place(self, **kwargs):
+		kwargs.setdefault("payment_method", "bank")
+		kwargs.setdefault("address", self.home_address)
+		return checkout.place_order(customer=BUYER, **kwargs)["sales_order"]
 
 	def pay(self, name, amount=None):
 		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
@@ -401,10 +150,341 @@ class TestCheckoutTotals(IntegrationTestCase):
 		entry.submit()
 		return entry
 
-	def test_paid_order_is_invoiced_with_the_payment_set_against_it(self):
+	# --- totals ---------------------------------------------------------------
+
+	def test_card_fee_covers_the_provider_fee_on_the_final_total(self):
+		quote = totals.compute(self.basket(), self.home_address, None, "gateway")
+		fee = fee_row(quote, "TEST-CARD-FEE")
+		self.assertEqual(grand(quote), flt(self.price * 2 + fee.amount, 2))
+		# what the store keeps of the fee, after its tax, pays the provider's charge on the total
+		self.assertAlmostEqual(fee.net_amount, 0.0265 * grand(quote) + 0.30, delta=0.01)
+		self.assertGreaterEqual(fee.net_amount, 0.0265 * grand(quote) + 0.30 - 0.005)
+
+	def test_bank_transfer_has_no_card_fee(self):
+		quote = totals.compute(self.basket(), self.home_address, None, "bank")
+		self.assertEqual(quote.fees, [])
+		self.assertEqual(grand(quote), flt(self.price * 2, 2))
+
+	def test_quote_and_order_are_the_same_erpnext_totals(self):
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			quote = totals.compute(self.basket(), self.home_address, None, "bank")
+			order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
+		self.assertEqual(totals.order_total(order), quote.total)
+		self.assertEqual([row.item_code for row in order.items], [row.item_code for row in quote.order.items])
+
+	def test_export_takes_included_tax_off_and_uses_the_export_template(self):
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
+		self.assertTrue(quote.export)
+		self.assertEqual(quote.tax_template, self.export_template)
+		self.assertEqual(quote.order.items[0].rate, flt(self.price / 1.15, 2))
+		self.assertIn("Tax-free export", totals.payload(quote)["notes"])
+		card = totals.compute(cart.resolve_cart(), self.abroad_address, None, "gateway")
+		self.assertAlmostEqual(fee_row(card, "TEST-CARD-FEE").amount, 0.035 * grand(card) + 0.30, delta=0.01)
+
+	def test_a_shopping_cart_tax_rule_comes_before_the_export_template(self):
+		rule_template = template(self.company, "Test VAT 5 rule", 5, 0)
+		rule = frappe.get_doc(
+			{"doctype": "Tax Rule", "tax_type": "Sales", "company": self.company, "use_for_shopping_cart": 1,
+			 "shipping_country": self.other, "sales_tax_template": rule_template, "priority": 1}
+		).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Tax Rule", rule.name, force=True)
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
+		self.assertEqual(quote.tax_template, rule_template)
+
+	def test_foreign_currency_bank_transfer(self):
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.foreign)
+		self.assertEqual(quote.currency, self.foreign)
+		goods = flt(self.price / 1.15 * 0.5, 2)
+		self.assertAlmostEqual(line(quote, "subtotal")[0], goods, delta=0.01)
+		self.assertEqual([fee.kind for fee in quote.fees], ["conversion_fee"])
+		self.assertAlmostEqual(fee_row(quote, "TEST-CONVERSION").net_amount, goods * 0.01, delta=0.01)
+		name = self.place(address=self.abroad_address, currency=self.foreign)
+		order = frappe.get_doc("Sales Order", name)
+		self.assertEqual(order.currency, self.foreign)
+		self.assertEqual(totals.order_total(order), quote.total)
+		self.assertEqual(order.contact_email, BUYER["email"])
+		info = payment.bank_instructions(order)
+		self.assertEqual(info["reference"], order.name)
+		branch = "ACH routing number" if self.foreign == "USD" else "Branch code"
+		self.assertIn(f"{branch}: 2", info["details"])
+		self.assertIn("Account number: 3", info["details"])
+		self.assertIn("BIC/SWIFT: TESTXX22", info["details"])
+		self.assertIn("Pay by ACH", info["details"])
+
+	def test_coupon_is_charged_as_quoted_when_tax_is_added(self):
+		self.without_tax()
+		self.basket(1, "SHOP-DEMO-011")
+		cart.apply_coupon("WELCOME10")
+		quote = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
+		order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
+		self.assertEqual(totals.order_total(order), quote.total)
+		self.assertEqual(order.apply_discount_on, "Net Total")
+		self.assertAlmostEqual(order.discount_amount, flt(order.total * 0.1, 2), delta=0.01)
+
+	def test_flat_shipping_on_the_shipping_account_is_charged_as_quoted(self):
+		self.without_tax()
+		account = frappe.db.get_value("Account", {"company": self.company, "account_type": "Chargeable", "is_group": 0}) or frappe.db.get_value(
+			"Account", {"company": self.company, "root_type": "Income", "is_group": 0}
+		)
+		self.set(shipping_item=None, shipping_account=account, flat_shipping_rate=10)
+		quote = totals.compute(self.basket(1), self.home_address, None, "bank")
+		self.assertEqual(line(quote, "shipping"), [10.0])
+		order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
+		self.assertEqual(totals.order_total(order), quote.total)
+
+	def test_an_item_tax_template_is_charged_as_erpnext_charges_it(self):
+		self.without_tax()
+		tax_account = frappe.db.get_value("Account", {"company": self.company, "account_type": "Tax", "is_group": 0})
+		title = "_Test Shop Zero Rated"
+		if not frappe.db.exists("Item Tax Template", {"title": title, "company": self.company}):
+			frappe.get_doc({"doctype": "Item Tax Template", "title": title, "company": self.company,
+							"taxes": [{"tax_type": tax_account, "tax_rate": 0}]}).insert(ignore_permissions=True)
+		item_tax = frappe.db.get_value("Item Tax Template", {"title": title, "company": self.company})
+		item = frappe.get_doc("Item", "SHOP-DEMO-011")
+		item.append("taxes", {"item_tax_template": item_tax})
+		item.save(ignore_permissions=True)
 		self.basket(1)
-		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
-		self.assertFalse(payment.order_invoice(name))  # not invoiced before payment
+		quote = totals.compute(self.basket(1, "SHOP-DEMO-011"), self.home_address, None, "bank")
+		taxed = sum(row.net_amount for row in quote.order.items if row.item_code == ITEM)
+		self.assertAlmostEqual(line(quote, "tax")[0], taxed * 0.15, delta=0.01)
+		order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
+		self.assertEqual(totals.order_total(order), quote.total)
+
+	def test_rounded_total_is_what_the_customer_pays(self):
+		from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+		# ERPNext's Global Defaults sets this default on each transaction type
+		make_property_setter("Sales Order", "disable_rounded_total", "default", 0, "Text", validate_fields_for_doctype=False)
+		self.addCleanup(frappe.clear_cache, doctype="Sales Order")
+		quote = totals.compute(self.basket(1), self.home_address, None, "gateway")
+		self.assertEqual(quote.total, flt(quote.order.rounded_total))
+		shown = totals.payload(quote)
+		self.assertAlmostEqual(sum(row["amount"] for row in shown["lines"]), quote.total, delta=0.001)
+
+	# --- shipping ----------------------------------------------------------------
+
+	def test_provider_rates_are_charged_as_quoted_with_tax(self):
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
+			self.assertEqual(quote.shipping["id"], "test:courier")
+			self.assertEqual(line(quote, "shipping"), [13.80])  # 12.00 plus 15% tax, as prices include tax
+			order = frappe.get_doc("Sales Order", self.place(shipping_option="test:courier"))
+		shipping_line = [row for row in order.items if row.item_code == "TEST-SHIPPING"]
+		self.assertEqual(shipping_line[0].rate, 13.80)
+		self.assertIn("test:courier", order.shop_shipping_option)
+
+	def test_prices_without_tax_get_tax_added_and_the_invoice_matches(self):
+		self.without_tax()
+		self.set(invoice_paid_orders=1)
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			quote = totals.compute(self.basket(1), self.home_address, "test:courier", "bank")
+			self.assertEqual(line(quote, "subtotal"), [flt(self.price, 2)])
+			self.assertEqual(line(quote, "shipping"), [12.0])
+			self.assertEqual(line(quote, "tax"), [flt((self.price + 12.0) * 0.15, 2)])
+			name = self.place(shipping_option="test:courier", expected_total=quote.total)
+		order = frappe.get_doc("Sales Order", name)
+		rows = {row.item_code: row for row in order.items}
+		self.assertEqual(rows["TEST-SHIPPING"].rate, 12.0)
+		self.assertEqual(rows["TEST-SHIPPING"].description, "Test Courier")
+		with patch("frappe.sendmail"):
+			self.pay(name)
+		invoice = frappe.get_doc("Sales Invoice", payment.order_invoice(name))
+		self.assertEqual({row.item_code: row.rate for row in invoice.items}, {ITEM: flt(self.price, 2), "TEST-SHIPPING": 12.0})
+		self.assertEqual(totals.order_total(invoice), quote.total)
+		self.assertEqual(flt(invoice.outstanding_amount), 0)
+
+	def test_lines_can_be_shown_with_tax(self):
+		self.without_tax()
+		self.set(show_prices_with_tax=1)
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			quote = totals.compute(self.basket(1), self.home_address, "test:courier", "bank")
+		shown = totals.payload(quote)
+		self.assertNotIn("tax", [row["kind"] for row in shown["lines"]])
+		self.assertEqual(flt(sum(row["amount"] for row in shown["lines"]), 2), quote.total)
+		self.assertEqual([row["amount"] for row in shown["lines"] if row["kind"] == "shipping"], [13.80])
+		self.assertIn(totals.money(line(quote, "tax")[0], quote.currency), " ".join(shown["notes"]))
+		self.assertEqual([option["formatted"] for option in shown["shipping_options"]], [totals.money(13.80, quote.currency)])
+
+	def test_prices_are_shown_as_the_price_list_has_them_unless_shown_with_tax(self):
+		from frappe.utils import fmt_money
+
+		from shop.storefront import pricing
+
+		self.without_tax()
+		home = self.company_currency
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+		self.assertEqual(pricing.display_price(100), f"{fmt_money(100, currency=home)} {home}")
+		self.assertIsNone(pricing.display_price_without_tax(100))
+		self.set(show_prices_with_tax=1)
+		self.assertEqual(pricing.display_price(100), f"{fmt_money(115, currency=home)} {home} incl. VAT")
+		self.assertEqual(pricing.display_price_without_tax(100), f"{fmt_money(100, currency=home)} {home} excl. VAT")
+		self.with_currency_cookie(self.foreign)
+		rate = pricing.display_rate(self.foreign)
+		self.assertEqual(pricing.display_price(100), f"≈ {fmt_money(100 * rate, currency=self.foreign)} {self.foreign}")
+		self.assertIsNone(pricing.display_price_without_tax(100))
+
+	def test_currency_code_is_shown_only_when_the_store_has_several(self):
+		from frappe.utils import fmt_money
+
+		from shop.storefront import pricing
+
+		settings = frappe.get_doc("Shop Settings")
+		settings.bank_accounts = settings.bank_accounts[:1]
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+		self.assertEqual(pricing.display_amount(100), fmt_money(100, currency=self.company_currency))
+
+	def test_carrier_price_with_tax_goes_on_the_order_without_it(self):
+		self.without_tax()
+		with patch("frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.rates_with_tax"])):
+			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
+			self.assertEqual(line(quote, "shipping"), [12.0])
+			self.assertEqual(grand(quote), flt((self.price + 12.0) * 1.15, 2))
+			export = totals.compute(cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency)
+		self.assertEqual(line(export, "shipping"), [12.0])
+		self.assertEqual(export.order.items[0].rate, flt(self.price, 2))
+		self.assertEqual(line(export, "tax"), [])
+
+	def test_no_rates_means_no_order_and_says_why(self):
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			self.basket(1)
+			address = dict(self.abroad_address, country="Antarctica")
+			quote = totals.compute(cart.resolve_cart(), address, None, "bank")
+			self.assertIsNone(quote.shipping)
+			self.assertEqual(quote.shipping_messages, ["We don't ship there"])
+			with self.assertRaises(frappe.ValidationError):
+				self.place(address=address)
+
+	def test_switched_off_provider_means_free_shipping(self):
+		with patch("frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.inactive_rates"])):
+			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
+			self.assertEqual(quote.shipping["amount"], 0)
+
+	def test_free_shipping_threshold_follows_the_coupon(self):
+		account = frappe.db.get_value("Account", {"company": self.company, "root_type": "Income", "is_group": 0})
+		self.set(shipping_item=None, shipping_account=account, flat_shipping_rate=10, free_shipping_above=self.price)
+		quote = totals.compute(self.basket(1), self.home_address, None, "bank")
+		self.assertEqual(line(quote, "shipping"), [])
+		cart.apply_coupon("WELCOME10")
+		quote = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
+		self.assertEqual(line(quote, "shipping"), [10.0])
+
+	# --- order rules ---------------------------------------------------------------
+
+	def test_terms_must_be_accepted_and_are_recorded(self):
+		from shop.storefront import terms
+
+		self.set(require_terms=1, terms_url="", terms_and_conditions=terms_record())
+		self.basket(1)
+		with self.assertRaises(frappe.ValidationError):
+			self.place()
+		order = frappe.get_doc("Sales Order", self.place(accept_terms=1, business_buyer=1))
+		self.assertEqual(order.shop_terms_version, terms.version())
+		self.assertTrue(order.shop_terms_version.startswith("_Test Store Terms ("))
+		self.assertTrue(order.shop_terms_accepted_on)
+		# ERPNext fills in the terms' text for the order when it prints it
+		self.assertEqual(order.tc_name, "_Test Store Terms")
+		order.set_missing_terms()
+		self.assertIn(f"Terms for {order.customer_name}", order.terms)
+		self.assertTrue(terms.url().endswith("/terms"))
+		self.assertEqual(order.shop_business_buyer, 1)
+
+	def test_changed_total_stops_the_order(self):
+		self.basket(1)
+		with self.assertRaises(frappe.ValidationError):
+			self.place(expected_total=1)
+
+	def test_a_cart_is_ordered_once(self):
+		self.basket(1)
+		basket = cart.resolve_cart()
+		self.place()
+		with self.assertRaises(frappe.ValidationError):
+			checkout.lock_cart(basket)
+
+	def test_a_product_without_a_price_cant_be_ordered(self):
+		price = frappe.db.get_value("Item Price", {"item_code": ITEM, "price_list": frappe.get_cached_doc("Shop Settings").price_list})
+		frappe.db.set_value("Item Price", price, "price_list_rate", 0)
+		self.addCleanup(frappe.db.set_value, "Item Price", price, "price_list_rate", self.price)
+		self.basket(1)
+		with self.assertRaises(frappe.ValidationError):
+			self.place()
+
+	def test_a_guest_must_sign_in_to_order_for_an_account(self):
+		from shop.storefront import accounts
+
+		email = "has.account@example.com"
+		if not frappe.db.exists("User", email):
+			accounts.register(full_name="Has Account", email=email, accept_terms=1)
+		self.basket(1)
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+		with self.assertRaises(frappe.ValidationError):
+			checkout.place_order(customer={"email": email, "full_name": "Someone"}, address=self.home_address, payment_method="cod")
+
+	def test_unpaid_orders_are_cancelled_only_when_the_store_wants_it(self):
+		self.basket(1)
+		name = self.place()
+		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
+		payment.cancel_overdue_orders()
+		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 1)
+		self.set(cancel_unpaid_orders=1)
+		with patch("frappe.sendmail") as sendmail, patch("frappe.db.commit"):
+			payment.cancel_overdue_orders()
+		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 2)
+		self.assertEqual(sendmail.call_args.kwargs["recipients"], [BUYER["email"]])
+
+	def test_unpaid_bank_order_is_not_cancelled_before_its_due_date(self):
+		self.basket(1)
+		name = self.place()
+		self.assertFalse(payment.cancel_if_unpaid(name))
+
+	def test_store_emails_are_editable_email_templates(self):
+		from shop.storefront import emails
+
+		emails.ensure_templates()
+		for name, *_rest in emails.TEMPLATES.values():
+			self.assertTrue(frappe.db.exists("Email Template", name), name)
+		template_doc = frappe.get_doc("Email Template", "Shop: Order Cancelled")
+		template_doc.subject = "Order {{ doc.name }} was cancelled ({{ store_name }})"
+		template_doc.save(ignore_permissions=True)
+		self.basket(1)
+		name = self.place()
+		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
+		with patch("frappe.sendmail") as sendmail:
+			payment.cancel_if_unpaid(name)
+		kwargs = sendmail.call_args.kwargs
+		self.assertTrue(kwargs["subject"].startswith(f"Order {name} was cancelled ("))
+		self.assertEqual((kwargs["reference_doctype"], kwargs["reference_name"]), ("Sales Order", name))
+		emails.ensure_templates()  # an edited template is never overwritten
+		self.assertEqual(frappe.db.get_value("Email Template", "Shop: Order Cancelled", "subject"), template_doc.subject)
+
+	def test_shopper_text_is_escaped_in_emails(self):
+		from shop.storefront import emails
+
+		doc = frappe._dict(doctype="Lead", name="X", company_name="<b>Evil</b> Ltd", country="")
+		_subject, body = emails.render("trade_application_declined", doc, reason="<script>x</script>")
+		self.assertNotIn("<script>", body)
+		self.assertNotIn("<b>Evil</b>", body)
+
+	def test_paid_bank_order_is_not_cancelled(self):
+		self.basket(1)
+		name = self.place()
+		self.pay(name)
+		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
+		self.assertTrue(payment.is_paid(frappe.get_doc("Sales Order", name)))
+		self.assertFalse(payment.cancel_if_unpaid(name))
+
+	def test_paid_order_is_invoiced_when_the_store_invoices_paid_orders(self):
+		self.basket(1)
+		name = self.place()
+		with patch("frappe.sendmail"):
+			self.pay(name)
+		self.assertFalse(payment.order_invoice(name))
+		self.set(invoice_paid_orders=1)
+		self.basket(1)
+		name = self.place()
+		self.assertFalse(payment.order_invoice(name))  # not before payment
 		with patch("frappe.sendmail"):
 			entry = self.pay(name)
 		invoice = frappe.get_doc("Sales Invoice", payment.order_invoice(name))
@@ -414,18 +494,31 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual([a.reference_name for a in invoice.advances], [entry.name])
 
 	def test_part_paid_order_is_not_invoiced(self):
+		self.set(invoice_paid_orders=1)
 		self.basket(1)
-		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
+		name = self.place()
 		with patch("frappe.sendmail"):
 			self.pay(name, amount=1)
 		self.assertFalse(payment.order_invoice(name))
 
+	def test_a_free_order_is_paid_when_placed(self):
+		self.set(invoice_paid_orders=1)
+		self.basket(1)
+		cart.apply_coupon(self.free_coupon())
+		self.assertEqual(totals.compute(cart.resolve_cart(), self.home_address, None, "gateway").fees, [])
+		with patch("frappe.sendmail"):
+			name = self.place()
+		order = frappe.get_doc("Sales Order", name)
+		self.assertEqual(totals.order_total(order), 0)
+		self.assertTrue(payment.is_paid(order))
+		self.assertTrue(payment.order_invoice(name))
+
 	def test_invoice_pdf_needs_the_customer_or_the_order_link(self):
 		from shop.storefront import accounts
 
+		self.set(invoice_paid_orders=1)
 		self.basket(1)
-		result = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")
-		name = result["sales_order"]
+		name = self.place()
 		with patch("frappe.sendmail"):
 			self.pay(name)
 		invoice = payment.order_invoice(name)
@@ -453,9 +546,8 @@ class TestCheckoutTotals(IntegrationTestCase):
 		builder = EnvironBuilder(path="/store/products", headers={"Cookie": f"shop_currency={currency}"})
 		frappe.local.request = Request(builder.get_environ())
 		self.addCleanup(lambda: delattr(frappe.local, "request") if hasattr(frappe.local, "request") else None)
-		for name in ("shop_display_rates",):
-			if hasattr(frappe.local, name):
-				delattr(frappe.local, name)
+		if hasattr(frappe.local, "shop_display_rates"):
+			delattr(frappe.local, "shop_display_rates")
 
 	def test_prices_show_the_store_currency_by_default(self):
 		from shop.storefront import pricing
@@ -471,12 +563,11 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.with_currency_cookie(self.foreign)
 		shown = pricing.display_amount(100)
 		self.assertTrue(shown.startswith("≈ ") and shown.endswith(f" {self.foreign}"), shown)
-		# checkout charges the real amounts: bank transfer starts in the picked currency
 		quote = totals.compute(basket, self.home_address, None, "bank")
 		self.assertEqual(quote.currency, self.foreign)
-		card = totals.payload(totals.compute(basket, self.home_address, None, "card"))
-		self.assertEqual(card["currency"], self.company_currency)
-		self.assertTrue(any(self.foreign in note for note in card["notes"]))
+		online = totals.payload(totals.compute(basket, self.home_address, None, "gateway"))
+		self.assertEqual(online["currency"], self.company_currency)
+		self.assertTrue(any(self.foreign in note for note in online["notes"]))
 
 	def test_unknown_currency_cookie_is_ignored(self):
 		from shop.storefront import pricing
@@ -492,18 +583,15 @@ class TestCheckoutTotals(IntegrationTestCase):
 		email = "currency.keeper@example.com"
 		if not frappe.db.exists("User", email):
 			accounts.register(full_name="Currency Keeper", email=email, accept_terms=1)
-		customer = frappe.db.get_value("Contact", {"email_id": email}, "name")
 		frappe.set_user(email)
 		try:
-			for name in ("shop_session_customer",):
-				if hasattr(frappe.local, name):
-					delattr(frappe.local, name)
+			if hasattr(frappe.local, "shop_session_customer"):
+				delattr(frappe.local, "shop_session_customer")
 			frappe.local.cookie_manager = frappe.auth.CookieManager()
 			pricing.set_currency(self.foreign)
 			party = pricing.session_customer()
 			self.assertEqual(frappe.db.get_value("Customer", party, "default_currency"), self.foreign)
 			self.assertEqual(frappe.local.cookie_manager.cookies["shop_currency"]["value"], self.foreign)
-			# without the cookie (another browser) the Billing Currency still applies
 			frappe.clear_cache(doctype="Customer")
 			self.assertEqual(pricing.display_currency(), self.foreign)
 		finally:
@@ -512,6 +600,11 @@ class TestCheckoutTotals(IntegrationTestCase):
 	def test_charge_lines_are_not_products(self):
 		self.assertTrue(totals.is_charge_item("TEST-CARD-FEE"))
 		self.assertFalse(totals.is_charge_item(ITEM))
+
+	def test_tax_short_names(self):
+		self.assertEqual(totals.tax_name("GST @ 15.0"), "GST")
+		self.assertEqual(totals.tax_name("VAT 20% (included)"), "VAT")
+		self.assertEqual(totals.tax_name("Sales Tax 8.25%"), "Sales Tax")
 
 
 class TestStripeWebhook(IntegrationTestCase):

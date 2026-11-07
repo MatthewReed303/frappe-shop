@@ -1,7 +1,6 @@
 import os
 
 import click
-
 import frappe
 
 
@@ -88,16 +87,6 @@ def order_fields() -> dict:
 			{"fieldname": "shop_allow_on_account", "fieldtype": "Check", "label": "Pay on Account at the Store",
 			 "insert_after": "payment_terms",
 			 "description": "Can order online and pay by invoice under their payment terms and credit limit"},
-			{"fieldname": "shop_discounts_section", "fieldtype": "Section Break", "label": "Store Discounts",
-			 "insert_after": "shop_allow_on_account", "collapsible": 0},
-			{"fieldname": "shop_discounts", "fieldtype": "Table", "options": "Shop Discount", "label": "Store Discounts",
-			 "insert_after": "shop_discounts_section",
-			 "description": "Discount % off an Item Group for this customer. Overrides their Customer Group's discount on the same items"},
-		],
-		"Customer Group": [
-			{"fieldname": "shop_discounts", "fieldtype": "Table", "options": "Shop Discount", "label": "Store Discounts",
-			 "insert_after": "default_price_list",
-			 "description": "Discount % off an Item Group for every customer in this Customer Group, e.g. HATs 15%"},
 		],
 		# trade account applications from the store are ERPNext Leads (UTM Source: TRADE_SOURCE)
 		"Lead": [

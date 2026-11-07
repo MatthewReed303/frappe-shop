@@ -14,7 +14,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import add_days, cint, flt, getdate, nowdate
 
-from shop.routes import store_url
+from shop.routes import store_url, token_matches
 from shop.storefront import cart as cart_module
 from shop.storefront import pricing, totals
 
@@ -36,42 +36,10 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 	if not customer.get("full_name"):
 		frappe.throw(_("Name is required"))
 	with elevated():
-		order_quote = totals.compute(cart, address, shipping_option, "bank", totals.company_currency())
+		order_quote = totals.compute(cart, address, shipping_option)
 		party = get_or_create_customer(customer)
 		shipping_address = create_address(party, customer, order_quote.address or address)
-		settings = frappe.get_cached_doc("Shop Settings")
-		quotation = frappe.get_doc(
-			{
-				"doctype": "Quotation",
-				"quotation_to": "Customer",
-				"party_name": party,
-				"company": settings.company,
-				"transaction_date": nowdate(),
-				"valid_till": add_days(nowdate(), VALID_DAYS),
-				"order_type": "Sales",
-				"currency": order_quote.currency,
-				"conversion_rate": 1,
-				"selling_price_list": pricing.customer_price_list(party),
-				"plc_conversion_rate": 1,
-				"ignore_pricing_rule": 1,
-				"customer_address": shipping_address.name,
-				"shipping_address_name": shipping_address.name,
-				"contact_email": customer["email"].strip().lower(),
-				"items": [{"item_code": row.item_code, "qty": row.qty, "rate": row.rate} for row in order_quote.order_items],
-			}
-		)
-		if order_quote.shipping and order_quote.shipping.customer_amount and settings.get("shipping_item"):
-			quotation.append(
-				"items",
-				{"item_code": settings.shipping_item, "qty": 1, "rate": order_quote.shipping.customer_amount,
-				 "description": order_quote.shipping["label"]},
-			)
-		if order_quote.tax_template:
-			from shop.compat import get_sales_taxes
-
-			quotation.taxes_and_charges = order_quote.tax_template
-			for tax in get_sales_taxes(order_quote.tax_template):
-				quotation.append("taxes", tax)
+		quotation = quotation_from(order_quote.order, party, shipping_address.name, customer["email"].strip().lower())
 		quotation.shop_access_token = frappe.generate_hash(length=32)
 		quotation.shop_request_message = (message or "").strip()[:2000]
 		from shop.storefront import terms
@@ -91,6 +59,68 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 			email=customer["email"], message=message or "", desk_url=frappe.utils.get_url("/desk/quotation/" + quotation.name),
 		)
 	return {"quote": quotation.name, "message": _("Thanks. We'll email your quote.")}
+
+
+ITEM_FIELDS = (
+	"item_code",
+	"item_name",
+	"description",
+	"qty",
+	"uom",
+	"conversion_factor",
+	"price_list_rate",
+	"discount_percentage",
+	"discount_amount",
+	"margin_type",
+	"margin_rate_or_amount",
+	"rate",
+	"item_tax_template",
+	"pricing_rules",
+	"warehouse",
+)
+TAX_FIELDS = (
+	"charge_type",
+	"row_id",
+	"account_head",
+	"description",
+	"rate",
+	"tax_amount",
+	"included_in_print_rate",
+	"cost_center",
+)
+
+
+def quotation_from(order, party: str, address: str, email: str):
+	"""A draft Quotation with the lines, prices and taxes of the order the shopper was shown."""
+	quotation = frappe.new_doc("Quotation")
+	quotation.update(
+		{
+			"quotation_to": "Customer",
+			"party_name": party,
+			"company": order.company,
+			"transaction_date": nowdate(),
+			"valid_till": add_days(nowdate(), VALID_DAYS),
+			"order_type": "Sales",
+			"currency": order.currency,
+			"conversion_rate": order.conversion_rate,
+			"selling_price_list": order.selling_price_list,
+			"price_list_currency": order.price_list_currency,
+			"plc_conversion_rate": order.plc_conversion_rate,
+			# the prices the shopper was shown
+			"ignore_pricing_rule": 1,
+			"customer_address": address,
+			"shipping_address_name": address,
+			"contact_email": email,
+			"taxes_and_charges": order.taxes_and_charges,
+			"apply_discount_on": order.apply_discount_on,
+			"discount_amount": order.discount_amount,
+		}
+	)
+	for item in order.items:
+		quotation.append("items", {field: item.get(field) for field in ITEM_FIELDS})
+	for tax in order.taxes:
+		quotation.append("taxes", {field: tax.get(field) for field in TAX_FIELDS})
+	return quotation
 
 
 def quote_url(name: str, token: str) -> str:
@@ -123,7 +153,7 @@ def load_quote(name: str, token: str | None):
 	quotation = frappe.get_doc("Quotation", name)
 	from shop.storefront.orders import session_customers
 
-	if token and token == quotation.get("shop_access_token"):
+	if token_matches(quotation.get("shop_access_token"), token):
 		return quotation
 	if quotation.party_name in session_customers():
 		return quotation
@@ -138,33 +168,15 @@ def quote_summary(name: str, token: str | None) -> dict:
 		order = frappe.db.get_value(
 			"Sales Order Item", {"prevdoc_docname": quotation.name, "docstatus": 1}, "parent"
 		)
-	esc = frappe.utils.escape_html
-
-	def fmt(amount):
-		return frappe.utils.fmt_money(amount, currency=quotation.currency)
-
-	rows = "".join(
-		f'<div class="order-item"><span>{esc(row.description if totals.is_charge_item(row.item_code) else row.item_name)}</span>'
-		f'<span class="order-qty">{cart_module.display_qty(row.qty)}</span><span class="order-amount">{esc(fmt(row.amount))}</span></div>'
-		for row in quotation.items
-	)
-	included = sum(flt(t.tax_amount_after_discount_amount) for t in quotation.taxes if t.included_in_print_rate)
-	added = "".join(
-		f'<div class="order-line"><span>{esc(t.description)}</span><span>{esc(fmt(t.tax_amount))}</span></div>'
-		for t in quotation.taxes if not t.included_in_print_rate and t.tax_amount
-	)
-	html = (
-		rows + added
-		+ f'<div class="order-line total"><span>{esc(_("Total"))}</span><span>{esc(fmt(quotation.grand_total))} {esc(quotation.currency)}</span></div>'
-		+ (f'<p class="order-note">{esc(_("Includes {0} GST").format(fmt(included)))}</p>' if included else "")
-	)
+	html = lines_html(quotation)
 	expired = bool(quotation.valid_till and getdate(quotation.valid_till) < getdate(nowdate()))
-	can_accept = quotation.docstatus == 1 and quotation.status not in ("Ordered", "Lost", "Cancelled") and not expired and not order
-	methods = [m for m in quote_payment_methods(quotation)]
+	closed = quotation.status in ("Lost", "Cancelled") or quotation.docstatus == 2
+	can_accept = quotation.docstatus == 1 and not closed and quotation.status != "Ordered" and not expired and not order
+	methods = quote_payment_methods(quotation) if can_accept else []
 	return {
 		"name": quotation.name,
 		"token": token or "",
-		"status": _("Ordered") if order else (_("Expired") if expired else (_("Being prepared") if quotation.docstatus == 0 else _("Ready to accept"))),
+		"status": quote_status(quotation, order, expired, closed),
 		"valid_till": frappe.utils.formatdate(quotation.valid_till) if quotation.valid_till else "",
 		"lines_html": html,
 		"can_accept": "true" if can_accept else None,
@@ -173,59 +185,129 @@ def quote_summary(name: str, token: str | None) -> dict:
 	}
 
 
+def quote_status(quotation, order: str | None, expired: bool, closed: bool) -> str:
+	if order:
+		return _("Ordered")
+	if closed:
+		return _("Closed")
+	if expired:
+		return _("Expired")
+	if quotation.docstatus == 0:
+		return _("Being prepared")
+	return _("Ready to accept")
+
+
+def lines_html(doc) -> str:
+	"""A quotation's or order's lines and totals as HTML."""
+	esc = frappe.utils.escape_html
+
+	def fmt(amount):
+		return frappe.utils.fmt_money(amount, currency=doc.currency)
+
+	rows = "".join(
+		f'<div class="order-item"><span>{esc(row.item_name)}</span>'
+		f'<span class="order-qty">{cart_module.display_qty(row.qty)}</span><span class="order-amount">{esc(fmt(row.amount))}</span></div>'
+		for row in doc.items
+		if not totals.is_charge_item(row.item_code)
+	)
+	lines, notes = totals.summary_lines(doc)
+	rows += "".join(
+		f'<div class="order-line"><span>{esc(line["label"])}</span><span>{esc(fmt(line["amount"]))}</span></div>'
+		for line in lines[1:]
+	)
+	rows += (
+		f'<div class="order-line total"><span>{esc(_("Total"))}</span>'
+		f"<span>{esc(fmt(totals.order_total(doc)))} {esc(doc.currency)}</span></div>"
+	)
+	return rows + "".join(f'<p class="order-note">{esc(note)}</p>' for note in notes)
+
+
 def quote_payment_methods(quotation) -> list[dict]:
-	methods = [m for m in totals.payment_methods() if m["method"] in (totals.CARD, totals.BANK, totals.ACCOUNT)]
-	fee = totals.card_fee_for(quotation.grand_total, is_export(quotation), quotation.taxes_and_charges)
-	return [
-		dict(m, fee_note=_("Card fee {0} added").format(totals.money(fee, quotation.currency)) if fee else "")
-		if m["method"] == totals.CARD
-		else m
-		for m in methods
-	]
+	"""How the quote's customer can pay for it: online, by bank transfer to an account in the
+	quote's currency, or on account when the signed-in shopper is that customer and may."""
+	from shop.storefront.orders import session_customers
+
+	methods = []
+	for method in totals.payment_methods(is_export(quotation)):
+		if method["method"] == totals.GATEWAY:
+			fee = card_fee(quotation)
+			methods.append(dict(method, fee_note=_("Card fee {0} added").format(totals.money(fee, quotation.currency)) if fee else ""))
+		elif method["method"] == totals.BANK and totals.bank_account(quotation.currency):
+			methods.append(method)
+	if quotation.party_name in session_customers():
+		terms = totals.on_account_terms(quotation.party_name)
+		if terms:
+			methods.insert(0, {"method": totals.ACCOUNT, "label": _("Pay on account (invoice)"), "fee_note": terms})
+	return methods
+
+
+def card_fee(quotation) -> float:
+	"""What paying online adds to the quote."""
+	order = make_order(quotation)
+	totals.add_card_fee(order, is_export(quotation))
+	totals.calculate(order)
+	return flt(flt(order.grand_total) - flt(quotation.grand_total), quotation.precision("grand_total"))
 
 
 def is_export(quotation) -> bool:
-	country = frappe.db.get_value("Address", quotation.shipping_address_name, "country") if quotation.shipping_address_name else None
+	country = (
+		frappe.db.get_value("Address", quotation.shipping_address_name, "country")
+		if quotation.shipping_address_name
+		else None
+	)
 	return bool(country and country != totals.company_country())
+
+
+def make_order(quotation):
+	from erpnext.selling.doctype.quotation.quotation import make_sales_order
+
+	order = make_sales_order(quotation.name)
+	order.delivery_date = add_days(nowdate(), 3)
+	for item in order.items:
+		item.delivery_date = order.delivery_date
+	return order
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=60)
-def accept_quote(name: str, token: str, payment_method: str, accept_terms: int = 0) -> dict:
+def accept_quote(name: str, token: str, payment_method: str, accept_terms: int = 0, business_buyer: int = 0) -> dict:
 	"""The customer accepts the quote: the order is placed at the quoted prices, then paid."""
-	from erpnext.selling.doctype.quotation.quotation import make_sales_order
+	from shop.storefront import terms
+	from shop.storefront.checkout import (
+		check_credit_limit,
+		create_payment_request,
+		elevated,
+		send_confirmation_for,
+		set_shop_details,
+	)
 
-	from shop.storefront.checkout import create_payment_request, elevated, set_shop_details, send_confirmation_for
-
-	payment_method = totals.normalize_method(payment_method)
-	settings = frappe.get_cached_doc("Shop Settings")
-	if settings.get("require_terms") and not cint(accept_terms):
+	if terms.required() and not cint(accept_terms):
 		frappe.throw(_("Please accept the terms and conditions"))
 	with elevated():
+		frappe.db.get_value("Quotation", name, "name", for_update=True)
 		quotation = load_quote(name, token)
 		summary = quote_summary(name, token)
 		if not summary["can_accept"]:
 			frappe.throw(_("This quote can no longer be accepted. Please contact us."))
 		if payment_method not in [m["method"] for m in summary["payment_methods"]]:
 			frappe.throw(_("This payment method is not available"))
-		order = make_sales_order(quotation.name)
-		order.delivery_date = add_days(nowdate(), 3)
+		order = make_order(quotation)
 		order.contact_email = quotation.contact_email
 		order.shop_access_token = frappe.generate_hash(length=32)
 		order_quote = frappe._dict(
 			payment_method=payment_method,
 			shipping=frappe._dict(json.loads(quotation.shop_shipping_option)) if quotation.get("shop_shipping_option") else None,
 		)
-		set_shop_details(order, order_quote, cint(accept_terms), 0)
-		fee = totals.card_fee_for(quotation.grand_total, is_export(quotation), quotation.taxes_and_charges) if payment_method == totals.CARD else 0
-		if fee and settings.get("card_fee_item"):
-			order.append("items", {"item_code": settings.card_fee_item, "qty": 1, "rate": fee, "description": _("Card fee")})
+		set_shop_details(order, order_quote, cint(accept_terms), cint(business_buyer))
+		if payment_method == totals.GATEWAY:
+			totals.add_card_fee(order, is_export(quotation))
 		order.flags.ignore_permissions = True
 		order.insert(ignore_permissions=True)
+		check_credit_limit(order)
 		order.submit()
 		response = {"sales_order": order.name}
 		confirmation = store_url(f"order-confirmation/{order.name}?token={order.shop_access_token}")
-		if payment_method == totals.CARD:
+		if payment_method == totals.GATEWAY and totals.order_total(order) > 0:
 			response["redirect"] = create_payment_request(order, {"email": order.contact_email}, order.shop_access_token)
 		else:
 			response["redirect"] = confirmation

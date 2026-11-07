@@ -195,3 +195,10 @@ def with_prefix_script(body_html: str | None, prefix: str) -> str:
 	if not normalize_prefix(prefix):
 		return body_html
 	return prefix_script(prefix) + "\n" + body_html
+
+
+def token_matches(expected: str | None, given: str | None) -> bool:
+	"""Compare a secret link token in constant time."""
+	import hmac
+
+	return bool(expected and given) and hmac.compare_digest(str(expected), str(given))

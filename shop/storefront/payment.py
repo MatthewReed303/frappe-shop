@@ -8,15 +8,17 @@ from shop.storefront import totals
 
 
 def amount_due(order) -> float:
-	"""What is still owed, in the order currency.
-
-	ERPNext keeps advance_paid in the customer's account currency, which is the company
-	currency when the order is in a foreign currency."""
+	"""What is still owed, in the order currency."""
+	total = totals.order_total(order)
 	paid = flt(order.advance_paid)
-	account_currency = order.get("party_account_currency") or order.currency
-	if account_currency != order.currency:
-		return flt((flt(order.base_grand_total) - paid) / (flt(order.conversion_rate) or 1), 2)
-	return flt(flt(order.grand_total) - paid, 2)
+	if not paid:
+		return total
+	if order.get("advance_payment_status") == "Fully Paid":
+		return 0.0
+	# ERPNext keeps advance_paid in the customer's account currency
+	if (order.get("party_account_currency") or order.currency) != order.currency:
+		paid = paid / (flt(order.conversion_rate) or 1)
+	return max(flt(total - paid, order.precision("grand_total")), 0.0)
 
 
 def is_paid(order) -> bool:
@@ -76,22 +78,38 @@ def bank_instructions_html(order) -> str:
 
 
 def on_payment_entry(doc, method=None) -> None:
-	"""When a payment pays off a store order: email the customer once and hand the order on."""
+	"""When a payment pays off a store order: invoice it, tell the customer once, hand it on."""
 	for row in doc.references or []:
 		if row.reference_doctype != "Sales Order" or not frappe.db.get_value(
 			"Sales Order", row.reference_name, "shop_payment_method"
 		):
 			continue
 		order = frappe.get_doc("Sales Order", row.reference_name)
-		if order.docstatus != 1 or amount_due(order) > 0.009:
+		if order.docstatus != 1 or amount_due(order) > 0:
 			continue
-		invoice_paid_order(order)
+		if was_paid_before(order, row):
+			continue
+		order_paid(order)
 		if order.shop_payment_method == totals.BANK:
 			order.add_comment("Info", _("Bank transfer received ({0}).").format(doc.name))
 			notify_paid(order)
-		from shop.fulfillment.service import auto_send
 
-		auto_send(order.name)
+
+def was_paid_before(order, reference) -> bool:
+	"""Whether the order was already paid in full before this payment."""
+	paid, allocated = flt(order.advance_paid), flt(reference.allocated_amount)
+	if (order.get("party_account_currency") or order.currency) != order.currency:
+		paid, allocated = paid / (flt(order.conversion_rate) or 1), allocated / (flt(order.conversion_rate) or 1)
+	return totals.order_total(order) - (paid - allocated) <= 0
+
+
+def order_paid(order) -> None:
+	"""A store order is paid: invoice it when the store invoices paid orders, and send it on."""
+	from shop.fulfillment.service import auto_send
+
+	if frappe.get_cached_doc("Shop Settings").get("invoice_paid_orders"):
+		invoice_paid_order(order)
+	auto_send(order.name)
 
 
 def notify_paid(order) -> None:
@@ -112,7 +130,7 @@ def invoice_paid_order(order) -> str | None:
 	ERPNext's own Sales Invoice is made from the Sales Order, and its Allocate Advances
 	Automatically option takes the payment already recorded against the order. Orders paid on
 	account are invoiced when they are placed. A failure is logged and never blocks the payment."""
-	if order.get("shop_payment_method") not in (totals.CARD, totals.BANK, totals.COD):
+	if order.get("shop_payment_method") not in (totals.GATEWAY, totals.BANK, totals.COD):
 		return None
 	existing = order_invoice(order.name)
 	if existing or flt(order.per_billed) >= 100:
@@ -150,13 +168,15 @@ def invoice_attachments(invoice: str | None) -> list:
 
 def cancel_overdue_orders() -> None:
 	"""Daily: cancel store orders that were never paid by their due date, and tell the customer."""
+	if not frappe.get_cached_doc("Shop Settings").get("cancel_unpaid_orders"):
+		return
 	if not frappe.get_meta("Sales Order").has_field("shop_payment_method"):
 		return
 	for name in frappe.get_all(
 		"Sales Order",
 		filters={
 			"docstatus": 1,
-			"shop_payment_method": ["in", [totals.BANK, totals.CARD]],
+			"shop_payment_method": ["in", [totals.BANK, totals.GATEWAY]],
 			"shop_payment_due": ["<", nowdate()],
 			"status": ["not in", ["Closed", "Completed"]],
 		},
@@ -195,11 +215,3 @@ def notify_cancelled(order) -> None:
 	from shop.storefront import emails
 
 	emails.send("order_cancelled", order.contact_email, order, due_date=frappe.utils.formatdate(order.shop_payment_due))
-
-
-def send_email(**kwargs) -> None:
-	"""Customer emails never stop an order from being paid or cancelled."""
-	try:
-		frappe.sendmail(**kwargs)
-	except Exception:
-		frappe.log_error(title=f"Store email failed: {kwargs.get('subject')}")

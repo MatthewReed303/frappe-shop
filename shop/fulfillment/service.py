@@ -81,20 +81,21 @@ def apply_result(fulfillment, result: dict) -> None:
 	if became_shipped:
 		record_delivery(fulfillment)
 		notify_customer(fulfillment, "Shipped")
-	elif became_delivered:
+	if became_delivered:
 		notify_customer(fulfillment, "Delivered")
 
 
 def notify_customer(fulfillment, status: str) -> None:
 	"""Tell the customer their order has shipped (with tracking) or been delivered."""
+	if not frappe.get_cached_doc("Shop Settings").get("send_shipping_emails"):
+		return
 	if not frappe.db.get_value("Sales Order", fulfillment.sales_order, "contact_email"):
 		return
-	from shop.routes import store_url
 	from shop.storefront import emails
+	from shop.storefront.orders import order_url
 
 	order = frappe.get_doc("Sales Order", fulfillment.sales_order)
-	token = frappe.db.get_value("Shop Cart", {"sales_order": order.name}, "token") or order.get("shop_access_token")
-	link = frappe.utils.get_url(store_url(f"order-confirmation/{order.name}" + (f"?token={token}" if token else "")))
+	link = frappe.utils.get_url(order_url(order.name))
 	if status == "Shipped":
 		emails.send(
 			"order_shipped", order.contact_email, order, order_url=link, tracking_url=fulfillment.tracking_url,

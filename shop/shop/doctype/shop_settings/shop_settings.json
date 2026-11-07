@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-07-29 00:00:00.000000",
+ "creation": "2026-07-29 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -20,6 +20,7 @@
   "default_warehouse",
   "allow_out_of_stock",
   "prices_include_tax",
+  "show_prices_with_tax",
   "shipping_section",
   "flat_shipping_rate",
   "free_shipping_above",
@@ -33,7 +34,9 @@
   "enable_cod",
   "column_break_payments",
   "payment_gateway_account",
+  "online_payment_label",
   "tax_template",
+  "export_tax_template",
   "stripe_webhook_secret",
   "card_fee_section",
   "card_fee_item",
@@ -48,6 +51,12 @@
   "column_break_bank_transfer",
   "conversion_fee_item",
   "bank_accounts",
+  "orders_section",
+  "invoice_paid_orders",
+  "send_shipping_emails",
+  "column_break_orders",
+  "cancel_unpaid_orders",
+  "online_payment_days",
   "terms_section",
   "require_terms",
   "terms_and_conditions",
@@ -160,46 +169,46 @@
    "label": "Shipping and Inventory"
   },
   {
+   "description": "Charged per order. Leave at zero for free shipping.",
    "fieldname": "flat_shipping_rate",
    "fieldtype": "Currency",
-   "label": "Flat Shipping Rate",
-   "description": "Charged per order. Leave at zero for free shipping."
+   "label": "Flat Shipping Rate"
   },
   {
+   "description": "Order value at which shipping becomes free.",
    "fieldname": "free_shipping_above",
    "fieldtype": "Currency",
-   "label": "Free Shipping Above",
-   "description": "Order value at which shipping becomes free."
+   "label": "Free Shipping Above"
   },
   {
    "fieldname": "column_break_shipping",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Income account used for the shipping charge on orders.",
    "fieldname": "shipping_account",
    "fieldtype": "Link",
    "label": "Shipping Account",
-   "options": "Account",
-   "description": "Income account used for the shipping charge on orders."
+   "options": "Account"
   },
   {
+   "default": "5",
    "fieldname": "low_stock_threshold",
    "fieldtype": "Int",
-   "label": "Low Stock Threshold",
-   "default": "5"
+   "label": "Low Stock Threshold"
   },
   {
+   "default": "manual",
+   "description": "Who ships your orders. Providers are supplied by installed apps.",
    "fieldname": "fulfillment_provider",
    "fieldtype": "Data",
-   "label": "Fulfillment Provider",
-   "default": "manual",
-   "description": "Who ships your orders. Providers are supplied by installed apps."
+   "label": "Fulfillment Provider"
   },
   {
+   "default": "0",
    "fieldname": "auto_send_to_fulfillment",
    "fieldtype": "Check",
-   "label": "Send Paid Orders Automatically",
-   "default": "0"
+   "label": "Send Paid Orders Automatically"
   },
   {
    "fieldname": "payments_section",
@@ -223,11 +232,11 @@
    "options": "Payment Gateway Account"
   },
   {
+   "description": "The store's own taxes, used when no Tax Rule marked \"Use for Shopping Cart\" matches an order. Set Tax Rules (e.g. by shipping country) for other taxes, such as zero-rated exports.",
    "fieldname": "tax_template",
    "fieldtype": "Link",
    "label": "Tax Template",
-   "options": "Sales Taxes and Charges Template",
-   "description": "The store's own taxes, used when no Tax Rule marked \"Use for Shopping Cart\" matches an order. Set Tax Rules (e.g. by shipping country) for other taxes, such as zero-rated exports."
+   "options": "Sales Taxes and Charges Template"
   },
   {
    "collapsible": 1,
@@ -243,24 +252,24 @@
    "read_only": 1
   },
   {
+   "description": "When set, shipping is charged as a line with this item, so the order's taxes apply to it",
    "fieldname": "shipping_item",
    "fieldtype": "Link",
-   "options": "Item",
    "label": "Shipping Item",
-   "description": "When set, shipping is charged as a line with this item, so the order's taxes apply to it"
+   "options": "Item"
   },
   {
+   "collapsible": 1,
    "fieldname": "card_fee_section",
    "fieldtype": "Section Break",
-   "label": "Card Fee",
-   "collapsible": 1
+   "label": "Card Fee"
   },
   {
+   "description": "Adds the payment provider's fee to card orders as a line with this item. Leave empty for no card fee",
    "fieldname": "card_fee_item",
    "fieldtype": "Link",
-   "options": "Item",
    "label": "Card Fee Item",
-   "description": "Adds the payment provider's fee to card orders as a line with this item. Leave empty for no card fee"
+   "options": "Item"
   },
   {
    "fieldname": "card_fee_percent",
@@ -270,138 +279,196 @@
   {
    "fieldname": "card_fee_fixed",
    "fieldtype": "Currency",
-   "options": "currency",
-   "label": "Fixed Fee (domestic)"
+   "label": "Fixed Fee (domestic)",
+   "options": "currency"
   },
   {
    "fieldname": "column_break_card_fee",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Used when the order ships outside the company's country",
    "fieldname": "card_fee_percent_international",
    "fieldtype": "Percent",
-   "label": "Fee % (international)",
-   "description": "Used when the order ships outside the company's country"
+   "label": "Fee % (international)"
   },
   {
    "fieldname": "card_fee_fixed_international",
    "fieldtype": "Currency",
-   "options": "currency",
-   "label": "Fixed Fee (international)"
+   "label": "Fixed Fee (international)",
+   "options": "currency"
   },
   {
+   "collapsible": 1,
    "fieldname": "bank_transfer_section",
    "fieldtype": "Section Break",
-   "label": "Bank Transfer",
-   "collapsible": 1
+   "label": "Bank Transfer"
   },
   {
+   "default": "0",
    "fieldname": "enable_bank_transfer",
    "fieldtype": "Check",
-   "label": "Enable Bank Transfer",
-   "default": "0"
+   "label": "Enable Bank Transfer"
   },
   {
+   "default": "7",
+   "description": "Unpaid bank transfer orders are cancelled after this many days",
    "fieldname": "bank_transfer_days",
    "fieldtype": "Int",
-   "label": "Days to Pay",
-   "default": "7",
-   "description": "Unpaid bank transfer orders are cancelled after this many days"
+   "label": "Days to Pay"
   },
   {
    "fieldname": "column_break_bank_transfer",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Charges the account's conversion fee on orders paid in another currency",
    "fieldname": "conversion_fee_item",
    "fieldtype": "Link",
-   "options": "Item",
    "label": "Currency Conversion Item",
-   "description": "Charges the account's conversion fee on orders paid in another currency"
+   "options": "Item"
   },
   {
    "fieldname": "bank_accounts",
    "fieldtype": "Table",
-   "options": "Shop Bank Account",
-   "label": "Bank Accounts"
+   "label": "Bank Accounts",
+   "options": "Shop Bank Account"
   },
   {
+   "collapsible": 1,
    "fieldname": "terms_section",
    "fieldtype": "Section Break",
-   "label": "Terms",
-   "collapsible": 1
+   "label": "Terms"
   },
   {
+   "default": "0",
+   "description": "Shoppers must accept the terms to create an account, apply for trade, place an order or accept a quote.",
    "fieldname": "require_terms",
    "fieldtype": "Check",
-   "label": "Require Terms Acceptance",
-   "default": "0",
-   "description": "Shoppers must accept the terms to create an account, apply for trade, place an order or accept a quote."
+   "label": "Require Terms Acceptance"
   },
   {
+   "depends_on": "require_terms",
+   "description": "Optional: an outside page with the terms. Leave empty to show the Terms and Conditions above on the store's terms page.",
    "fieldname": "terms_url",
    "fieldtype": "Data",
-   "label": "Terms URL",
-   "depends_on": "require_terms",
-   "description": "Optional: an outside page with the terms. Leave empty to show the Terms and Conditions above on the store's terms page."
+   "label": "Terms URL"
   },
   {
    "fieldname": "column_break_terms",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "require_terms",
+   "description": "Optional second checkbox for business buyers, e.g. that consumer law does not apply",
    "fieldname": "business_buyer_label",
    "fieldtype": "Small Text",
-   "label": "Business Buyer Statement",
-   "depends_on": "require_terms",
-   "description": "Optional second checkbox for business buyers, e.g. that consumer law does not apply"
+   "label": "Business Buyer Statement"
   },
   {
+   "description": "Signing secret of the Stripe webhook for payment_intent.succeeded, pointed at /api/method/shop.payments.stripe_checkout.webhook",
    "fieldname": "stripe_webhook_secret",
    "fieldtype": "Password",
-   "label": "Stripe Webhook Secret",
-   "description": "Signing secret of the Stripe webhook for payment_intent.succeeded, pointed at /api/method/shop.payments.stripe_checkout.webhook"
+   "label": "Stripe Webhook Secret"
   },
   {
+   "depends_on": "require_terms",
+   "description": "The ERPNext Terms and Conditions shoppers accept. They go on orders and quotations and print on them.",
    "fieldname": "terms_and_conditions",
    "fieldtype": "Link",
-   "options": "Terms and Conditions",
    "label": "Terms and Conditions",
-   "depends_on": "require_terms",
    "link_filters": "[[\"Terms and Conditions\",\"selling\",\"=\",1]]",
-   "description": "The ERPNext Terms and Conditions shoppers accept. They go on orders and quotations and print on them."
+   "options": "Terms and Conditions"
   },
   {
+   "depends_on": "require_terms",
+   "description": "Shown beside the checkbox, after \"I accept the Terms and Conditions\". Use it for points buyers must notice.",
    "fieldname": "terms_checkbox_note",
    "fieldtype": "Small Text",
-   "label": "Terms Checkbox Note",
-   "depends_on": "require_terms",
-   "description": "Shown beside the checkbox, after \"I accept the Terms and Conditions\". Use it for points buyers must notice."
+   "label": "Terms Checkbox Note"
   },
   {
+   "collapsible": 1,
    "fieldname": "trade_section",
    "fieldtype": "Section Break",
-   "label": "Trade Accounts",
-   "collapsible": 1
+   "label": "Trade Accounts"
   },
   {
+   "description": "Approved trade customers join this Customer Group (its Price List, Payment Terms, credit limit and Pricing Rules apply). Applications arrive as Leads with UTM Source \"Store Trade Application\".",
    "fieldname": "trade_customer_group",
    "fieldtype": "Link",
-   "options": "Customer Group",
    "label": "Trade Customer Group",
-   "description": "Approved trade customers join this Customer Group (its Price List, Payment Terms, credit limit and Store Discounts apply). Applications arrive as Leads with UTM Source \"Store Trade Application\"."
+   "options": "Customer Group"
   },
   {
+   "default": "0",
+   "description": "Shoppers can ask for a quote at checkout instead of ordering. It arrives as a draft Quotation for staff to finish and send.",
    "fieldname": "allow_quote_requests",
    "fieldtype": "Check",
-   "default": "1",
-   "label": "Allow Quote Requests",
-   "description": "Shoppers can ask for a quote at checkout instead of ordering. It arrives as a draft Quotation for staff to finish and send."
+   "label": "Allow Quote Requests"
+  },
+  {
+   "default": "0",
+   "description": "Show product, cart and checkout prices with the tax of the store's Tax Template, and the price without tax under them.",
+   "fieldname": "show_prices_with_tax",
+   "fieldtype": "Check",
+   "label": "Show Prices With Tax"
+  },
+  {
+   "default": "Pay Online",
+   "description": "What checkout calls paying through the payment gateway.",
+   "fieldname": "online_payment_label",
+   "fieldtype": "Data",
+   "label": "Online Payment Label"
+  },
+  {
+   "description": "Taxes for orders shipped outside the company's country, when no Tax Rule for the shopping cart matches them.",
+   "fieldname": "export_tax_template",
+   "fieldtype": "Link",
+   "label": "Export Tax Template",
+   "options": "Sales Taxes and Charges Template"
+  },
+  {
+   "fieldname": "orders_section",
+   "fieldtype": "Section Break",
+   "label": "Orders"
+  },
+  {
+   "default": "0",
+   "description": "Make and submit the Sales Invoice when an order is paid in full, and email it to the customer.",
+   "fieldname": "invoice_paid_orders",
+   "fieldtype": "Check",
+   "label": "Invoice Paid Orders"
+  },
+  {
+   "default": "0",
+   "description": "Email the customer when their order ships and when it is delivered.",
+   "fieldname": "send_shipping_emails",
+   "fieldtype": "Check",
+   "label": "Email Shipping Updates"
+  },
+  {
+   "fieldname": "column_break_orders",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Cancel online and bank transfer orders that are not paid by their due date, and tell the customer.",
+   "fieldname": "cancel_unpaid_orders",
+   "fieldtype": "Check",
+   "label": "Cancel Unpaid Orders"
+  },
+  {
+   "default": "2",
+   "depends_on": "cancel_unpaid_orders",
+   "fieldname": "online_payment_days",
+   "fieldtype": "Int",
+   "label": "Days to Pay Online"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 15:42:57.244519",
+ "modified": "2026-11-07 09:47:04.773094",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",
@@ -424,6 +491,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []
