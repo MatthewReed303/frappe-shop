@@ -329,9 +329,11 @@
 	function checkoutChoice(form) {
 		const data = new FormData(form);
 		const currency = form.querySelector('select[name="currency"]');
+		const method = data.get("payment_method") || undefined;
 		return {
 			shipping_option: data.get("shipping_option") || undefined,
-			payment_method: data.get("payment_method") || undefined,
+			// an international transfer is chosen under bank transfer, as where the money comes from
+			payment_method: method === "bank" && data.get("bank_route") ? data.get("bank_route") : method,
 			// until the shopper picks one, the store suggests their own currency
 			currency: currency && currency.dataset.chosen ? data.get("currency") : undefined,
 		};
@@ -390,14 +392,34 @@
 		});
 		const bank = form.querySelector('[data-shop="bank-currency"]');
 		if (bank) {
-			const select = bank.querySelector("select");
-			if (select && !select.options.length) {
-				select.innerHTML = (quote.bank_currencies || [])
-					.map((c) => `<option value="${esc(c.currency)}">${esc(c.label)}</option>`)
-					.join("");
+			const byBank = ["bank", "swift"].includes(quote.payment_method);
+			const currencies = quote.bank_currencies || [];
+			const routes = quote.bank_routes || [];
+			const select = bank.querySelector('select[name="currency"]');
+			if (select) {
+				const options = currencies.map((c) => `<option value="${esc(c.currency)}">${esc(c.label)}</option>`).join("");
+				if (select.dataset.options !== options) {
+					select.innerHTML = options;
+					select.dataset.options = options;
+				}
+				if (quote.currency && byBank) select.value = quote.currency;
 			}
-			if (select && quote.currency && quote.payment_method === "bank") select.value = quote.currency;
-			bank.hidden = quote.payment_method !== "bank" || (quote.bank_currencies || []).length < 2;
+			const currencyChoice = bank.querySelector('[data-shop="bank-currency-choice"]');
+			if (currencyChoice) currencyChoice.hidden = currencies.length < 2;
+			const route = bank.querySelector('select[name="bank_route"]');
+			if (route) {
+				route.innerHTML = routes.map((r) => `<option value="${esc(r.method)}">${esc(r.label)}</option>`).join("");
+				route.value = quote.payment_method;
+				// until the shopper says where they pay from, go by where the order is going
+				const suggested = quote.suggested_bank_method;
+				if (byBank && !route.dataset.chosen && suggested && suggested !== quote.payment_method && routes.some((r) => r.method === suggested)) {
+					route.value = suggested;
+					scheduleQuote(0);
+				}
+			}
+			const routeChoice = bank.querySelector('[data-shop="bank-route"]');
+			if (routeChoice) routeChoice.hidden = routes.length < 2;
+			bank.hidden = !byBank || (currencies.length < 2 && routes.length < 2);
 		}
 		const totalsBox = document.querySelector('[data-shop="checkout-totals"]');
 		if (totalsBox) {
@@ -537,8 +559,8 @@
 		});
 		form.addEventListener("change", (event) => {
 			const name = event.target.name;
-			if (name === "currency") event.target.dataset.chosen = "1";
-			if (["shipping_option", "payment_method", "currency", "country"].includes(name)) scheduleQuote(0);
+			if (name === "currency" || name === "bank_route") event.target.dataset.chosen = "1";
+			if (["shipping_option", "payment_method", "currency", "bank_route", "country"].includes(name)) scheduleQuote(0);
 		});
 		scheduleQuote(0);
 	}

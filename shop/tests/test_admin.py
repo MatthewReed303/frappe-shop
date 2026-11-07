@@ -111,6 +111,30 @@ class TestAdminApi(IntegrationTestCase):
 			}
 		)
 
+	def test_bank_accounts_and_fees_round_trip(self):
+		from shop.tests.utils import company_bank_account
+
+		original = settings.get_settings()
+		company = frappe.db.get_single_value("Shop Settings", "company")
+		currency = frappe.get_cached_value("Company", company, "default_currency")
+		account = company_bank_account(company, currency)
+		self.assertIn(account, [row["name"] for row in original["company_bank_accounts"]])
+		row = {
+			"bank_account": account,
+			"label": "Home",
+			"conversion_fee_percent": 0,
+			"local_transfer_fee": 0.5,
+			"swift_transfer_fee": 6.11,
+			"instructions": "",
+		}
+		try:
+			updated = settings.save_settings({"bank_accounts": [row, {"bank_account": ""}]})
+			self.assertEqual(len(updated["bank_accounts"]), 1)
+			self.assertEqual(updated["bank_accounts"][0]["swift_transfer_fee"], 6.11)
+			self.assertEqual(updated["bank_accounts"][0]["local_transfer_fee"], 0.5)
+		finally:
+			settings.save_settings({"bank_accounts": original["bank_accounts"]})
+
 	def test_fulfillment_settings_persist(self):
 		from shop.api import settings as settings_api
 

@@ -31,11 +31,20 @@ until it is turned on.
 - **Bank transfer**: the store's ERPNext Bank Accounts, one per currency, listed in Shop
   Settings. The shopper sees the account details, the amount and the order number as the
   reference. An account in another currency can add a currency conversion fee.
+  - Each account can add the fee its bank takes from a transfer (the **Transfer Fee Item**
+    line): a **Local Transfer Fee**, and a **Swift Transfer Fee** for international
+    transfers. Swift is offered when the account's Bank has a SWIFT code; the shopper picks
+    where they pay from, suggested by where the order is going.
+  - A deposit in a Bank Transaction (from a bank statement import or a bank feed) whose
+    reference names an unpaid bank transfer order pays it: a Payment Entry for what the
+    customer sent, with any fee the bank reports booked to the **Bank Charges Account**,
+    reconciled with the Bank Transaction. A payment short of the total leaves the order
+    waiting, and the customer is emailed the balance.
 - **Pay on account**: customers with *Pay on Account at the Store* and Payment Terms are
   invoiced straight away. ERPNext's credit limit applies.
 
-Shipping, card fees and conversion fees are order lines (the Shipping Item, Card Fee Item and
-Currency Conversion Item), so they show on the order and invoice like any other line.
+Shipping and fees are order lines (the Shipping Item, Card Fee Item, Currency Conversion Item and
+Transfer Fee Item), so they show on the order and invoice like any other line.
 
 ## After checkout
 

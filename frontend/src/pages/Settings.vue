@@ -54,7 +54,15 @@
 					description="What checkout calls paying through the gateway."
 					class="max-w-sm"
 				/>
-				<div class="grid max-w-lg grid-cols-2 gap-4">
+				<FormControl
+					v-model="payments.card_fee_item"
+					type="select"
+					label="Card fee item"
+					description="The fee is added to online payments as a line with this item."
+					:options="feeItemOptions('No card fee')"
+					class="max-w-sm"
+				/>
+				<div v-if="payments.card_fee_item" class="grid max-w-lg grid-cols-2 gap-4">
 					<FormControl v-model.number="payments.card_fee_percent" type="number" label="Card fee %" />
 					<FormControl
 						v-model.number="payments.card_fee_fixed"
@@ -72,29 +80,108 @@
 						:label="`Card fee fixed, international (${data.currency})`"
 					/>
 				</div>
-				<p class="text-p-sm text-ink-gray-5">
-					A card fee is added to online payments when a Card Fee Item is set in Shop Settings.
-				</p>
 				<Switch
 					v-model="payments.enable_bank_transfer"
 					label="Bank transfer"
 					description="Customers pay into one of your bank accounts, with the order number as reference."
 				/>
-				<FormControl
-					v-if="payments.enable_bank_transfer"
-					v-model.number="payments.bank_transfer_days"
-					type="number"
-					label="Days to pay by bank transfer"
-					class="max-w-sm"
-				/>
-				<a
-					href="/app/shop-settings"
-					target="_blank"
-					class="inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
-				>
-					{{ data.has_bank_accounts ? 'Edit bank accounts and fee items in Desk' : 'Add bank accounts in Desk' }}
-					<LucideExternalLink class="size-3.5" />
-				</a>
+				<template v-if="payments.enable_bank_transfer">
+					<FormControl
+						v-model.number="payments.bank_transfer_days"
+						type="number"
+						label="Days to pay by bank transfer"
+						class="max-w-sm"
+					/>
+					<div class="flex max-w-3xl flex-col gap-3">
+						<div
+							v-for="(row, index) in payments.bank_accounts"
+							:key="index"
+							class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+						>
+							<FormControl
+								v-model="row.bank_account"
+								type="select"
+								label="Bank account"
+								:options="bankAccountOptions"
+								class="col-span-3"
+							/>
+							<FormControl
+								v-model="row.label"
+								label="Label"
+								placeholder="e.g. US dollars"
+								class="col-span-3"
+							/>
+							<FormControl
+								v-model.number="row.conversion_fee_percent"
+								type="number"
+								label="Conversion fee %"
+								class="col-span-2"
+							/>
+							<FormControl
+								v-model.number="row.local_transfer_fee"
+								type="number"
+								:label="`Local transfer fee (${bankCurrency(row)})`"
+								class="col-span-2"
+							/>
+							<FormControl
+								v-if="bankHasSwift(row)"
+								v-model.number="row.swift_transfer_fee"
+								type="number"
+								:label="`Swift transfer fee (${bankCurrency(row)})`"
+								class="col-span-2"
+							/>
+							<FormControl
+								v-model="row.instructions"
+								type="textarea"
+								label="Instructions"
+								class="col-span-5"
+							/>
+							<Button
+								variant="ghost"
+								class="col-span-1 self-end"
+								@click="payments.bank_accounts.splice(index, 1)"
+							>
+								Remove
+							</Button>
+						</div>
+						<div>
+							<Button @click="addBankAccount">Add bank account</Button>
+						</div>
+					</div>
+					<p class="text-p-sm text-ink-gray-5">
+						Transfer fees are what the bank takes from a payment, in the account's currency, and are
+						added to the order. Swift transfers are offered when the account's Bank has a SWIFT code.
+					</p>
+					<div class="grid max-w-lg grid-cols-2 gap-4">
+						<FormControl
+							v-model="payments.transfer_fee_item"
+							type="select"
+							label="Transfer fee item"
+							:options="feeItemOptions('No transfer fees')"
+						/>
+						<FormControl
+							v-model="payments.conversion_fee_item"
+							type="select"
+							label="Currency conversion item"
+							:options="feeItemOptions('No conversion fees')"
+						/>
+						<FormControl
+							v-model="payments.bank_charges_account"
+							type="select"
+							label="Bank charges account"
+							description="Where a fee the bank reports taking is booked."
+							:options="expenseAccountOptions"
+						/>
+					</div>
+					<a
+						href="/app/bank-account"
+						target="_blank"
+						class="inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
+					>
+						Manage bank accounts in Desk
+						<LucideExternalLink class="size-3.5" />
+					</a>
+				</template>
 				<template #footer>
 					<Button
 						variant="solid"
@@ -351,12 +438,17 @@ const payments = reactive({
 	enable_cod: true,
 	payment_gateway_account: '',
 	online_payment_label: '',
+	card_fee_item: '',
 	card_fee_percent: 0,
 	card_fee_fixed: 0,
 	card_fee_percent_international: 0,
 	card_fee_fixed_international: 0,
 	enable_bank_transfer: false,
 	bank_transfer_days: 7,
+	bank_accounts: [] as BankAccountRow[],
+	transfer_fee_item: '',
+	conversion_fee_item: '',
+	bank_charges_account: '',
 })
 const shipping = reactive({
 	flat_shipping_rate: 0,
@@ -411,12 +503,17 @@ function hydrate(doc: Record<string, any>) {
 		enable_cod: !!doc.enable_cod,
 		payment_gateway_account: doc.payment_gateway_account || '',
 		online_payment_label: doc.online_payment_label || '',
+		card_fee_item: doc.card_fee_item || '',
 		card_fee_percent: doc.card_fee_percent || 0,
 		card_fee_fixed: doc.card_fee_fixed || 0,
 		card_fee_percent_international: doc.card_fee_percent_international || 0,
 		card_fee_fixed_international: doc.card_fee_fixed_international || 0,
 		enable_bank_transfer: !!doc.enable_bank_transfer,
 		bank_transfer_days: doc.bank_transfer_days || 7,
+		bank_accounts: (doc.bank_accounts || []).map((row: BankAccountRow) => ({ ...row })),
+		transfer_fee_item: doc.transfer_fee_item || '',
+		conversion_fee_item: doc.conversion_fee_item || '',
+		bank_charges_account: doc.bank_charges_account || '',
 	})
 	Object.assign(shipping, {
 		flat_shipping_rate: doc.flat_shipping_rate || 0,
@@ -477,6 +574,58 @@ const providerOptions = computed(() =>
 		}),
 	),
 )
+
+type BankAccountRow = {
+	bank_account: string
+	label: string
+	conversion_fee_percent: number
+	local_transfer_fee: number
+	swift_transfer_fee: number
+	instructions: string
+}
+
+type CompanyBankAccount = { name: string; currency: string | null; swift: boolean }
+
+const bankAccountOptions = computed(() =>
+	(data.value.company_bank_accounts || []).map((account: CompanyBankAccount) => ({
+		label: account.currency ? `${account.name} (${account.currency})` : account.name,
+		value: account.name,
+	})),
+)
+
+function companyBankAccount(row: BankAccountRow): CompanyBankAccount | undefined {
+	return (data.value.company_bank_accounts || []).find(
+		(account: CompanyBankAccount) => account.name === row.bank_account,
+	)
+}
+
+function bankCurrency(row: BankAccountRow) {
+	return companyBankAccount(row)?.currency || data.value.currency
+}
+
+function bankHasSwift(row: BankAccountRow) {
+	return !!companyBankAccount(row)?.swift
+}
+
+function addBankAccount() {
+	payments.bank_accounts.push({
+		bank_account: '',
+		label: '',
+		conversion_fee_percent: 0,
+		local_transfer_fee: 0,
+		swift_transfer_fee: 0,
+		instructions: '',
+	})
+}
+
+function feeItemOptions(none: string) {
+	return [{ label: none, value: '' }, ...listOptions(data.value.service_items)]
+}
+
+const expenseAccountOptions = computed(() => [
+	{ label: 'Not set', value: '' },
+	...listOptions(data.value.expense_accounts),
+])
 
 const itemOptions = computed(() => [
 	{ label: 'No shipping item', value: '' },

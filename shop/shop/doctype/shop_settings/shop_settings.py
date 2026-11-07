@@ -22,6 +22,7 @@ class ShopSettings(Document):
 		applied_route_prefix: DF.Data | None
 		auto_send_to_fulfillment: DF.Check
 		bank_accounts: DF.Table[ShopBankAccount]
+		bank_charges_account: DF.Link | None
 		bank_transfer_days: DF.Int
 		business_buyer_label: DF.SmallText | None
 		cancel_unpaid_orders: DF.Check
@@ -63,6 +64,7 @@ class ShopSettings(Document):
 		terms_url: DF.Data | None
 		theme_pages: DF.Table[ShopThemePage]
 		trade_customer_group: DF.Link | None
+		transfer_fee_item: DF.Link | None
 	# end: auto-generated types
 
 	def validate(self):

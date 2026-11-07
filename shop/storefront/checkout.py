@@ -231,7 +231,7 @@ def send_confirmation_for(sales_order, confirmation_url: str) -> None:
 	method = sales_order.get("shop_payment_method")
 	if method == totals.ACCOUNT:
 		invoice_on_account(sales_order)
-	elif method in (totals.GATEWAY, totals.BANK) and totals.order_total(sales_order) <= 0:
+	elif method in (totals.GATEWAY, *totals.BANK_METHODS) and totals.order_total(sales_order) <= 0:
 		payment.order_paid(sales_order)
 	queue_confirmation_email(sales_order, sales_order.contact_email, confirmation_url)
 
@@ -282,7 +282,7 @@ def queue_confirmation_email(sales_order, email: str, confirmation_url: str):
 	try:
 		from shop.storefront import emails, payment
 
-		bank = payment.method(sales_order) == totals.BANK and not payment.is_paid(sales_order)
+		bank = payment.method(sales_order) in totals.BANK_METHODS and not payment.is_paid(sales_order)
 		emails.send(
 			"order_payment_instructions" if bank else "order_confirmed",
 			email,
@@ -379,7 +379,7 @@ def validate_order(cart, customer: dict, payment_method: str, accept_terms: int 
 	if not cart or not cart.items:
 		frappe.throw(_("Your cart is empty"))
 	settings = frappe.get_cached_doc("Shop Settings")
-	if payment_method not in [method["method"] for method in totals.payment_methods()]:
+	if payment_method not in [method["method"] for method in totals.payment_methods(swift=True)]:
 		frappe.throw(_("This payment method is not available"))
 	if settings.get("require_terms") and not frappe.utils.cint(accept_terms):
 		frappe.throw(_("Please accept the terms and conditions"))
@@ -577,6 +577,7 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 	sales_order.shop_payment_method = method
 	days = {
 		totals.BANK: frappe.utils.cint(settings.get("bank_transfer_days")),
+		totals.SWIFT: frappe.utils.cint(settings.get("bank_transfer_days")),
 		totals.GATEWAY: frappe.utils.cint(settings.get("online_payment_days")),
 	}.get(method)
 	if days:

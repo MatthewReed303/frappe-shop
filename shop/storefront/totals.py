@@ -10,6 +10,8 @@ from shop.storefront import shipping as shipping_module
 
 GATEWAY = "gateway"
 BANK = "bank"
+SWIFT = "swift"
+BANK_METHODS = (BANK, SWIFT)
 ACCOUNT = "account"
 COD = "cod"
 
@@ -64,7 +66,9 @@ def gateway_available() -> bool:
 	return bool(settings().payment_gateway_account)
 
 
-def payment_methods(export: bool = False) -> list[dict]:
+def payment_methods(export: bool = False, swift: bool = False) -> list[dict]:
+	"""How a shopper can pay. At checkout an international (Swift) transfer is chosen under bank
+	transfer, so it is listed on its own only when `swift` is asked for."""
 	s = settings()
 	methods = []
 	if gateway_available():
@@ -75,8 +79,12 @@ def payment_methods(export: bool = False) -> list[dict]:
 				"fee_note": card_fee_note(export),
 			}
 		)
-	if s.get("enable_bank_transfer") and s.get("bank_accounts"):
+	if s.get("enable_bank_transfer") and bank_accounts():
 		methods.append({"method": BANK, "label": _("Bank transfer"), "fee_note": ""})
+		if swift and bank_accounts(SWIFT):
+			methods.append(
+				{"method": SWIFT, "label": _("International bank transfer (Swift)"), "fee_note": ""}
+			)
 	if s.enable_cod:
 		methods.append({"method": COD, "label": _("Cash on Delivery"), "fee_note": ""})
 	terms = on_account_terms()
@@ -128,9 +136,10 @@ def branch_code_label(currency: str) -> str:
 	}.get(currency, _("Branch code"))
 
 
-def bank_accounts() -> list[frappe._dict]:
-	"""The store's bank transfer accounts: ERPNext company Bank Accounts with the currency of
-	their account and the details customers pay to."""
+def bank_accounts(method: str = BANK) -> list[frappe._dict]:
+	"""The store's accounts for a bank transfer method: ERPNext company Bank Accounts with the
+	currency of their account, the details customers pay to and the fee the bank takes from a
+	payment. Swift transfers need the Bank's SWIFT code."""
 	rows = []
 	for row in settings().get("bank_accounts") or []:
 		if not row.bank_account:
@@ -143,7 +152,8 @@ def bank_accounts() -> list[frappe._dict]:
 			if account.account
 			else None
 		)
-		if not currency:
+		swift = frappe.get_cached_value("Bank", account.bank, "swift_number") if account.bank else None
+		if not currency or (method == SWIFT and not swift):
 			continue
 		rows.append(
 			frappe._dict(
@@ -151,15 +161,17 @@ def bank_accounts() -> list[frappe._dict]:
 				currency=currency,
 				label=row.label or currency,
 				conversion_fee_percent=flt(row.conversion_fee_percent),
-				details=bank_account_details(account, currency)
+				transfer_fee=flt(row.swift_transfer_fee if method == SWIFT else row.local_transfer_fee),
+				details=bank_account_details(account, currency, method)
 				+ [line.strip() for line in (row.instructions or "").splitlines() if line.strip()],
 			)
 		)
 	return rows
 
 
-def bank_account_details(account, currency: str) -> list[str]:
-	"""The lines a customer needs to pay into a Bank Account."""
+def bank_account_details(account, currency: str, method: str = BANK) -> list[str]:
+	"""The lines a customer needs to pay into a Bank Account: from a bank in its own country, or
+	by Swift from anywhere."""
 	bank = frappe.get_cached_doc("Bank", account.bank) if account.bank else None
 	# a company bank account is held by the company
 	holder = (
@@ -170,7 +182,7 @@ def bank_account_details(account, currency: str) -> list[str]:
 	lines = [
 		(_("Account name"), holder),
 		(_("Bank"), bank.bank_name if bank else None),
-		(branch_code_label(currency), account.branch_code),
+		(branch_code_label(currency), account.branch_code if method == BANK else None),
 		(_("Account number"), account.bank_account_no),
 		(_("IBAN"), account.iban),
 		(_("BIC/SWIFT"), bank.swift_number if bank else None),
@@ -178,15 +190,40 @@ def bank_account_details(account, currency: str) -> list[str]:
 	return [f"{label}: {value}" for label, value in lines if value]
 
 
-def bank_currencies() -> list[str]:
-	return list(dict.fromkeys(row.currency for row in bank_accounts()))
+def bank_currencies(method: str = BANK) -> list[str]:
+	return list(dict.fromkeys(row.currency for row in bank_accounts(method)))
 
 
-def bank_account(currency: str) -> frappe._dict | None:
-	for row in bank_accounts():
+def bank_account(currency: str, method: str = BANK) -> frappe._dict | None:
+	for row in bank_accounts(method):
 		if row.currency == currency:
 			return row
 	return None
+
+
+def bank_routes(currency: str) -> list[dict]:
+	"""Where a bank transfer in this currency can come from, with the fee the bank takes."""
+	routes = []
+	for method, label in (
+		(BANK, _("A bank account in {0} (local transfer)").format(currency)),
+		(SWIFT, _("Anywhere else (international Swift transfer)")),
+	):
+		account = bank_account(currency, method)
+		if account:
+			if account.transfer_fee:
+				label = _("{0}, fee {1}").format(label, money(account.transfer_fee, currency))
+			routes.append({"method": method, "label": label})
+	return routes
+
+
+def suggested_bank_method(address: frappe._dict | None, currency: str) -> str:
+	"""Swift for a payer abroad: one whose country doesn't use the account's currency."""
+	from frappe.geo.country_info import get_country_info
+
+	if not address or not address.get("country") or not bank_account(currency, SWIFT):
+		return BANK
+	local = (get_country_info(address.country) or {}).get("currency")
+	return BANK if local == currency else SWIFT
 
 
 def suggested_currency(address: frappe._dict | None) -> str:
@@ -242,6 +279,8 @@ def compute(
 	export = is_export(address)
 	template = tax_template_for(address)
 	method = payment_method
+	if method == SWIFT and currency in bank_currencies() and not bank_account(currency, SWIFT):
+		method = BANK
 	currency = order_currency(method, currency, address)
 
 	cart_module.refresh_rates(cart)
@@ -261,8 +300,11 @@ def compute(
 	fees = []
 	if method == GATEWAY:
 		fees += add_card_fee(order, export)
-	elif method == BANK and currency != order.company_currency:
-		fees += add_conversion_fee(order, bank_account(currency))
+	elif method in BANK_METHODS:
+		account = bank_account(currency, method)
+		if currency != order.company_currency:
+			fees += add_conversion_fee(order, account)
+		fees += add_transfer_fee(order, account, method)
 	calculate(order)
 
 	return frappe._dict(
@@ -289,8 +331,8 @@ def compute(
 def order_currency(method: str | None, currency: str | None, address: frappe._dict | None) -> str:
 	"""Orders are in the company currency, except bank transfers to an account in another currency."""
 	base = company_currency()
-	options = bank_currencies()
-	if method != BANK or not options:
+	options = bank_currencies(method) if method in BANK_METHODS else []
+	if not options:
 		return base
 	if currency in options:
 		return currency
@@ -493,6 +535,19 @@ def add_conversion_fee(order, account: frappe._dict | None) -> list[frappe._dict
 	return [frappe._dict(kind="conversion_fee", label=label, item=s.conversion_fee_item)]
 
 
+def add_transfer_fee(order, account: frappe._dict | None, method: str) -> list[frappe._dict]:
+	"""The fixed fee the bank takes from a transfer into the account: the store keeps that much."""
+	s = settings()
+	fee = flt(account.transfer_fee) if account else 0
+	calculate(order)
+	if not fee or not s.get("transfer_fee_item") or order_total(order) <= 0:
+		return []
+	label = _("International transfer fee (Swift)") if method == SWIFT else _("Bank transfer fee")
+	row, _gross, net = probe_line(order, s.transfer_fee_item, label)
+	row.rate = round_up(fee / net, row.precision("rate"))
+	return [frappe._dict(kind="transfer_fee", label=label, item=s.transfer_fee_item)]
+
+
 def probe_line(order, item_code: str, label: str):
 	"""Add a fee line and measure, per unit of its rate, what ERPNext adds to the grand total and
 	what the store keeps (the net amount, after any tax the item carries)."""
@@ -535,6 +590,7 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 		s.get("shipping_item"): "shipping",
 		s.get("card_fee_item"): "card_fee",
 		s.get("conversion_fee_item"): "conversion_fee",
+		s.get("transfer_fee_item"): "transfer_fee",
 	}
 	for item in order.items:
 		if is_charge_item(item.item_code):
@@ -661,15 +717,18 @@ def payload(quote: frappe._dict) -> dict:
 		"payment_methods": payment_methods(quote.export),
 		"payment_method": quote.payment_method,
 		"bank_currencies": [
-			{"currency": row.currency, "label": row.label or row.currency} for row in bank_accounts()
+			{"currency": row.currency, "label": row.label or row.currency}
+			for row in bank_accounts(quote.payment_method if quote.payment_method in BANK_METHODS else BANK)
 		],
+		"bank_routes": bank_routes(currency) if quote.payment_method in BANK_METHODS else [],
+		"suggested_bank_method": suggested_bank_method(quote.address, currency)
+		if quote.payment_method in BANK_METHODS
+		else None,
 	}
 
 
 def is_charge_item(item_code: str) -> bool:
 	"""Shipping and fee lines, which are not products."""
 	s = settings()
-	return item_code in {s.get("shipping_item"), s.get("card_fee_item"), s.get("conversion_fee_item")} - {
-		None,
-		"",
-	}
+	charges = ("shipping_item", "card_fee_item", "conversion_fee_item", "transfer_fee_item")
+	return item_code in {s.get(field) for field in charges} - {None, ""}

@@ -2651,8 +2651,14 @@ def checkout_blocks(refs):
 				attrs={"data-shop": "bank-currency", "hidden": "hidden"},
 				styles={**column, "gap": "6px"},
 				children=[
-					block("p", text="Currency to pay in", styles=mono(size="10px", color=refs["muted"], spacing="0.14em")),
-					block("select", attrs={"name": "currency", "aria-label": "Currency to pay in"}, styles=field_styles(refs)),
+					block("div", name="Bank Currency Choice", attrs={"data-shop": "bank-currency-choice"}, styles={**column, "gap": "6px"}, children=[
+						block("p", text="Currency to pay in", styles=mono(size="10px", color=refs["muted"], spacing="0.14em")),
+						block("select", attrs={"name": "currency", "aria-label": "Currency to pay in"}, styles=field_styles(refs)),
+					]),
+					block("div", name="Bank Route", attrs={"data-shop": "bank-route", "hidden": "hidden"}, styles={**column, "gap": "6px"}, children=[
+						block("p", text="Paying from", styles=mono(size="10px", color=refs["muted"], spacing="0.14em")),
+						block("select", attrs={"name": "bank_route", "aria-label": "Paying from"}, styles=field_styles(refs)),
+					]),
 					hint(refs, visibilityCondition={"key": "bank_currency_note", "comesFrom": "dataScript"},
 						 dynamicValues=[dv("bank_currency_note", "innerHTML")]),
 				],

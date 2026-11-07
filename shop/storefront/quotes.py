@@ -253,19 +253,19 @@ def quote_payment_methods(quotation) -> list[dict]:
 	from shop.storefront.orders import session_customers
 
 	methods = []
-	for method in totals.payment_methods(is_export(quotation)):
-		if method["method"] == totals.GATEWAY:
-			fee = card_fee(quotation)
-			methods.append(
-				dict(
-					method,
-					fee_note=_("Card fee {0} added").format(totals.money(fee, quotation.currency))
-					if fee
-					else "",
-				)
+	for method in totals.payment_methods(is_export(quotation), swift=True):
+		if method["method"] in totals.BANK_METHODS and not totals.bank_account(
+			quotation.currency, method["method"]
+		):
+			continue
+		if method["method"] in (totals.GATEWAY, *totals.BANK_METHODS):
+			fee = payment_fee(quotation, method["method"])
+			note = (
+				_("Card fee {0} added") if method["method"] == totals.GATEWAY else _("Transfer fee {0} added")
 			)
-		elif method["method"] == totals.BANK and totals.bank_account(quotation.currency):
-			methods.append(method)
+			methods.append(
+				dict(method, fee_note=note.format(totals.money(fee, quotation.currency)) if fee else "")
+			)
 	if quotation.party_name in session_customers():
 		terms = totals.on_account_terms(quotation.party_name)
 		if terms:
@@ -275,12 +275,19 @@ def quote_payment_methods(quotation) -> list[dict]:
 	return methods
 
 
-def card_fee(quotation) -> float:
-	"""What paying online adds to the quote."""
+def payment_fee(quotation, method: str) -> float:
+	"""What paying the quote this way adds to it: the card fee, or the bank's transfer fee."""
 	order = make_order(quotation)
-	totals.add_card_fee(order, is_export(quotation))
+	add_payment_fee(order, quotation, method)
 	totals.calculate(order)
 	return flt(flt(order.grand_total) - flt(quotation.grand_total), quotation.precision("grand_total"))
+
+
+def add_payment_fee(order, quotation, method: str) -> None:
+	if method == totals.GATEWAY:
+		totals.add_card_fee(order, is_export(quotation))
+	elif method in totals.BANK_METHODS:
+		totals.add_transfer_fee(order, totals.bank_account(quotation.currency, method), method)
 
 
 def is_export(quotation) -> bool:
@@ -337,8 +344,7 @@ def accept_quote(
 			else None,
 		)
 		set_shop_details(order, order_quote, cint(accept_terms), cint(business_buyer))
-		if payment_method == totals.GATEWAY:
-			totals.add_card_fee(order, is_export(quotation))
+		add_payment_fee(order, quotation, payment_method)
 		order.flags.ignore_permissions = True
 		order.insert(ignore_permissions=True)
 		check_credit_limit(order)

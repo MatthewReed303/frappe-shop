@@ -30,6 +30,8 @@ doctype_js = {"Quotation": "public/js/quotation.js", "Lead": "public/js/lead.js"
 doc_events = {
 	# a bank transfer recorded in the desk pays the order like a card payment does
 	"Payment Entry": {"on_submit": "shop.storefront.payment.on_payment_entry"},
+	# a bank transfer arriving in a company bank account pays the order it names
+	"Bank Transaction": {"on_submit": "shop.storefront.payment.on_bank_transaction"},
 	# statement runs follow the Customer Group
 	"Customer": {"on_update": "shop.storefront.statements.sync_customer"},
 }

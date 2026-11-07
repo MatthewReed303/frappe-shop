@@ -14,9 +14,11 @@ class ShopBankAccount(Document):
 		conversion_fee_percent: DF.Percent
 		instructions: DF.SmallText | None
 		label: DF.Data | None
+		local_transfer_fee: DF.Float
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
+		swift_transfer_fee: DF.Float
 	# end: auto-generated types
 
 	pass

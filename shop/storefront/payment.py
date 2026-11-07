@@ -1,5 +1,8 @@
 """How an order is paid: bank transfer instructions, payment status and overdue orders."""
 
+import json
+import re
+
 import frappe
 from frappe import _
 from frappe.utils import flt, getdate, nowdate
@@ -43,9 +46,9 @@ def method(order) -> str | None:
 
 def bank_instructions(order) -> dict | None:
 	"""What to pay, where, and with which reference, for a bank transfer order."""
-	if method(order) != totals.BANK:
+	if method(order) not in totals.BANK_METHODS:
 		return None
-	account = totals.bank_account(order.currency)
+	account = totals.bank_account(order.currency, method(order))
 	if not account:
 		return None
 	lines = account.details
@@ -97,9 +100,135 @@ def on_payment_entry(doc, method=None) -> None:
 		if was_paid_before(order, row):
 			continue
 		order_paid(order)
-		if order.shop_payment_method == totals.BANK:
+		if order.shop_payment_method in totals.BANK_METHODS:
 			order.add_comment("Info", _("Bank transfer received ({0}).").format(doc.name))
 			notify_paid(order)
+
+
+def on_bank_transaction(doc, method=None) -> None:
+	"""A deposit into one of the company's bank accounts may pay a bank transfer order; it is matched
+	once the Bank Transaction is saved."""
+	if flt(doc.deposit) > 0:
+		frappe.enqueue(
+			"shop.storefront.payment.pay_from_bank_transaction",
+			bank_transaction=doc.name,
+			enqueue_after_commit=True,
+		)
+
+
+def pay_from_bank_transaction(bank_transaction: str) -> str | None:
+	"""Pay the bank transfer order a deposit names in its reference: a Payment Entry for what the
+	customer sent, with the bank's fee as a charge, reconciled with the Bank Transaction. A payment
+	short of what is owed leaves the order waiting and tells the customer the balance."""
+	from erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool import reconcile_vouchers
+
+	from shop.storefront import emails
+	from shop.storefront.checkout import elevated
+
+	transaction = frappe.get_doc("Bank Transaction", bank_transaction)
+	if transaction.docstatus != 1 or flt(transaction.unallocated_amount) <= 0:
+		return None
+	order = order_paid_by(transaction)
+	if not order:
+		return None
+	with elevated():
+		payment_entry = make_payment_entry(order, transaction)
+		reconcile_vouchers(
+			transaction.name,
+			json.dumps(
+				[
+					{
+						"payment_doctype": "Payment Entry",
+						"payment_name": payment_entry.name,
+						"amount": flt(transaction.unallocated_amount),
+					}
+				]
+			),
+		)
+		order.reload()
+		owed = amount_due(order)
+		if owed > 0:
+			received = money_text(flt(payment_entry.received_amount), order.currency)
+			order.add_comment(
+				"Info",
+				_("Bank transfer of {0} received ({1}); {2} is still owed.").format(
+					received, payment_entry.name, money_text(owed, order.currency)
+				),
+			)
+			emails.send(
+				"payment_short",
+				order.contact_email,
+				order,
+				received=received,
+				owed=money_text(owed, order.currency),
+				payment_html=bank_instructions_html(order),
+			)
+	return payment_entry.name
+
+
+def order_paid_by(transaction):
+	"""The one unpaid bank transfer order, in the deposit's currency, whose number is in the
+	deposit's reference or description."""
+	text = f"{transaction.reference_number or ''} {transaction.description or ''}"
+	names = frappe.get_all(
+		"Sales Order",
+		filters={
+			"docstatus": 1,
+			"company": transaction.company,
+			"currency": transaction.currency,
+			"shop_payment_method": ["in", list(totals.BANK_METHODS)],
+			"advance_payment_status": ["!=", "Fully Paid"],
+			"status": ["not in", ["Closed", "Completed", "On Hold"]],
+		},
+		pluck="name",
+	)
+	matched = [name for name in names if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)]
+	return frappe.get_doc("Sales Order", matched[0]) if len(matched) == 1 else None
+
+
+def make_payment_entry(order, transaction):
+	"""ERPNext's Payment Entry for the order, for what the customer sent: the deposit plus the fee the
+	bank took, which is booked to the store's Bank Charges Account."""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	account = frappe.db.get_value("Bank Account", transaction.bank_account, "account")
+	charges_account = frappe.get_cached_doc("Shop Settings").get("bank_charges_account")
+	fee = flt(transaction.included_fee) if charges_account else 0
+	sent = flt(transaction.unallocated_amount) + fee
+
+	payment_entry = get_payment_entry("Sales Order", order.name, bank_account=account, bank_amount=sent)
+	# in the customer's account currency, at the rate of the payment
+	rate = flt(payment_entry.target_exchange_rate) / flt(payment_entry.source_exchange_rate)
+	if sent < amount_due(order):
+		payment_entry = get_payment_entry(
+			"Sales Order",
+			order.name,
+			bank_account=account,
+			bank_amount=sent,
+			party_amount=flt(sent * rate, payment_entry.precision("paid_amount")),
+		)
+	if fee:
+		payment_entry.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"add_deduct_tax": "Deduct",
+				"account_head": charges_account,
+				"description": _("Bank fee"),
+				"tax_amount": flt(fee * rate, payment_entry.precision("paid_amount")),
+				"cost_center": frappe.get_cached_value("Company", order.company, "cost_center"),
+			},
+		)
+	payment_entry.bank_account = transaction.bank_account
+	payment_entry.reference_no = transaction.transaction_id or transaction.name
+	payment_entry.reference_date = transaction.date
+	payment_entry.insert()
+	payment_entry.submit()
+	return payment_entry
+
+
+def money_text(amount: float, currency: str) -> str:
+	return f"{totals.money(amount, currency)} {currency}"
 
 
 def was_paid_before(order, reference) -> bool:
@@ -146,7 +275,7 @@ def invoice_paid_order(order) -> str | None:
 	ERPNext's own Sales Invoice is made from the Sales Order, and its Allocate Advances
 	Automatically option takes the payment already recorded against the order. Orders paid on
 	account are invoiced when they are placed. A failure is logged and never blocks the payment."""
-	if order.get("shop_payment_method") not in (totals.GATEWAY, totals.BANK, totals.COD):
+	if order.get("shop_payment_method") not in (totals.GATEWAY, *totals.BANK_METHODS, totals.COD):
 		return None
 	existing = order_invoice(order.name)
 	if existing or flt(order.per_billed) >= 100:
@@ -199,7 +328,7 @@ def cancel_overdue_orders() -> None:
 		"Sales Order",
 		filters={
 			"docstatus": 1,
-			"shop_payment_method": ["in", [totals.BANK, totals.GATEWAY]],
+			"shop_payment_method": ["in", [*totals.BANK_METHODS, totals.GATEWAY]],
 			"shop_payment_due": ["<", nowdate()],
 			"status": ["not in", ["Closed", "Completed"]],
 		},

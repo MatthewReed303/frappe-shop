@@ -38,6 +38,15 @@ TEMPLATES = {
 		"<p>Thank you, we've received your payment for order {{ doc.name }}. We'll let you know when it ships.</p>"
 		"{% if invoice %}<p>Your invoice {{ invoice }} is attached.</p>{% endif %}",
 	),
+	"payment_short": (
+		"Shop: Payment Part Received",
+		ORDER,
+		"Part payment received for order {{ doc.name }}",
+		"<p>Thank you, we've received {{ received }} for order {{ doc.name }}. {{ owed }} is still owed: "
+		"the banks the payment went through took part of it.</p>"
+		"<p>Please send the rest with the same reference. We'll send your order once it is paid in full.</p>"
+		"{{ payment_html }}",
+	),
 	"order_cancelled": (
 		"Shop: Order Cancelled",
 		ORDER,

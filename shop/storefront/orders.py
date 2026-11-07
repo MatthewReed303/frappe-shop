@@ -211,7 +211,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 			f'<div class="order-payment account"><p>{esc(_("On account: invoice {0}, due {1}.").format(invoice, frappe.utils.formatdate(due)))}</p>'
 			f'<a class="order-pay-button" href="{esc(invoice_url(invoice, order.name, token))}">{esc(_("Download invoice"))}</a></div>'
 		)
-	if method == totals.BANK:
+	if method in totals.BANK_METHODS:
 		info = payment.bank_instructions(order)
 		if not info:
 			return ""
@@ -238,7 +238,7 @@ def display_status(order, paid: bool) -> str:
 
 	if order.docstatus == 2:
 		return _("Cancelled")
-	if not paid and order.get("shop_payment_method") in (totals.BANK, totals.GATEWAY):
+	if not paid and order.get("shop_payment_method") in (*totals.BANK_METHODS, totals.GATEWAY):
 		return _("Awaiting payment")
 	shipment = shipment_summary(order.name)
 	if shipment and shipment.status in ("Pending", "Accepted"):
@@ -279,7 +279,7 @@ def order_progress(order, shipment: dict | None) -> list[dict]:
 		payment_label, paid = _("Invoiced"), True
 	elif paid:
 		payment_label = _("Paid")
-	elif method in (totals.BANK, totals.GATEWAY) or expects_online_payment(order.name):
+	elif method in (*totals.BANK_METHODS, totals.GATEWAY) or expects_online_payment(order.name):
 		payment_label = _("Awaiting payment")
 	else:
 		payment_label = _("Payment on delivery")

@@ -26,6 +26,8 @@ SETTINGS_FIELDS = (
 	"card_fee_fixed_international",
 	"enable_bank_transfer",
 	"conversion_fee_item",
+	"transfer_fee_item",
+	"bank_charges_account",
 	"bank_transfer_days",
 	"require_terms",
 	"terms_url",
@@ -94,6 +96,10 @@ class TestCheckoutTotals(IntegrationTestCase):
 			shipping_item=service("TEST-SHIPPING", self.company),
 			card_fee_item=service("TEST-CARD-FEE", self.company),
 			conversion_fee_item=service("TEST-CONVERSION", self.company),
+			transfer_fee_item=service("TEST-TRANSFER-FEE", self.company),
+			bank_charges_account=frappe.db.get_value(
+				"Account", {"company": self.company, "root_type": "Expense", "is_group": 0}
+			),
 			card_fee_percent=2.65,
 			card_fee_fixed=0.30,
 			card_fee_percent_international=3.5,
@@ -119,6 +125,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 				"bank_account": company_bank_account(self.company, self.foreign),
 				"label": "Foreign",
 				"conversion_fee_percent": 1,
+				"swift_transfer_fee": 6.11,
 				"instructions": "Pay by ACH",
 			},
 		)
@@ -164,7 +171,17 @@ class TestCheckoutTotals(IntegrationTestCase):
 		for row in self.original_banks:
 			settings.append(
 				"bank_accounts",
-				{k: row[k] for k in ("bank_account", "label", "conversion_fee_percent", "instructions")},
+				{
+					k: row[k]
+					for k in (
+						"bank_account",
+						"label",
+						"conversion_fee_percent",
+						"local_transfer_fee",
+						"swift_transfer_fee",
+						"instructions",
+					)
+				},
 			)
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
@@ -290,6 +307,109 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertIn("Account number: 3", info["details"])
 		self.assertIn("BIC/SWIFT: TESTXX22", info["details"])
 		self.assertIn("Pay by ACH", info["details"])
+
+	def test_international_transfer_adds_the_banks_fee(self):
+		basket = self.basket(1)
+		local = totals.compute(basket, self.abroad_address, None, "bank", self.foreign)
+		self.assertEqual([fee.kind for fee in local.fees], ["conversion_fee"])
+		swift = totals.compute(cart.resolve_cart(), self.abroad_address, None, "swift", self.foreign)
+		self.assertEqual([fee.kind for fee in swift.fees], ["conversion_fee", "transfer_fee"])
+		# an export carries no tax, so the fee line is the bank's fee
+		self.assertEqual(fee_row(swift, "TEST-TRANSFER-FEE").amount, 6.11)
+		self.assertAlmostEqual(swift.total - local.total, 6.11, delta=0.01)
+
+		routes = totals.payload(swift)["bank_routes"]
+		self.assertEqual([route["method"] for route in routes], ["bank", "swift"])
+		self.assertIn(totals.money(6.11, self.foreign), routes[1]["label"])
+
+		name = self.place(payment_method="swift", address=self.abroad_address, currency=self.foreign)
+		order = frappe.get_doc("Sales Order", name)
+		self.assertEqual(order.shop_payment_method, "swift")
+		self.assertEqual(totals.order_total(order), swift.total)
+		details = payment.bank_instructions(order)["details"]
+		self.assertIn("BIC/SWIFT: TESTXX22", details)
+		self.assertFalse(
+			[line for line in details if line.startswith(totals.branch_code_label(self.foreign))]
+		)
+
+	def test_bank_transfer_from_abroad_is_suggested_as_swift(self):
+		quote = totals.compute(self.basket(1), self.home_address, None, "bank", self.foreign)
+		self.assertEqual(totals.payload(quote)["suggested_bank_method"], "swift")
+		quote = totals.compute(cart.resolve_cart(), self.home_address, None, "bank", self.company_currency)
+		self.assertEqual(totals.payload(quote)["suggested_bank_method"], "bank")
+
+	def test_swift_needs_the_banks_swift_code(self):
+		frappe.db.set_value("Bank", "_Test Shop Bank", "swift_number", None)
+		frappe.clear_document_cache("Bank", "_Test Shop Bank")
+		self.assertFalse(totals.bank_accounts("swift"))
+		self.assertEqual(totals.bank_routes(self.foreign)[0]["method"], "bank")
+		self.assertEqual(len(totals.bank_routes(self.foreign)), 1)
+		with self.assertRaises(frappe.ValidationError):
+			self.basket(1)
+			self.place(payment_method="swift", currency=self.foreign)
+
+	def bank_deposit(self, order, deposit, fee, reference):
+		account = totals.bank_account(order.currency, order.shop_payment_method).bank_account
+		transaction = frappe.get_doc(
+			{
+				"doctype": "Bank Transaction",
+				"date": nowdate(),
+				"bank_account": account,
+				"currency": order.currency,
+				"deposit": deposit,
+				"included_fee": fee,
+				"reference_number": reference,
+				"transaction_id": frappe.generate_hash(length=12),
+			}
+		).insert(ignore_permissions=True)
+		transaction.submit()
+		return transaction
+
+	def test_bank_deposit_pays_the_order_it_names(self):
+		self.basket(1)
+		name = self.place(payment_method="swift", address=self.abroad_address, currency=self.foreign)
+		order = frappe.get_doc("Sales Order", name)
+		owed = payment.amount_due(order)
+		transaction = self.bank_deposit(order, flt(owed - 6.11, 2), 6.11, f"Order {name}, thanks")
+
+		entry = frappe.get_doc("Payment Entry", payment.pay_from_bank_transaction(transaction.name))
+		self.assertAlmostEqual(entry.received_amount, owed, delta=0.01)
+		self.assertEqual(
+			entry.taxes[0].account_head, frappe.get_cached_doc("Shop Settings").bank_charges_account
+		)
+		bank_gl = frappe.db.get_value("Bank Account", transaction.bank_account, "account")
+		into_bank = frappe.db.sql(
+			"""select sum(debit_in_account_currency - credit_in_account_currency) from `tabGL Entry`
+			where voucher_no=%s and account=%s and is_cancelled=0""",
+			(entry.name, bank_gl),
+		)[0][0]
+		self.assertAlmostEqual(flt(into_bank), flt(owed - 6.11, 2), delta=0.01)
+		self.assertEqual(frappe.db.get_value("Bank Transaction", transaction.name, "status"), "Reconciled")
+		self.assertEqual(payment.amount_due(frappe.get_doc("Sales Order", name)), 0)
+
+	def test_short_bank_deposit_leaves_the_balance_owed(self):
+		self.basket(1)
+		name = self.place(payment_method="swift", address=self.abroad_address, currency=self.foreign)
+		order = frappe.get_doc("Sales Order", name)
+		owed = payment.amount_due(order)
+		transaction = self.bank_deposit(order, flt(owed - 6.11 - 5, 2), 6.11, name)
+		with patch("frappe.sendmail") as sendmail:
+			payment.pay_from_bank_transaction(transaction.name)
+		order.reload()
+		self.assertAlmostEqual(payment.amount_due(order), 5, delta=0.02)
+		self.assertFalse(payment.is_paid(order))
+		self.assertEqual(sendmail.call_args.kwargs["subject"], f"Part payment received for order {name}")
+		self.assertIn(
+			totals.money(payment.amount_due(order), order.currency), sendmail.call_args.kwargs["message"]
+		)
+
+	def test_deposit_without_one_order_reference_is_left_for_staff(self):
+		self.basket(1)
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		transaction = self.bank_deposit(order, payment.amount_due(order), 0, "Invoice 123")
+		self.assertIsNone(payment.pay_from_bank_transaction(transaction.name))
+		self.assertFalse(payment.is_paid(frappe.get_doc("Sales Order", name)))
 
 	def test_coupon_is_charged_as_quoted_when_tax_is_added(self):
 		self.without_tax()

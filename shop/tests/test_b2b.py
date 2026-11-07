@@ -395,7 +395,7 @@ class TestTradeAccounts(IntegrationTestCase):
 		)
 		quotation = frappe.get_doc("Quotation", result["quote"])
 		quotation.submit()
-		fee = quotes.card_fee(quotation)
+		fee = quotes.payment_fee(quotation, totals.GATEWAY)
 		self.assertGreater(fee, 0)
 		total = flt(quotation.grand_total)
 		self.assertAlmostEqual(fee, 0.0265 * (total + fee) + 0.3, delta=0.02)

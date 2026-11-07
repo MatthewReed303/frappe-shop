@@ -11,6 +11,7 @@ CHARGE_ITEMS = (
 	("shipping_item", "STORE-SHIPPING", "Shipping", "Freight Income"),
 	("card_fee_item", "STORE-CARD-FEE", "Card fee", "Card Fee Income"),
 	("conversion_fee_item", "STORE-CURRENCY-CONVERSION", "Currency conversion", "Currency Conversion Income"),
+	("transfer_fee_item", "STORE-TRANSFER-FEE", "Bank transfer fee", "Bank Transfer Fee Income"),
 )
 
 

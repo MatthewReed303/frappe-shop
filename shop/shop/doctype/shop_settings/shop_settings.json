@@ -49,6 +49,8 @@
   "bank_transfer_days",
   "column_break_bank_transfer",
   "conversion_fee_item",
+  "transfer_fee_item",
+  "bank_charges_account",
   "bank_accounts",
   "orders_section",
   "invoice_paid_orders",
@@ -329,6 +331,20 @@
    "options": "Item"
   },
   {
+   "description": "Adds the account's transfer fee to bank transfer orders as a line with this item",
+   "fieldname": "transfer_fee_item",
+   "fieldtype": "Link",
+   "label": "Transfer Fee Item",
+   "options": "Item"
+  },
+  {
+   "description": "When a bank reports the fee it took from a transfer (as Wise does), the fee is booked here on the Payment Entry",
+   "fieldname": "bank_charges_account",
+   "fieldtype": "Link",
+   "label": "Bank Charges Account",
+   "options": "Account"
+  },
+  {
    "fieldname": "bank_accounts",
    "fieldtype": "Table",
    "label": "Bank Accounts",
@@ -470,7 +486,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 10:43:08.554406",
+ "modified": "2026-11-07 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",
