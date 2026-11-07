@@ -158,3 +158,13 @@ def upsert_client_script(name: str, script_type: str, script: str) -> str:
 		doc.name = name
 	doc.save(ignore_permissions=True) if existing else doc.insert(ignore_permissions=True, set_name=name)
 	return doc.name
+
+
+def data_script(fn: str, expose: tuple = ()) -> str:
+	"""A page's data script: the result of shop.storefront.page_data.<fn>, with `expose` keys also
+	passed to the page's client scripts as page_data."""
+	lines = [f'result = frappe.call("shop.storefront.page_data.{fn}")', "data.update(result)"]
+	if expose:
+		exposed = ", ".join(f'"{key}": result.get("{key}")' for key in expose)
+		lines.append(f"data.page_data = {{{exposed}}}")
+	return "\n".join(lines)

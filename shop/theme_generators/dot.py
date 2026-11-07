@@ -1,9 +1,10 @@
 """Dot: technical monochrome storefront. Dot grid canvas, floating capsule nav, rounded panels, mono spec labels."""
 
-from shop.theme_generators.store_ui import store_css
+from typing import ClassVar
+
 from shop.theme_generators.blocks import (
 	block,
-	component_ref,
+	data_script,
 	dv,
 	repeater,
 	root,
@@ -12,9 +13,12 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
+from shop.theme_generators.store_ui import store_css
+from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "dot"
 HEAD = "Space Grotesk"
+BODY = "Space Grotesk"
 MONO = "DM Mono"
 
 PALETTE = {
@@ -30,46 +34,64 @@ PALETTE = {
 }
 
 
-def data_script(fn: str, expose: tuple = ()) -> str:
-	lines = [f'result = frappe.call("shop.storefront.page_data.{fn}")', "data.update(result)"]
-	if expose:
-		exposed = ", ".join(f'"{key}": result.get("{key}")' for key in expose)
-		lines.append(f"data.page_data = {{{exposed}}}")
-	return "\n".join(lines)
+class Theme(SiteTheme):
+	"""A site theme of this generator; see shop.theme_generators.theme.Theme."""
+
+	defaults: ClassVar[dict] = {"group": GROUP, "head": HEAD, "body": BODY, "mono": MONO, "palette": PALETTE}
 
 
-def generate():
-	refs = upsert_variables(GROUP, PALETTE)
-	styles = upsert_client_script("dot-styles", "CSS", theme_css(refs))
+THEME = Theme()
+
+
+def component_ref(component_id):
+	return THEME.component_ref(component_id)
+
+
+def generate(theme: Theme | None = None):
+	"""Write the theme's template pages and components. A site theme passes a Theme with what differs."""
+	global THEME
+	THEME = theme or Theme()
+	try:
+		_generate()
+	finally:
+		THEME = Theme()
+
+
+def _generate():
+	refs = upsert_variables(THEME.group, THEME.palette)
+	styles = upsert_client_script(f"{THEME.group}-styles", "CSS", theme_css(refs) + THEME.extra_css)
 	register_components(refs)
+	build = lambda name, default: THEME.build(name, default, refs)  # noqa: E731
 	pages = [
-		("dot-home", "Home", "home", home_blocks(refs), "home", (), False),
-		("dot-products", "Products", "products", products_blocks(refs), "listing", (), False),
-		("dot-product", "Product", "product/:slug", product_blocks(refs), "product_page", ("product",), False),
-		("dot-collection", "Collection", "collection/:slug", collection_blocks(refs), "collection_page", (), False),
-		("dot-cart", "Cart", "cart", cart_blocks(refs), "cart_page", ("cart",), False),
-		("dot-checkout", "Checkout", "checkout", checkout_blocks(refs), "checkout_page", ("cart", "addresses", "prefill", "default_country"), False),
+		("dot-home", "Home", "home", build("home_blocks", home_blocks), "home", (), False),
+		("dot-products", "Products", "products", build("products_blocks", products_blocks), "listing", (), False),
+		("dot-product", "Product", "product/:slug", build("product_blocks", product_blocks), "product_page", ("product",), False),
+		("dot-collection", "Collection", "collection/:slug", build("collection_blocks", collection_blocks), "collection_page", (), False),
+		("dot-cart", "Cart", "cart", build("cart_blocks", cart_blocks), "cart_page", ("cart",), False),
+		("dot-checkout", "Checkout", "checkout", build("checkout_blocks", checkout_blocks), "checkout_page", ("cart", "addresses", "prefill", "default_country"), False),
 		(
 			"dot-order-confirmation",
 			"Order Confirmed",
 			"order-confirmation/:order_id",
-			confirmation_blocks(refs),
+			build("confirmation_blocks", confirmation_blocks),
 			"order_confirmation",
 			(),
 			False,
 		),
-		("dot-account-orders", "Your Orders", "account/orders", account_blocks(refs), "account_orders", (), True),
-		("dot-register", "Create an account", "account/register", register_blocks(refs), "register_page", (), False),
-		("dot-trade", "Trade account", "account/trade", trade_blocks(refs), "trade_page", ("prefill", "default_country"), False),
-		("dot-quote", "Your quote", "quote/:quote_id", quote_blocks(refs), "quote_page", (), False),
-		("dot-terms", "Terms and Conditions", "terms", terms_blocks(refs), "terms_page", (), False),
-		("dot-about", "About", "about", about_blocks(refs), "basic", (), False),
-		("dot-contact", "Contact", "contact", contact_blocks(refs), "basic", (), False),
-		("dot-faq", "FAQ", "faq", faq_blocks(refs), "basic", (), False),
+		("dot-account-orders", "Your Orders", "account/orders", build("account_blocks", account_blocks), "account_orders", (), True),
+		("dot-register", "Create an account", "account/register", build("register_blocks", register_blocks), "register_page", (), False),
+		("dot-trade", "Trade account", "account/trade", build("trade_blocks", trade_blocks), "trade_page", ("prefill", "default_country"), False),
+		("dot-quote", "Your quote", "quote/:quote_id", build("quote_blocks", quote_blocks), "quote_page", (), False),
+		("dot-terms", "Terms and Conditions", "terms", build("terms_blocks", terms_blocks), "terms_page", (), False),
+		("dot-about", "About", "about", build("about_blocks", about_blocks), "basic", (), False),
+		("dot-contact", "Contact", "contact", build("contact_blocks", contact_blocks), "basic", (), False),
+		("dot-faq", "FAQ", "faq", build("faq_blocks", faq_blocks), "basic", (), False),
 	]
 	for page_name, title, route, blocks, data_fn, expose, authenticated in pages:
+		if route in THEME.skip_routes:
+			continue
 		upsert_page(
-			GROUP,
+			THEME.group,
 			page_name,
 			title,
 			route,
@@ -82,19 +104,20 @@ def generate():
 
 def register_components(refs):
 	"""Reusable pieces listed in Builder's insert panel; ids are namespaced so themes never overwrite each other."""
-	for component_id, component_name, node in [
-		("dot-navbar", "Dot Navbar", nav(refs)),
-		("dot-footer", "Dot Footer", footer(refs)),
-		("dot-cart-drawer", "Dot Cart Drawer", cart_drawer()),
-		("dot-hero", "Dot Hero", hero(refs)),
-		("dot-product-card", "Dot Product Card", product_card(refs)),
-		("dot-collection-tile", "Dot Collection Tile", collection_tile(refs)),
-		("dot-filter-bar", "Dot Filter Bar", filter_bar(refs)),
-		("dot-review-card", "Dot Review Card", review_card(refs)),
-		("dot-delivery-card", "Dot Delivery Promise", delivery_card(refs)),
-		("dot-trust-row", "Dot Spec Row", trust_row(refs)),
-	]:
-		upsert_component(component_id, component_name, node)
+	components = [
+		("dot-navbar", "Dot Navbar", "nav", nav),
+		("dot-footer", "Dot Footer", "footer", footer),
+		("dot-cart-drawer", "Dot Cart Drawer", "cart_drawer", lambda refs: cart_drawer()),
+		("dot-hero", "Dot Hero", "hero", hero),
+		("dot-product-card", "Dot Product Card", "product_card", product_card),
+		("dot-collection-tile", "Dot Collection Tile", "collection_tile", collection_tile),
+		("dot-filter-bar", "Dot Filter Bar", "filter_bar", filter_bar),
+		("dot-review-card", "Dot Review Card", "review_card", review_card),
+		("dot-delivery-card", "Dot Delivery Promise", "delivery_card", delivery_card),
+		("dot-trust-row", "Dot Spec Row", "trust_row", trust_row),
+	]
+	for component_id, name, node in THEME.components(components, refs):
+		upsert_component(component_id, name, node)
 
 
 def theme_css(refs):
@@ -102,7 +125,7 @@ def theme_css(refs):
 button {{ cursor: pointer; }}
 button:disabled {{ opacity: 0.4; cursor: not-allowed; }}
 :focus-visible {{ outline: 2px solid {refs["ink"]}; outline-offset: 3px; }}
-input, textarea, select {{ font-family: {MONO}, monospace; }}
+input, textarea, select {{ font-family: {THEME.mono}, monospace; }}
 input::placeholder, textarea::placeholder {{ color: {refs["muted"]}; }}
 input[type="radio"] {{ accent-color: {refs["ink"]}; }}
 [data-shop="variant-option"][data-selected="true"] {{
@@ -160,7 +183,7 @@ a[data-active="true"] {{
 .progress-stage[data-done="true"] .stage-dot {{ background: {refs["ink"]}; border-color: {refs["ink"]}; }}
 .progress-stage .stage-label {{
 	color: {refs["muted"]};
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 10px;
 	letter-spacing: 0.08em;
 	text-align: center;
@@ -202,7 +225,7 @@ a[data-active="true"] {{
 	padding: 20px 24px;
 }}
 .drawer-title {{
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 12px;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
@@ -242,7 +265,7 @@ a[data-active="true"] {{
 }}
 .drawer-rate {{
 	color: {refs["muted"]};
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 11px;
 	letter-spacing: 0.04em;
 }}
@@ -260,7 +283,7 @@ a[data-active="true"] {{
 	width: 26px;
 }}
 .drawer-qty > span {{
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 12px;
 	min-width: 16px;
 	text-align: center;
@@ -269,7 +292,7 @@ a[data-active="true"] {{
 	background: none;
 	border: 0;
 	color: {refs["muted"]};
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 10px;
 	height: auto;
 	letter-spacing: 0.1em;
@@ -280,13 +303,13 @@ a[data-active="true"] {{
 }}
 .drawer-amount {{
 	flex-shrink: 0;
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 12px;
 	font-weight: 500;
 }}
 .drawer-empty {{
 	color: {refs["muted"]};
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 12px;
 	letter-spacing: 0.08em;
 	padding: 48px 0;
@@ -304,7 +327,7 @@ a[data-active="true"] {{
 .drawer-total-row {{
 	align-items: baseline;
 	display: flex;
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 13px;
 	justify-content: space-between;
 	letter-spacing: 0.06em;
@@ -319,7 +342,7 @@ a[data-active="true"] {{
 .drawer-actions {{ display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }}
 .drawer-view, .drawer-checkout {{
 	border-radius: 999px;
-	font-family: {MONO}, monospace;
+	font-family: {THEME.mono}, monospace;
 	font-size: 11px;
 	letter-spacing: 0.12em;
 	padding: 13px 16px;
@@ -371,7 +394,7 @@ a[data-active="true"] {{
 
 def mono(size="12px", weight="400", color=None, spacing="0.1em", upper=True) -> dict:
 	styles = {
-		"fontFamily": MONO,
+		"fontFamily": THEME.mono,
 		"fontSize": size,
 		"fontWeight": weight,
 		"height": "fit-content",
@@ -395,7 +418,7 @@ def display(refs, text, size="34px", mobile_size="26px", element="h2", weight="5
 		text=text,
 		styles={
 			"color": refs["ink"],
-			"fontFamily": HEAD,
+			"fontFamily": THEME.head,
 			"fontSize": size,
 			"fontWeight": weight,
 			"height": "fit-content",
@@ -462,7 +485,7 @@ def pill(refs, text, href=None, variant="solid", full=False, attrs=None, **extra
 		"borderStyle": "solid",
 		"borderWidth": "1px",
 		"color": refs["paper"] if variant == "solid" else refs["ink"],
-		"fontFamily": MONO,
+		"fontFamily": THEME.mono,
 		"fontSize": "11px",
 		"height": "fit-content",
 		"letterSpacing": "0.14em",
@@ -602,13 +625,13 @@ def shell(refs, children):
 			"display": "flex",
 			"flexDirection": "column",
 			"flexShrink": 0,
-			"fontFamily": HEAD,
+			"fontFamily": THEME.body,
 			"gap": "16px",
 			"minHeight": "100vh",
 			"paddingTop": "94px",
 			"width": "100%",
 		},
-		children + [component_ref("dot-cart-drawer")],
+		THEME.header() + children + [component_ref("dot-cart-drawer")],
 	)
 	node["mobileStyles"] = {"gap": "12px", "paddingTop": "78px"}
 	return [node]
@@ -664,7 +687,7 @@ def nav(refs):
 			"borderRadius": "999px",
 			"color": refs["paper"],
 			"display": "flex",
-			"fontFamily": MONO,
+			"fontFamily": THEME.mono,
 			"fontSize": "10px",
 			"height": "18px",
 			"justifyContent": "center",
@@ -1001,7 +1024,7 @@ def hero(refs):
 				text="Fewer things.<br>Made properly.",
 				styles={
 					"color": refs["ink"],
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "62px",
 					"fontWeight": "500",
 					"height": "fit-content",
@@ -1095,7 +1118,7 @@ def product_card(refs):
 						[(False, "−"), (True, "discount_pct"), (False, "%")],
 						size="11px",
 						color=refs["accent"],
-						family=MONO,
+						family=THEME.mono,
 					)
 				],
 			),
@@ -1108,7 +1131,7 @@ def product_card(refs):
 		styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "6px", "width": "fit-content"},
 		children=[
 			stars_span(refs, "rating_stars", size="11px"),
-			run(refs, [(False, "("), (True, "rating_count"), (False, ")")], size="11px", family=MONO),
+			run(refs, [(False, "("), (True, "rating_count"), (False, ")")], size="11px", family=THEME.mono),
 		],
 	)
 	return block(
@@ -1232,7 +1255,7 @@ def filter_bar(refs):
 			"borderStyle": "solid",
 			"borderWidth": "1px",
 			"color": refs["ink"],
-			"fontFamily": MONO,
+			"fontFamily": THEME.mono,
 			"fontSize": "10px",
 			"height": "fit-content",
 			"letterSpacing": "0.06em",
@@ -1311,7 +1334,7 @@ def review_card(refs):
 				"div",
 				styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "10px", "width": "100%"},
 				children=[
-					run(refs, [(True, "reviewer_name"), (False, " · "), (True, "posted_on")], size="10px", family=MONO),
+					run(refs, [(True, "reviewer_name"), (False, " · "), (True, "posted_on")], size="10px", family=THEME.mono),
 					block(
 						"span",
 						text="Verified buyer",
@@ -1509,7 +1532,7 @@ def products_blocks(refs):
 		refs,
 		"( Catalogue )",
 		"All products",
-		"Everything in the store, filtered however you like.",
+		THEME.listing_subtitle or "Everything in the store, filtered however you like.",
 		extra=[active_search],
 		aside=listing_controls(refs),
 	)
@@ -1661,7 +1684,7 @@ def discount_row(refs, bound_key, condition_key):
 		styles={"display": "flex", "flexDirection": "row", "justifyContent": "space-between", "width": "100%"},
 		children=[
 			block("p", text="Discount", styles=mono(size="11px", color=refs["muted"], spacing="0.12em")),
-			run(refs, [(False, "−"), (True, bound_key)], size="12px", color=refs["accent"], family=MONO),
+			run(refs, [(False, "−"), (True, bound_key)], size="12px", color=refs["accent"], family=THEME.mono),
 		],
 	)
 
@@ -1799,7 +1822,7 @@ def pdp_price(refs):
 					"width": "fit-content",
 				},
 				children=[
-					run(refs, [(True, "product.discount_pct"), (False, "% OFF")], size="10px", color=refs["accent"], family=MONO)
+					run(refs, [(True, "product.discount_pct"), (False, "% OFF")], size="10px", color=refs["accent"], family=THEME.mono)
 				],
 			),
 		],
@@ -1810,7 +1833,7 @@ def pdp_price(refs):
 		visibilityCondition={"key": "product.formatted_savings", "comesFrom": "dataScript"},
 		styles={"display": "flex", "flexDirection": "row", "width": "fit-content"},
 		children=[
-			run(refs, [(False, "You save "), (True, "product.formatted_savings")], size="11px", color=refs["accent"], family=MONO)
+			run(refs, [(False, "You save "), (True, "product.formatted_savings")], size="11px", color=refs["accent"], family=THEME.mono)
 		],
 	)
 	return block(
@@ -1834,7 +1857,7 @@ def pdp_details(refs):
 			"borderStyle": "solid",
 			"borderWidth": "1px",
 			"color": refs["ink"],
-			"fontFamily": MONO,
+			"fontFamily": THEME.mono,
 			"fontSize": "11px",
 			"letterSpacing": "0.06em",
 			"minWidth": "46px",
@@ -1889,7 +1912,7 @@ def pdp_details(refs):
 			"borderStyle": "solid",
 			"borderWidth": "1px",
 			"color": refs["ink"],
-			"fontFamily": MONO,
+			"fontFamily": THEME.mono,
 			"fontSize": "10px",
 			"height": "fit-content",
 			"letterSpacing": "0.08em",
@@ -1937,7 +1960,7 @@ def pdp_details(refs):
 				text="Product",
 				styles={
 					"color": refs["ink"],
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "30px",
 					"fontWeight": "500",
 					"height": "fit-content",
@@ -2058,7 +2081,7 @@ def rating_summary(refs):
 				dynamicValues=[dv("reviews.average", "innerHTML")],
 			),
 			stars_span(refs, "product.rating.stars", size="14px"),
-			run(refs, [(False, "Based on "), (True, "reviews.count"), (False, " reviews")], size="10px", family=MONO),
+			run(refs, [(False, "Based on "), (True, "reviews.count"), (False, " reviews")], size="10px", family=THEME.mono),
 			repeater(
 				"reviews.histogram",
 				histogram_row,
@@ -2438,7 +2461,7 @@ def coupon_box(refs):
 				"div",
 				styles={"display": "flex", "flexDirection": "row", "flexGrow": "1", "justifyContent": "flex-end"},
 				children=[
-					run(refs, [(False, "−"), (True, "cart.coupon.formatted_discount")], size="12px", color=refs["accent"], family=MONO)
+					run(refs, [(False, "−"), (True, "cart.coupon.formatted_discount")], size="12px", color=refs["accent"], family=THEME.mono)
 				],
 			),
 			block(
@@ -3377,7 +3400,7 @@ def faq_blocks(refs):
 			block(
 				"div",
 				styles={"display": "flex", "flexDirection": "column", "width": "100%"},
-				children=[entry(question, answer) for question, answer in FAQS],
+				children=[entry(question, answer) for question, answer in (THEME.faqs or FAQS)],
 			),
 			utility_row(refs, "Still stuck? Talk to support", "/contact"),
 		],

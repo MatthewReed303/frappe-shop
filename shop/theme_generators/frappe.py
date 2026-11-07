@@ -1,8 +1,10 @@
 """Frappe: crisp merch storefront. White canvas, hairline rules, serif display moments, rectangular geometry."""
 
-from shop.theme_generators.store_ui import store_css
+from typing import ClassVar
+
 from shop.theme_generators.blocks import (
 	block,
+	data_script,
 	dv,
 	repeater,
 	root,
@@ -11,7 +13,8 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
-from shop.theme_generators.blocks import component_ref as block_component_ref
+from shop.theme_generators.store_ui import store_css
+from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "frappe"
 HEAD = "Source Serif 4"
@@ -29,64 +32,17 @@ PALETTE = {
 }
 
 
-def data_script(fn: str, expose: tuple = ()) -> str:
-	lines = [f'result = frappe.call("shop.storefront.page_data.{fn}")', "data.update(result)"]
-	if expose:
-		exposed = ", ".join(f'"{key}": result.get("{key}")' for key in expose)
-		lines.append(f"data.page_data = {{{exposed}}}")
-	return "\n".join(lines)
+class Theme(SiteTheme):
+	"""A site theme of this generator; see shop.theme_generators.theme.Theme."""
 
-
-class Theme:
-	"""What a site theme changes in this generator; pass one to generate(). Anything left unset
-	keeps Shop's frappe theme, so a site theme holds only what makes it different.
-
-	title: the theme's display name, used in its components' names (e.g. "Acme Store Navbar").
-	group, head, body, palette: the theme's name (its pages' group and name prefix), heading and
-	  body fonts, and colours ({name: (light, dark)}, the keys of PALETTE).
-	skip_routes: pages the site already has, which the theme leaves out (e.g. "about").
-	component_ids: Shop component id -> the theme's own id, e.g. {"shop-navbar": "acme-store-bar"}.
-	site_components: ids among those that the site already has (e.g. its own footer); they are
-	  placed on the pages but not generated.
-	header_component: a site component placed above every page (e.g. the site's header).
-	blocks: builder name -> function(refs) returning the block to use instead of Shop's, for the
-	  components (nav, footer, hero, trust_row, delivery_card, ...) and pages (home_blocks,
-	  product_blocks, ...).
-	faqs: (question, answer) pairs for the FAQ page.
-	listing_subtitle: the line under "All Products".
-	extra_css: added after the theme's styles.
-	"""
-
-	def __init__(self, group=None, title=None, head=None, body=None, palette=None, skip_routes=(), component_ids=None,
-				 site_components=(), header_component=None, blocks=None, faqs=None, listing_subtitle=None,
-				 extra_css=""):
-		self.group = group or GROUP
-		self.title = title or self.group.title()
-		self.head = head or HEAD
-		self.body = body or BODY
-		self.palette = {**PALETTE, **(palette or {})}
-		self.skip_routes = set(skip_routes)
-		self.component_ids = component_ids or {}
-		self.site_components = set(site_components)
-		self.header_component = header_component
-		self.blocks = blocks or {}
-		self.faqs = faqs
-		self.listing_subtitle = listing_subtitle
-		self.extra_css = extra_css
-
-	def build(self, name, default, refs):
-		return self.blocks.get(name, default)(refs)
-
-	def page_name(self, name):
-		return name.replace("frappe-", f"{self.group}-", 1)
+	defaults: ClassVar[dict] = {"group": GROUP, "head": HEAD, "body": BODY, "palette": PALETTE}
 
 
 THEME = Theme()
 
 
 def component_ref(component_id):
-	"""A component placed on a page: the theme's own id for it when it has one."""
-	return block_component_ref(THEME.component_ids.get(component_id, component_id))
+	return THEME.component_ref(component_id)
 
 
 def generate(theme: Theme | None = None):
@@ -134,7 +90,7 @@ def _generate():
 			continue
 		upsert_page(
 			THEME.group,
-			THEME.page_name(page_name),
+			page_name,
 			title,
 			route,
 			blocks,
@@ -146,7 +102,7 @@ def _generate():
 
 def register_components(refs):
 	"""Reusable building blocks listed in Builder's insert panel; pages reference them via component_ref."""
-	for component_id, component_name, builder, default in [
+	components = [
 		("shop-navbar", "Shop Navbar", "nav", nav),
 		("shop-footer", "Shop Footer", "footer", footer),
 		("shop-cart-drawer", "Shop Cart Drawer", "cart_drawer", lambda refs: cart_drawer()),
@@ -157,12 +113,9 @@ def register_components(refs):
 		("shop-review-card", "Shop Review Card", "review_card", review_card),
 		("shop-delivery-card", "Shop Delivery Promise", "delivery_card", delivery_card),
 		("shop-trust-row", "Shop Trust Row", "trust_row", trust_row),
-	]:
-		theme_id = THEME.component_ids.get(component_id, component_id)
-		if theme_id in THEME.site_components:
-			continue  # the site's own component is used as it is
-		name = component_name if theme_id == component_id else component_name.replace("Shop", f"{THEME.title} Store", 1)
-		upsert_component(theme_id, name, THEME.build(builder, default, refs))
+	]
+	for component_id, name, node in THEME.components(components, refs):
+		upsert_component(component_id, name, node)
 
 
 def theme_css(refs):
@@ -407,7 +360,7 @@ def shell(refs, children):
 				"minHeight": "100vh",
 				"width": "100%",
 			},
-			([block_component_ref(THEME.header_component)] if THEME.header_component else [])
+			THEME.header()
 			+ children
 			+ [component_ref("shop-cart-drawer")],
 		)
