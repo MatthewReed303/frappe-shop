@@ -136,6 +136,13 @@ class TestAdminApi(IntegrationTestCase):
 		products.delete_collection(outer)
 		self.assertIsNone(frappe.db.get_value("Shop Collection", inner, "parent_collection"))
 
+	def test_a_charge_item_is_made_from_settings(self):
+		name = settings.create_service_item("Test Card Fee")
+		self.addCleanup(frappe.delete_doc, "Item", name, force=True)
+		item = frappe.get_doc("Item", name)
+		self.assertEqual((item.item_name, item.is_stock_item, item.is_sales_item), ("Test Card Fee", 0, 1))
+		self.assertIn(name, settings.get_settings()["service_items"])
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

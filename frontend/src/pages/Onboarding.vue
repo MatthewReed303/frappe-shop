@@ -93,15 +93,15 @@
 				<div v-else class="mt-4 rounded-lg border border-outline-gray-1 bg-surface-gray-1 p-4">
 					<div class="text-base font-medium text-ink-gray-8">Accept online payments</div>
 					<p class="mt-1 text-p-sm text-ink-gray-6">
-						Connect Razorpay, Stripe, PayPal and more from payment settings. A connected gateway
-						appears here automatically.
+						Set up Stripe, PayPal, Razorpay and more under Payment Gateways in Desk. A gateway set up
+						there appears here automatically.
 					</p>
 					<a
-						href="/app/payment-gateway-account"
+						href="/app/payment-gateway"
 						target="_blank"
 						class="mt-2 inline-flex items-center gap-1 text-sm text-ink-gray-7 underline hover:text-ink-gray-9"
 					>
-						Open payment settings
+						Open Payment Gateways
 						<LucideExternalLink class="size-3.5" />
 					</a>
 				</div>

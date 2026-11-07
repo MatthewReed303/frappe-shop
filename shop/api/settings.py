@@ -191,3 +191,25 @@ def save_settings(payload: dict) -> dict:
 		)
 	settings.save(ignore_permissions=True)
 	return get_settings()
+
+
+@frappe.whitelist(methods=["POST"])
+def create_service_item(item_name: str) -> str:
+	"""A service Item (not stocked) for a charge the store adds to orders, such as a fee or shipping."""
+	from shop.api.products import default_item_group, unique_item_code
+
+	only_managers()
+	group = "Services" if frappe.db.exists("Item Group", "Services") else default_item_group()
+	item = frappe.get_doc(
+		{
+			"doctype": "Item",
+			"item_code": unique_item_code(item_name),
+			"item_name": item_name,
+			"item_group": group,
+			"stock_uom": "Nos",
+			"is_stock_item": 0,
+			"is_sales_item": 1,
+			"description": item_name,
+		}
+	).insert(ignore_permissions=True)
+	return item.name

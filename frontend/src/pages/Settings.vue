@@ -41,11 +41,11 @@
 					class="max-w-sm"
 				/>
 				<a
-					href="/app/payment-gateway-account"
+					href="/app/payment-gateway"
 					target="_blank"
 					class="inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
 				>
-					Open payment gateway settings in Desk
+					Set up Stripe, PayPal and other gateways in Desk (Payment Gateways)
 					<LucideExternalLink class="size-3.5" />
 				</a>
 				<FormControl
@@ -62,6 +62,7 @@
 					:options="feeItemOptions('No card fee')"
 					class="max-w-sm"
 				/>
+				<NewServiceItem suggestion="Card fee" @created="(name) => useItem('card_fee_item', name)" />
 				<div v-if="payments.card_fee_item" class="grid max-w-lg grid-cols-2 gap-4">
 					<FormControl v-model.number="payments.card_fee_percent" type="number" label="Card fee %" />
 					<FormControl
@@ -165,6 +166,11 @@
 							label="Currency conversion item"
 							:options="feeItemOptions('No conversion fees')"
 						/>
+						<NewServiceItem suggestion="Bank transfer fee" @created="(name) => useItem('transfer_fee_item', name)" />
+						<NewServiceItem
+							suggestion="Currency conversion"
+							@created="(name) => useItem('conversion_fee_item', name)"
+						/>
 						<FormControl
 							v-model="payments.bank_charges_account"
 							type="select"
@@ -222,6 +228,7 @@
 					:options="itemOptions"
 					class="max-w-sm"
 				/>
+				<NewServiceItem suggestion="Shipping" @created="(name) => useItem('shipping_item', name)" />
 				<p class="text-p-sm text-ink-gray-5">
 					Shipping is charged as the shipping item's line, or on the shipping account when no item
 					is set. One of them is required for shipping charges to apply on orders.
@@ -456,6 +463,7 @@ import LucideExternalLink from '~icons/lucide/external-link'
 import CatalogImageInput from '@/components/CatalogImageInput.vue'
 import CatalogListState from '@/components/CatalogListState.vue'
 import CatalogSection from '@/components/CatalogSection.vue'
+import NewServiceItem from '@/components/NewServiceItem.vue'
 import StorefrontThemes from '@/components/StorefrontThemes.vue'
 
 const saving = ref('')
@@ -671,6 +679,14 @@ const taxOptions = computed(() => [
 	{ label: 'No tax template', value: '' },
 	...listOptions(data.value.tax_templates),
 ])
+
+// a new service item joins the choices and is picked; the section is saved as usual
+function useItem(field: 'card_fee_item' | 'transfer_fee_item' | 'conversion_fee_item' | 'shipping_item', name: string) {
+	settings.data.service_items = [...(settings.data.service_items || []), name]
+	if (field === 'shipping_item') shipping.shipping_item = name
+	else payments[field] = name
+	toast.success(`${name} created. Save to use it.`)
+}
 
 function listOptions(names?: string[]) {
 	return (names || []).map((name) => ({ label: name, value: name }))
