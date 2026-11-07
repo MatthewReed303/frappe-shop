@@ -431,6 +431,11 @@
 			if (routeChoice) routeChoice.hidden = routes.length < 2;
 			bank.hidden = !byBank || (currencies.length < 2 && routes.length < 2);
 		}
+		(quote.items || []).forEach((item) => {
+			document
+				.querySelectorAll(`[data-shop="line-amount"][data-item-code="${CSS.escape(item.item_code)}"]`)
+				.forEach((amount) => (amount.textContent = item.formatted_amount));
+		});
 		const totalsBox = document.querySelector('[data-shop="checkout-totals"]');
 		if (totalsBox) {
 			const lines = quote.lines

@@ -3020,8 +3020,9 @@ def checkout_blocks(refs):
 			block(
 				"p",
 				text="",
+				attrs={"data-shop": "line-amount"},
 				styles={"fontSize": "13px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
-				dynamicValues=[dv("formatted_amount", "innerHTML")],
+				dynamicValues=[dv("formatted_amount", "innerHTML"), dv("item_code", "data-item-code", "attribute")],
 			),
 		],
 	)

@@ -184,6 +184,12 @@ def with_and_without_tax(amount: float) -> tuple[float, float]:
 	return flt(amount) * factor, flt(amount)
 
 
+def shown_amount(amount: float) -> float:
+	"""A price-list amount as the store shows it in its own currency: with tax when it shows prices
+	with tax."""
+	return with_and_without_tax(amount)[0] if shows_tax() else flt(amount)
+
+
 def shows_store_currency() -> bool:
 	currency = display_currency()
 	return currency == store_currency() or not display_rate(currency)

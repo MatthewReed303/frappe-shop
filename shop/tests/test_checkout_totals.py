@@ -409,6 +409,23 @@ class TestCheckoutTotals(IntegrationTestCase):
 			[line for line in details if line.startswith(totals.branch_code_label(self.foreign))]
 		)
 
+	def test_with_tax_the_summary_adds_up_and_fees_include_the_tax(self):
+		self.without_tax()
+		self.set(show_prices_with_tax=1, transfer_fee_item=service("TEST-TRANSFER-FEE", self.company))
+		settings = frappe.get_doc("Shop Settings")
+		settings.bank_accounts[0].local_transfer_fee = 2
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+		quote = totals.compute(self.basket(1), self.home_address, None, "bank", self.company_currency)
+		shown = totals.payload(quote)
+		self.assertEqual([line["kind"] for line in shown["lines"]].count("rounding"), 0)
+		self.assertAlmostEqual(sum(line["amount"] for line in shown["lines"]), quote.total, delta=0.001)
+		item = next(row for row in quote.order.items if row.item_code == ITEM)
+		self.assertEqual(
+			shown["items"][0]["formatted_amount"], totals.money(item.amount * 1.15, self.company_currency)
+		)
+		self.assertIn(totals.money(2.3, self.company_currency), shown["bank_routes"][0]["label"])
+
 	def test_bank_transfer_from_abroad_is_suggested_as_swift(self):
 		quote = totals.compute(self.basket(1), self.home_address, None, "bank", self.foreign)
 		self.assertEqual(totals.payload(quote)["suggested_bank_method"], "swift")

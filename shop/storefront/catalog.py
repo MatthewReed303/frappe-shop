@@ -59,9 +59,11 @@ def get_products(
 
 def apply_post_filters(products, price_min, price_max, in_stock):
 	def keep(product):
-		if price_min is not None and (product.price is None or product.price < flt(price_min)):
+		# the price ranges are the prices as the store shows them
+		price = pricing.shown_amount(product.price) if product.price is not None else None
+		if price_min is not None and (price is None or price < flt(price_min)):
 			return False
-		if price_max is not None and (product.price is None or product.price >= flt(price_max)):
+		if price_max is not None and (price is None or price >= flt(price_max)):
 			return False
 		if in_stock and not product.in_stock:
 			return False

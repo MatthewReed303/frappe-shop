@@ -201,8 +201,9 @@ def bank_account(currency: str, method: str = BANK) -> frappe._dict | None:
 	return None
 
 
-def bank_routes(currency: str) -> list[dict]:
-	"""Where a bank transfer in this currency can come from, with the fee the bank takes."""
+def bank_routes(currency: str, tax_factor: float = 1) -> list[dict]:
+	"""Where a bank transfer in this currency can come from, with what its fee adds to the order
+	(with tax when prices are shown with tax)."""
 	routes = []
 	for method, label in (
 		(BANK, _("A bank account in {0} (local transfer)").format(currency)),
@@ -211,7 +212,7 @@ def bank_routes(currency: str) -> list[dict]:
 		account = bank_account(currency, method)
 		if account:
 			if account.transfer_fee:
-				label = _("{0}, fee {1}").format(label, money(account.transfer_fee, currency))
+				label = _("{0}, fee {1}").format(label, money(account.transfer_fee * tax_factor, currency))
 			routes.append({"method": method, "label": label})
 	return routes
 
@@ -547,7 +548,7 @@ def add_conversion_fee(order, account: frappe._dict | None) -> list[frappe._dict
 	if not percent or not s.get("conversion_fee_item") or order_total(order) <= 0:
 		return []
 	before = flt(order.grand_total)
-	label = _("Currency conversion ({0}%)").format(f"{flt(percent * 100, 2):g}")
+	label = _("Currency conversion")
 	row, _gross, net = probe_line(order, s.conversion_fee_item, label)
 	set_charge(row, round_up(percent * before / net, row.precision("rate")))
 	return [frappe._dict(kind="conversion_fee", label=label, item=s.conversion_fee_item)]
@@ -681,6 +682,10 @@ def payload(quote: frappe._dict) -> dict:
 		)
 	elif quote.export and order.taxes_and_charges != settings().tax_template:
 		notes.append(_("Tax-free export"))
+	# rounding to the payable total is part of the subtotal for the shopper
+	for rounding in [line for line in lines if line["kind"] == "rounding"]:
+		lines.remove(rounding)
+		lines[0]["amount"] = flt(lines[0]["amount"] + rounding["amount"], order.precision("grand_total"))
 	for line in lines:
 		line["formatted"] = money(line["amount"], currency) if line["amount"] else _("Free")
 	if quote.payment_method == GATEWAY:
@@ -712,10 +717,17 @@ def payload(quote: frappe._dict) -> dict:
 			)
 		return money(amount, currency) if amount else _("Free")
 
+	factor = 1 + added_rate(order.taxes_and_charges) / 100 if with_tax else 1
 	return {
 		"currency": currency,
 		"export": quote.export,
 		"lines": lines,
+		# each product's amount as the summary lists it: in the order currency, with tax when shown so
+		"items": [
+			{"item_code": row.item_code, "formatted_amount": money(flt(row.amount) * factor, currency)}
+			for row in order.items
+			if not is_charge_item(row.item_code)
+		],
 		"notes": notes,
 		"total": quote.total,
 		"formatted_total": money(quote.total, currency),
@@ -738,7 +750,7 @@ def payload(quote: frappe._dict) -> dict:
 			{"currency": row.currency, "label": row.label or row.currency}
 			for row in bank_accounts(quote.payment_method if quote.payment_method in BANK_METHODS else BANK)
 		],
-		"bank_routes": bank_routes(currency) if quote.payment_method in BANK_METHODS else [],
+		"bank_routes": bank_routes(currency, factor) if quote.payment_method in BANK_METHODS else [],
 		"suggested_bank_method": suggested_bank_method(quote.address, currency)
 		if quote.payment_method in BANK_METHODS
 		else None,

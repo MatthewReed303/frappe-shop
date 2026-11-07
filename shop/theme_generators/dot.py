@@ -2731,8 +2731,9 @@ def checkout_blocks(refs):
 			block(
 				"p",
 				text="",
+				attrs={"data-shop": "line-amount"},
 				styles=mono(size="12px", weight="500", color=refs["ink"], spacing="0.02em", upper=False),
-				dynamicValues=[dv("formatted_amount", "innerHTML")],
+				dynamicValues=[dv("formatted_amount", "innerHTML"), dv("item_code", "data-item-code", "attribute")],
 			),
 		],
 	)
