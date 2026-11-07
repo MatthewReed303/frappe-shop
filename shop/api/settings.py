@@ -36,6 +36,7 @@ EDITABLE = (
 	"invoice_paid_orders",
 	"cancel_unpaid_orders",
 	"online_payment_days",
+	"order_naming_series",
 	"send_shipping_emails",
 	"require_terms",
 	"terms_and_conditions",

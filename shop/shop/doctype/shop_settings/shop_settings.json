@@ -53,6 +53,7 @@
   "bank_charges_account",
   "bank_accounts",
   "orders_section",
+  "order_naming_series",
   "invoice_paid_orders",
   "send_shipping_emails",
   "column_break_orders",
@@ -442,6 +443,12 @@
    "fieldname": "orders_section",
    "fieldtype": "Section Break",
    "label": "Orders"
+  },
+  {
+   "description": "The Sales Order naming series for store orders, e.g. a short one like MB-.##### so the order number fits a bank transfer reference. Add it to Sales Order in Document Naming Settings first. Empty uses ERPNext's default.",
+   "fieldname": "order_naming_series",
+   "fieldtype": "Data",
+   "label": "Order Naming Series"
   },
   {
    "default": "0",

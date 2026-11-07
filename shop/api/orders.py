@@ -78,9 +78,25 @@ def decorate(orders: list) -> None:
 		order["fulfillment_status"] = fulfillment_label(order)
 
 
+FULFILLMENT_LABELS = {
+	"Pending": "Preparing",
+	"Accepted": "Preparing",
+	"Shipped": "Shipped",
+	"Delivered": "Fulfilled",
+	"Failed": "Unfulfilled",
+}
+
+
 def fulfillment_label(order) -> str:
+	"""For an order sent through a fulfilment provider, where the parcel is; else what ERPNext has
+	delivered."""
+	from shop.storefront.orders import shipment_summary
+
 	if order.docstatus == 2:
 		return "Cancelled"
+	shipment = shipment_summary(order.name)
+	if shipment:
+		return FULFILLMENT_LABELS.get(shipment.status, "Preparing")
 	if flt(order.per_delivered) >= 100:
 		return "Fulfilled"
 	if flt(order.per_delivered) > 0:

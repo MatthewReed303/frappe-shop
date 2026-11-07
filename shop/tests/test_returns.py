@@ -56,6 +56,21 @@ class TestReturns(IntegrationTestCase):
 				order=order, item_code="SHOP-DEMO-004", request_type="Return", reason="x", token=token
 			)
 
+	def test_an_order_handed_to_a_courier_is_returnable_once_it_ships(self):
+		cart.add_item("SHOP-DEMO-004")
+		order = checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
+		token = frappe.db.get_value("Shop Cart", {"sales_order": order}, "token")
+		name = service.send(order, "manual")
+		# booked with the courier (the stock may already be delivered in ERPNext), not picked up yet
+		frappe.db.set_value("Shop Fulfillment", name, "status", "Accepted")
+		self.assertFalse(returns.summary(order)["eligible"])
+		with self.assertRaisesRegex(frappe.ValidationError, "once the order has shipped"):
+			returns.create_request(
+				order=order, item_code="SHOP-DEMO-004", request_type="Return", reason="x", token=token
+			)
+		fulfillment_api.mark_shipped(name, carrier="Delhivery", tracking_number="RTN-2")
+		self.assertTrue(returns.summary(order)["eligible"])
+
 	def test_one_open_request_per_item(self):
 		order, token = self.shipped_order()
 		returns.create_request(
@@ -63,7 +78,11 @@ class TestReturns(IntegrationTestCase):
 		)
 		with self.assertRaises(frappe.ValidationError):
 			returns.create_request(
-				order=order, item_code="SHOP-DEMO-003", request_type="Replacement", reason="Again", token=token
+				order=order,
+				item_code="SHOP-DEMO-003",
+				request_type="Replacement",
+				reason="Again",
+				token=token,
 			)
 
 	def test_items_outside_the_order_are_rejected(self):

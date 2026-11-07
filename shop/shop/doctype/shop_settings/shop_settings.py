@@ -47,6 +47,7 @@ class ShopSettings(Document):
 		onboarding_complete: DF.Check
 		online_payment_days: DF.Int
 		online_payment_label: DF.Data | None
+		order_naming_series: DF.Data | None
 		payment_gateway_account: DF.Link | None
 		price_list: DF.Link | None
 		prices_include_tax: DF.Check
@@ -68,12 +69,24 @@ class ShopSettings(Document):
 	# end: auto-generated types
 
 	def validate(self):
+		self.validate_order_naming_series()
 		self.route_prefix = normalize_prefix(self.route_prefix)
 		first_segment = self.route_prefix.split("/")[0] if self.route_prefix else ""
 		if first_segment in STOREFRONT_SEGMENTS:
 			frappe.throw(
 				_("Route Prefix can't start with {0}, the storefront already uses that path.").format(
 					frappe.bold(first_segment)
+				)
+			)
+
+	def validate_order_naming_series(self):
+		if not self.order_naming_series:
+			return
+		options = (frappe.get_meta("Sales Order").get_field("naming_series").options or "").split("\n")
+		if self.order_naming_series not in options:
+			frappe.throw(
+				_("Add {0} to Sales Order in Document Naming Settings first.").format(
+					frappe.bold(self.order_naming_series)
 				)
 			)
 

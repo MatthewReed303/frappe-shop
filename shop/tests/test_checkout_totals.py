@@ -480,6 +480,41 @@ class TestCheckoutTotals(IntegrationTestCase):
 			totals.money(payment.amount_due(order), order.currency), sendmail.call_args.kwargs["message"]
 		)
 
+	def test_reference_typed_the_bank_way_still_pays_the_order(self):
+		self.basket(1)
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		typed = name.lower().replace("-", " ")
+		transaction = self.bank_deposit(order, payment.amount_due(order), 0, f"payment {typed} thanks")
+		self.assertTrue(payment.pay_from_bank_transaction(transaction.name))
+		self.assertTrue(payment.is_paid(frappe.get_doc("Sales Order", name)))
+
+	def test_store_orders_use_the_store_naming_series(self):
+		from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+		options = frappe.get_meta("Sales Order").get_field("naming_series").options
+		setter = {"doc_type": "Sales Order", "field_name": "naming_series", "property": "options"}
+		existing = frappe.db.get_value("Property Setter", setter, "value")
+
+		def restore():
+			if existing is None:
+				frappe.db.delete("Property Setter", setter)
+			else:
+				frappe.db.set_value("Property Setter", setter, "value", existing)
+			frappe.clear_cache(doctype="Sales Order")
+
+		make_property_setter("Sales Order", "naming_series", "options", f"{options}\nTSO-.#####", "Text")
+		frappe.clear_cache(doctype="Sales Order")
+		self.addCleanup(restore)
+		self.set(order_naming_series="TSO-.#####")
+		self.addCleanup(self.set, order_naming_series=None)
+		self.basket(1)
+		self.assertTrue(self.place().startswith("TSO-"))
+		with self.assertRaises(frappe.ValidationError):
+			settings = frappe.get_doc("Shop Settings")
+			settings.order_naming_series = "NOT-IN-THE-LIST-.###"
+			settings.save()
+
 	def test_deposit_without_one_order_reference_is_left_for_staff(self):
 		self.basket(1)
 		name = self.place(currency=self.company_currency)

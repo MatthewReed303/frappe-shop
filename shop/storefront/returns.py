@@ -61,9 +61,11 @@ def validate_window(order):
 
 
 def shipped_date(order_name: str):
+	"""When the order left: the courier's pickup for an order sent through a fulfilment provider,
+	else its first Delivery Note."""
 	shipment = orders_module.shipment_summary(order_name)
-	if shipment and shipment.get("shipped_on"):
-		return get_datetime(shipment["shipped_on"])
+	if shipment:
+		return get_datetime(shipment["shipped_on"]) if shipment.get("shipped_on") else None
 	delivered = frappe.db.get_value(
 		"Delivery Note Item",
 		{"against_sales_order": order_name, "docstatus": 1},
@@ -84,9 +86,7 @@ def summary(order_name: str) -> dict:
 	for request in requests:
 		request.line = f"{request.request_type} · {request.item_name}"
 	shipped_on = shipped_date(order_name)
-	eligible = bool(
-		shipped_on and now_datetime() <= get_datetime(add_days(shipped_on, RETURN_WINDOW_DAYS))
-	)
+	eligible = bool(shipped_on and now_datetime() <= get_datetime(add_days(shipped_on, RETURN_WINDOW_DAYS)))
 	return {
 		"requests": requests,
 		"eligible": "true" if eligible else None,

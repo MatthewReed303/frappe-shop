@@ -160,7 +160,7 @@ const canMarkPaid = computed(() => doc.value.docstatus === 1 && doc.value.paymen
 const canFulfill = computed(
 	() =>
 		doc.value.docstatus === 1 &&
-		!['Fulfilled', 'Cancelled'].includes(doc.value.fulfillment_status),
+		!['Preparing', 'Shipped', 'Fulfilled', 'Cancelled'].includes(doc.value.fulfillment_status),
 )
 const canCancel = computed(() => doc.value.docstatus !== 2)
 

@@ -195,7 +195,8 @@ def pay_from_bank_transaction(bank_transaction: str) -> str | None:
 def order_paid_by(transaction):
 	"""The one unpaid bank transfer order, in the deposit's currency, whose number is in the
 	deposit's reference or description."""
-	text = f"{transaction.reference_number or ''} {transaction.description or ''}"
+	# bank references drop or change spaces, dashes and case ("mb 00058" pays MB-00058)
+	text = compact(f"{transaction.reference_number or ''} {transaction.description or ''}")
 	names = frappe.get_all(
 		"Sales Order",
 		filters={
@@ -208,8 +209,12 @@ def order_paid_by(transaction):
 		},
 		pluck="name",
 	)
-	matched = [name for name in names if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)]
+	matched = [name for name in names if re.search(rf"{compact(name)}(?!\d)", text)]
 	return frappe.get_doc("Sales Order", matched[0]) if len(matched) == 1 else None
+
+
+def compact(text: str) -> str:
+	return re.sub(r"[^A-Z0-9]", "", text.upper())
 
 
 def make_payment_entry(order, transaction):

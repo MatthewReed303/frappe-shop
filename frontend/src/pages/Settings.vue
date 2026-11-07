@@ -333,6 +333,12 @@
 			</CatalogSection>
 
 			<CatalogSection title="Orders" description="What happens to orders after checkout.">
+				<FormControl
+					v-model="orders.order_naming_series"
+					label="Order naming series"
+					description="A short Sales Order naming series (e.g. MB-.#####) so order numbers fit bank references. Add it to Sales Order in Document Naming Settings first."
+					class="max-w-sm"
+				/>
 				<Switch
 					v-model="orders.invoice_paid_orders"
 					label="Invoice paid orders"
@@ -460,6 +466,7 @@ const orders = reactive({
 	invoice_paid_orders: false,
 	cancel_unpaid_orders: false,
 	online_payment_days: 2,
+	order_naming_series: '',
 	send_shipping_emails: false,
 })
 const accounts = reactive({
@@ -525,6 +532,7 @@ function hydrate(doc: Record<string, any>) {
 		invoice_paid_orders: !!doc.invoice_paid_orders,
 		cancel_unpaid_orders: !!doc.cancel_unpaid_orders,
 		online_payment_days: doc.online_payment_days || 2,
+		order_naming_series: doc.order_naming_series || '',
 		send_shipping_emails: !!doc.send_shipping_emails,
 	})
 	Object.assign(accounts, {

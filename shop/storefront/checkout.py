@@ -565,6 +565,8 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 		return
 	method = order_quote.payment_method
 	sales_order.shop_payment_method = method
+	if settings.get("order_naming_series"):
+		sales_order.naming_series = settings.order_naming_series
 	days = {
 		totals.BANK: frappe.utils.cint(settings.get("bank_transfer_days")),
 		totals.SWIFT: frappe.utils.cint(settings.get("bank_transfer_days")),
