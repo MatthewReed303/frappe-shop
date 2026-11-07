@@ -51,9 +51,9 @@ TEMPLATES = {
 		"Shop: Payment Part Received",
 		ORDER,
 		"Part payment received for order {{ doc.name }}",
-		"<p>Thank you, we've received {{ received }} for order {{ doc.name }}. {{ owed }} is still owed: "
-		"the banks the payment went through took part of it.</p>"
-		"<p>Please send the rest with the same reference. We'll send your order once it is paid in full.</p>"
+		"<p>Thank you, we've received {{ received }} for order {{ doc.name }}. {{ owed }} is still owed.</p>"
+		"<p>Banks along the way sometimes take a fee from a transfer. Please send the rest with the same "
+		"reference, and we'll send your order once it is paid in full.</p>"
 		"{{ payment_html }}",
 	),
 	"return_requested": (

@@ -13,7 +13,7 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
-from shop.theme_generators.store_ui import form_error, hint, notice, shown_with_form, store_css, terms_box
+from shop.theme_generators.store_ui import form_error, hint, notice, pager, shown_with_form, store_css, terms_box
 from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "dot"
@@ -749,6 +749,7 @@ def nav(refs):
 						attrs={"href": "/account/register"},
 						visibilityCondition={"key": "store.register_url", "comesFrom": "dataScript"},
 						styles=dict(link_style),
+						mobile={"display": "none"},
 						dynamicValues=[dv("store.register_url", "href", "attribute")],
 					),
 					block(
@@ -847,7 +848,7 @@ def footer(refs):
 						children=[
 							footer_column(refs, "Shop", [("All products", "/products"), ("Collections", "/products")]),
 							footer_column(refs, "Support", [("Contact", "/contact"), ("FAQ", "/faq")]),
-							footer_column(refs, "Legal", [("Privacy", "/about"), ("Terms", "/about")]),
+							footer_column(refs, "Legal", [("Terms", "/terms")]),
 						],
 					),
 				],
@@ -1596,7 +1597,7 @@ def products_blocks(refs):
 			),
 		],
 	)
-	grid = panel(refs, [product_grid(refs, "products", "products"), empty], name="Section · Product Grid")
+	grid = panel(refs, [product_grid(refs, "products", "products"), empty, pager(refs)], name="Section · Product Grid")
 	return shell(
 		refs,
 		[component_ref("dot-navbar"), stack([header, controls, grid]), component_ref("dot-footer")],
@@ -1626,7 +1627,7 @@ def collection_blocks(refs):
 		mobile={"padding": "16px 4px 2px"},
 		children=[label(refs, "( Collection )"), title, description],
 	)
-	grid = panel(refs, [product_grid(refs, "products", "collection")], name="Section · Collection Grid")
+	grid = panel(refs, [product_grid(refs, "products", "collection"), pager(refs)], name="Section · Collection Grid")
 	return shell(refs, [component_ref("dot-navbar"), stack([header, grid]), component_ref("dot-footer")])
 
 
@@ -2336,7 +2337,7 @@ def cart_blocks(refs):
 			"padding": "18px 0",
 			"width": "100%",
 		},
-		mobile={"gap": "10px"},
+		mobile={"gap": "10px", "flexWrap": "wrap", "rowGap": "10px"},
 		children=[
 			block(
 				"img",
@@ -2580,6 +2581,8 @@ def checkout_blocks(refs):
 			"padding": "12px 18px",
 			"width": "100%",
 		},
+		# a long fee note goes under the label on a phone, inside the rounded box
+		mobile={"borderRadius": "18px", "flexWrap": "wrap", "rowGap": "4px"},
 		children=[
 			block(
 				"input",
@@ -2964,7 +2967,7 @@ def confirmation_blocks(refs):
 				"div",
 				styles={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "gap": "10px", "width": "100%"},
 				children=[
-					pill(refs, "Track my order", href="/account/orders"),
+					{**pill(refs, "Track my order", href="/account/orders"), "dynamicValues": [dv("order.track_url", "href", "attribute")]},
 					pill(refs, "Continue shopping", href="/products", variant="outline"),
 				],
 			),
@@ -3181,7 +3184,19 @@ def account_blocks(refs):
 		[
 			component_ref("dot-navbar"),
 			stack([
-				page_header(refs, "( Account )", "Your account"),
+				page_header(
+					refs,
+					"( Account )",
+					"Your account",
+					extra=[
+						block(
+							"a",
+							text="Sign out",
+							attrs={"href": "/login", "data-shop": "sign-out"},
+							styles=mono(size="10px", color=refs["muted"], spacing="0.14em"),
+						)
+					],
+				),
 				panel(refs, [block("div", text="", name="Account Details", classes=["account-details"], styles={"width": "100%"},
 								   dynamicValues=[dv("account_html", "innerHTML")])], name="Section · Account"),
 				orders_panel,
@@ -3402,7 +3417,7 @@ FAQS = [
 	),
 	("How do sizes run?", "True to size with a modern fit. If you are between sizes, size up for a relaxed fit."),
 	("How do I pay?", "You can pay online or choose cash on delivery at checkout."),
-	("How do I track my order?", "Sign in with the email you used at checkout and open Account in the navigation."),
+	("How do I track my order?", "Open the link in your order email, or sign in with the email you ordered with and open Account."),
 ]
 
 

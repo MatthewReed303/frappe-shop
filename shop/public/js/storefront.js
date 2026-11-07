@@ -595,6 +595,10 @@
 			toggleDrawer();
 		} else if (action === "drawer-close" || action === "drawer-backdrop") closeDrawer();
 		else if (action === "coupon-remove") removeCoupon();
+		else if (action === "sign-out") {
+			event.preventDefault();
+			signOut();
+		}
 		else if (action === "add-to-cart") addToCart(target);
 		else if (action === "buy-now") buyNow(target);
 		else if (action === "thumb") showImage(target.dataset.image);
@@ -751,6 +755,14 @@
 		} catch (error) {
 			showError(error.message);
 			if (submit) submit.disabled = false;
+		}
+	}
+
+	async function signOut() {
+		try {
+			await call("logout", {});
+		} finally {
+			window.location.href = (window.page_data && window.page_data.store && window.page_data.store.home_url) || "/";
 		}
 	}
 

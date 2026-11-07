@@ -13,7 +13,7 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
-from shop.theme_generators.store_ui import form_error, hint, notice, shown_with_form, store_css, terms_box
+from shop.theme_generators.store_ui import form_error, hint, notice, pager, shown_with_form, store_css, terms_box
 from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "frappe"
@@ -587,6 +587,7 @@ def nav(refs):
 								attrs={"href": "/account/register"},
 								visibilityCondition={"key": "store.register_url", "comesFrom": "dataScript"},
 								styles={**link_style, "whiteSpace": "nowrap"},
+								mobile={"display": "none"},
 								dynamicValues=[dv("store.register_url", "href", "attribute")],
 							),
 							block(
@@ -707,7 +708,7 @@ def footer(refs):
 								[("All products", "/products"), ("Collections", "/products")],
 							),
 							footer_column(refs, "Support", [("Contact", "/contact"), ("FAQ", "/faq")]),
-							footer_column(refs, "Legal", [("Privacy", "/about"), ("Terms", "/about")]),
+							footer_column(refs, "Legal", [("Terms", "/terms")]),
 						],
 					),
 				],
@@ -1441,7 +1442,7 @@ def products_blocks(refs):
 			),
 		],
 	)
-	grid = named_section("Section · Product Grid", [product_grid(refs, "products", "products", columns=3), empty], styles={"padding": "36px 40px 88px"})
+	grid = named_section("Section · Product Grid", [product_grid(refs, "products", "products", columns=3), empty, pager(refs)], styles={"padding": "36px 40px 88px"})
 	return shell(refs, [component_ref("shop-navbar"), header, grid, component_ref("shop-footer")])
 
 
@@ -2428,7 +2429,7 @@ def collection_blocks(refs):
 		],
 		styles={"gap": "8px", "padding": "52px 40px 8px"},
 	)
-	grid = named_section("Section · Collection Grid", [product_grid(refs, "products", "collection", columns=3)], styles={"padding": "28px 40px 88px"})
+	grid = named_section("Section · Collection Grid", [product_grid(refs, "products", "collection", columns=3), pager(refs)], styles={"padding": "28px 40px 88px"})
 	return shell(refs, [component_ref("shop-navbar"), header, grid, component_ref("shop-footer")])
 
 
@@ -2668,7 +2669,7 @@ def cart_blocks(refs):
 			"padding": "16px 0",
 			"width": "100%",
 		},
-		mobile={"gap": "10px"},
+		mobile={"gap": "10px", "flexWrap": "wrap", "rowGap": "10px"},
 		children=[
 			block(
 				"img",
@@ -3349,6 +3350,7 @@ def confirmation_blocks(refs):
 				text="Track my order",
 				attrs={"href": "/account/orders"},
 				styles={**black_button_styles(refs, full=True), "marginTop": "6px"},
+				dynamicValues=[dv("order.track_url", "href", "attribute")],
 			),
 			block(
 				"a",
@@ -3566,6 +3568,12 @@ def account_blocks(refs):
 	content = named_section("Section · Your Orders", 
 		[
 			heading(refs, "Your account", size="26px", mobile_size="22px"),
+			block(
+				"a",
+				text="Sign out",
+				attrs={"href": "/login", "data-shop": "sign-out"},
+				styles={"color": refs["muted"], "fontSize": "13px", "textDecoration": "underline", "width": "fit-content"},
+			),
 			block(
 				"div",
 				text="",
@@ -3897,7 +3905,7 @@ FAQS = [
 	),
 	(
 		"How do I track my order?",
-		"Sign in with the email you used at checkout and open Orders in the top navigation.",
+		"Open the link in your order email, or sign in with the email you ordered with and open Account.",
 	),
 ]
 

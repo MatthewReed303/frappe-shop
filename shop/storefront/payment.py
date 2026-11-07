@@ -173,6 +173,17 @@ def pay_from_bank_transaction(bank_transaction: str) -> str | None:
 		)
 		order.reload()
 		owed = amount_due(order)
+		if flt(payment_entry.unallocated_amount) > 0:
+			order.add_comment(
+				"Info",
+				_("{0} more than owed arrived ({1}); it is unallocated on {2}.").format(
+					money_text(
+						flt(payment_entry.unallocated_amount), order.party_account_currency or order.currency
+					),
+					transaction.name,
+					payment_entry.name,
+				),
+			)
 		if owed > 0:
 			received = money_text(flt(payment_entry.received_amount), order.currency)
 			order.add_comment(

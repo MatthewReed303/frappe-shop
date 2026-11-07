@@ -206,8 +206,8 @@ def bank_routes(currency: str, tax_factor: float = 1) -> list[dict]:
 	(with tax when prices are shown with tax)."""
 	routes = []
 	for method, label in (
-		(BANK, _("A bank account in {0} (local transfer)").format(currency)),
-		(SWIFT, _("Anywhere else (international Swift transfer)")),
+		(BANK, _("Local {0} transfer").format(currency)),
+		(SWIFT, _("International (Swift)")),
 	):
 		account = bank_account(currency, method)
 		if account:

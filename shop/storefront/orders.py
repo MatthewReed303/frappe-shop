@@ -110,6 +110,8 @@ def order_summary(order, token: str | None = None) -> dict:
 		"name": order.name,
 		"status": order.status,
 		"display_status": display_status(order, paid),
+		# signed in, the account lists every order; a guest keeps this page's own link
+		"track_url": store_url("account/orders") if session_customers() else order_url(order.name),
 		# an order waiting on an online payment is emailed once it is paid
 		"confirmation_note": _("Your order is waiting for payment.")
 		if order.docstatus == 1 and not paid and method == totals.GATEWAY

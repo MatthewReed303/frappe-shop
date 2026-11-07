@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests import IntegrationTestCase
 
@@ -48,3 +50,17 @@ class TestCatalog(IntegrationTestCase):
 	def test_unpublished_product_hidden(self):
 		with self.assertRaises(frappe.DoesNotExistError):
 			product.get_product("does-not-exist")
+
+	def test_listing_pages_keep_the_filters(self):
+		from shop.storefront import page_data
+
+		with patch.object(page_data, "PAGE_SIZE", 2):
+			frappe.form_dict.update({"sort": "name_asc", "page": 1})
+			first = page_data.listing()
+			self.assertIsNone(first["pager"]["prev_url"])
+			self.assertIn("page=2", first["pager"]["next_url"])
+			self.assertIn("sort=name_asc", first["pager"]["next_url"])
+			frappe.form_dict.update({"page": 2})
+			second = page_data.listing()
+			self.assertNotIn("page=", second["pager"]["prev_url"])
+		frappe.form_dict.clear()

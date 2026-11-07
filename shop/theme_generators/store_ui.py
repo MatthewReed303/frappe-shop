@@ -175,6 +175,42 @@ def terms_box(lead="I accept the", span=2, margin="6px", business=True):
 	)
 
 
+def pager(refs):
+	"""Previous and next page links under a product grid."""
+	link = {"color": refs["ink"], "fontSize": "13px", "textDecoration": "underline", "width": "fit-content"}
+	return block(
+		"nav",
+		name="Pager",
+		attrs={"aria-label": "Pages"},
+		classes=["store-pager"],
+		visibilityCondition={"key": "pager", "comesFrom": "dataScript"},
+		styles={
+			"display": "flex",
+			"flexDirection": "row",
+			"gap": "24px",
+			"justifyContent": "center",
+			"marginTop": "32px",
+			"width": "100%",
+		},
+		children=[
+			block(
+				"a",
+				text="← Previous",
+				visibilityCondition={"key": "pager.prev_url", "comesFrom": "dataScript"},
+				styles=link,
+				dynamicValues=[dv("pager.prev_url", "href", "attribute")],
+			),
+			block(
+				"a",
+				text="Next →",
+				visibilityCondition={"key": "pager.next_url", "comesFrom": "dataScript"},
+				styles=link,
+				dynamicValues=[dv("pager.next_url", "href", "attribute")],
+			),
+		],
+	)
+
+
 def notice(refs):
 	"""A message a page shows instead of its form (page data key `notice`)."""
 	return block(

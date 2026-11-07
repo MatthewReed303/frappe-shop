@@ -47,8 +47,28 @@ def listing() -> dict:
 		"no_results": None if result["products"] else "true",
 		"page": page,
 		"has_more": page * PAGE_SIZE < result["total"],
+		"pager": pager(page, result["total"]),
 		**result,
 	}
+
+
+def pager(page: int, total: int) -> dict | None:
+	"""Links to the pages before and after this one, keeping the shopper's filters."""
+	from urllib.parse import urlencode
+
+	request_path = frappe.local.request.path if getattr(frappe.local, "request", None) else ""
+
+	def url(number: int) -> str:
+		query = {k: v for k, v in frappe.form_dict.items() if k in (*FILTER_PARAMS, "search") and v}
+		if number > 1:
+			query["page"] = number
+		return f"{request_path}?{urlencode(query)}" if query else request_path
+
+	links = {
+		"prev_url": url(page - 1) if page > 1 else None,
+		"next_url": url(page + 1) if page * PAGE_SIZE < total else None,
+	}
+	return links if any(links.values()) else None
 
 
 FILTER_PARAMS = ("collection", "price", "stock", "sort")
@@ -214,10 +234,13 @@ def collection_page() -> dict:
 	)
 	if not collection:
 		frappe.throw(frappe._("Collection not found"), frappe.DoesNotExistError)
+	page = max(cint(frappe.form_dict.get("page")) or 1, 1)
+	result = catalog.get_products(collection=slug, start=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE)
 	return {
 		"store": store_details(),
 		"collection": collection,
-		**catalog.get_products(collection=slug, limit=PAGE_SIZE),
+		"pager": pager(page, result["total"]),
+		**result,
 	}
 
 
@@ -401,6 +424,7 @@ def store_details() -> dict:
 		if signed_in
 		else "/login?redirect-to=" + store_url("account/orders"),
 		"register_url": None if signed_in else store_url("account/register"),
+		"home_url": store_url(""),
 		"display_currency": pricing.display_currency(),
 		"currency_picker_html": pricing.currency_picker_html(),
 	}
