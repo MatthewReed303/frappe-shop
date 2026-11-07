@@ -240,8 +240,8 @@ def unique_item_code(product_name: str) -> str:
 
 def default_item_group() -> str:
 	"""ERPNext's Default Item Group (Stock Settings), else its usual "Products" group."""
-	group = frappe.db.get_single_value("Stock Settings", "item_group")
-	for group in (group, "Products", "All Item Groups"):
+	default = frappe.db.get_single_value("Stock Settings", "item_group")
+	for group in (default, "Products", "All Item Groups"):
 		if group and frappe.db.exists("Item Group", group):
 			return group
 	return frappe.db.get_value("Item Group", {}, "name")
