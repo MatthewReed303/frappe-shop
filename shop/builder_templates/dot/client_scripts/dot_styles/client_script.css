@@ -277,6 +277,10 @@ a[data-active="true"] {
 @media (max-width: 640px) { input, select, textarea { font-size:16px !important; } }
 .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .store-currency:empty { display:none; }
+[data-shop="stock-status"] { color:var(--e415b46b-53be-4ca0-96c3-362f703853fd, #15803D); }
+[data-shop="stock-status"] .stock-dot { background:var(--e415b46b-53be-4ca0-96c3-362f703853fd, #15803D); }
+[data-shop="stock-status"][data-stock-state="out"], [data-shop="stock-status"][data-stock-state="unavailable"] { color:var(--e1b35a3c-0189-43b5-9e2c-e295cc81f525, #8A8A8F); }
+[data-shop="stock-status"][data-stock-state="out"] .stock-dot, [data-shop="stock-status"][data-stock-state="unavailable"] .stock-dot { background:var(--e1b35a3c-0189-43b5-9e2c-e295cc81f525, #8A8A8F); }
 .currency-picker select { font: inherit; font-size:13px; color:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); background:var(--14e519f0-b9a6-4acd-ae4a-f8e5664c13fa, #FFFFFF); border:1px solid var(--89b2d9a1-4c11-45a1-8a99-099334bf7d38, #E4E4E7); border-radius:12px; padding:5px 7px; cursor:pointer; }
 .checkout-option { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--89b2d9a1-4c11-45a1-8a99-099334bf7d38, #E4E4E7); border-radius:12px; cursor:pointer; width:100%; font-size:13px; }
 .checkout-option input { accent-color:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); width:15px; height:15px; flex-shrink:0; }
