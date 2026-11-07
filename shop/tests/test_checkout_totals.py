@@ -511,6 +511,25 @@ class TestCheckoutTotals(IntegrationTestCase):
 			totals.money(payment.amount_due(order), order.currency), sendmail.call_args.kwargs["message"]
 		)
 
+	def test_more_than_owed_is_kept_as_the_customers_advance(self):
+		self.basket(1)
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		owed = payment.amount_due(order)
+		transaction = self.bank_deposit(order, flt(owed + 7.8, 2), 0, name)
+		entry = frappe.get_doc("Payment Entry", payment.pay_from_bank_transaction(transaction.name))
+		# the customer's advance would keep their other orders from being cancelled
+		self.addCleanup(entry.cancel)
+		self.addCleanup(entry.reload)
+		self.addCleanup(transaction.reload)
+		self.assertAlmostEqual(entry.received_amount, owed + 7.8, delta=0.01)
+		self.assertAlmostEqual(entry.unallocated_amount, 7.8, delta=0.01)
+		self.assertEqual(frappe.db.get_value("Bank Transaction", transaction.name, "status"), "Reconciled")
+		self.assertTrue(payment.is_paid(frappe.get_doc("Sales Order", name)))
+		self.assertTrue(
+			frappe.db.exists("Comment", {"reference_name": name, "content": ["like", "%more than owed%"]})
+		)
+
 	def test_reference_typed_the_bank_way_still_pays_the_order(self):
 		self.basket(1)
 		name = self.place(currency=self.company_currency)
@@ -929,6 +948,30 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(
 			frappe.db.count("Comment", {"reference_name": order.name, "content": ["like", "%not matched%"]}),
 			1,
+		)
+
+	def test_a_part_paid_order_past_its_date_is_chased_once_not_cancelled(self):
+		self.set(cancel_unpaid_orders=1)
+		self.basket(1)
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		transaction = self.bank_deposit(order, flt(payment.amount_due(order) / 2, 2), 0, name)
+		with patch("frappe.sendmail"):
+			entry = payment.pay_from_bank_transaction(transaction.name)
+		self.addCleanup(lambda: frappe.get_doc("Payment Entry", entry).cancel())
+		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
+		with patch("frappe.sendmail") as sendmail:
+			self.assertFalse(payment.cancel_if_unpaid(name))
+			self.assertFalse(payment.cancel_if_unpaid(name))
+		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 1)
+		self.assertEqual(sendmail.call_count, 1)
+		self.assertEqual(sendmail.call_args.kwargs["subject"], f"Part payment received for order {name}")
+		self.assertEqual(
+			frappe.db.count("Comment", {"reference_name": name, "content": ["like", "%pay-by date%"]}), 1
+		)
+		self.assertEqual(
+			payment.bank_instructions(frappe.get_doc("Sales Order", name))["due_note"],
+			"Please pay the rest as soon as you can.",
 		)
 
 	def test_a_customer_who_left_the_payment_page_is_reminded_once(self):

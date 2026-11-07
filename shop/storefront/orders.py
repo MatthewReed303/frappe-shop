@@ -227,7 +227,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 		if not info:
 			return ""
 		details = "".join(f"<div>{esc(line)}</div>" for line in info["details"])
-		due = f'<p>{esc(_("Please pay by {0}. Unpaid orders are cancelled after that date.").format(info["due"]))}</p>' if info["due"] else ""
+		due = f"<p>{esc(info['due_note'])}</p>" if info["due_note"] else ""
 		return (
 			f'<div class="order-payment bank"><h3>{esc(_("Pay by bank transfer"))}</h3>'
 			f'<p>{esc(_("Amount"))}: <b>{esc(info["amount"])} {esc(info["currency"])}</b><br>'

@@ -87,7 +87,23 @@ def bank_instructions(order) -> dict | None:
 		"due": frappe.utils.formatdate(order.get("shop_payment_due"))
 		if order.get("shop_payment_due")
 		else "",
+		"due_note": due_note(order),
 	}
+
+
+def due_note(order) -> str:
+	"""When to pay by, and what happens after, as the store's settings have it."""
+	due = order.get("shop_payment_due")
+	if not due:
+		return ""
+	if flt(order.advance_paid) > 0:
+		if getdate(due) < getdate(nowdate()):
+			return _("Please pay the rest as soon as you can.")
+		return _("Please pay the rest by {0}.").format(frappe.utils.formatdate(due))
+	note = _("Please pay by {0}.").format(frappe.utils.formatdate(due))
+	if frappe.get_cached_doc("Shop Settings").get("cancel_unpaid_orders"):
+		note += " " + _("Unpaid orders are cancelled after that date.")
+	return note
 
 
 def bank_instructions_html(order) -> str:
@@ -96,11 +112,7 @@ def bank_instructions_html(order) -> str:
 		return ""
 	esc = frappe.utils.escape_html
 	details = "".join(f"<div>{esc(line)}</div>" for line in info["details"])
-	due = (
-		f"<p>{esc(_('Please pay by {0}. Unpaid orders are cancelled after that date.').format(info['due']))}</p>"
-		if info["due"]
-		else ""
-	)
+	due = f"<p>{esc(info['due_note'])}</p>" if info["due_note"] else ""
 	return f"""
 	<div style="border:1px solid #ddd;border-radius:6px;padding:14px;margin:16px 0">
 		<p style="margin:0 0 8px;font-weight:bold">{esc(_("Pay by bank transfer"))}</p>
@@ -257,12 +269,14 @@ def make_payment_entry(order, transaction):
 
 def payment_entry_for(order, account: str | None, received: float | None = None):
 	"""ERPNext's Payment Entry for the order, for what was received into the bank account (all that
-	is owed when not given), and the rate from the bank's currency to the customer's account."""
+	is owed when not given), and the rate from the bank's currency to the customer's account. More
+	than is owed stays unallocated, the customer's advance."""
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 
 	payment_entry = get_payment_entry("Sales Order", order.name, bank_account=account, bank_amount=received)
 	rate = flt(payment_entry.target_exchange_rate) / flt(payment_entry.source_exchange_rate)
-	if received and received < amount_due(order):
+	if received and flt(received, 2) != flt(amount_due(order), 2):
+		owed = {row.reference_name: flt(row.outstanding_amount) for row in payment_entry.references}
 		payment_entry = get_payment_entry(
 			"Sales Order",
 			order.name,
@@ -270,6 +284,9 @@ def payment_entry_for(order, account: str | None, received: float | None = None)
 			bank_amount=received,
 			party_amount=flt(received * rate, payment_entry.precision("paid_amount")),
 		)
+		for reference in payment_entry.references:
+			reference.outstanding_amount = owed[reference.reference_name]
+			reference.allocated_amount = min(flt(reference.allocated_amount), reference.outstanding_amount)
 	return payment_entry, rate
 
 
@@ -398,9 +415,12 @@ def cancel_overdue_orders() -> None:
 
 def cancel_if_unpaid(name: str) -> bool:
 	order = frappe.get_doc("Sales Order", name)
-	if order.docstatus != 1 or is_paid(order) or flt(order.advance_paid) > 0:
+	if order.docstatus != 1 or is_paid(order):
 		return False
 	if order.get("shop_payment_due") and getdate(order.shop_payment_due) >= getdate(nowdate()):
+		return False
+	if flt(order.advance_paid) > 0:
+		chase_part_paid(order)
 		return False
 	if flt(order.per_delivered) > 0 or flt(order.per_billed) > 0:
 		return False
@@ -608,6 +628,30 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 		amount=amount,
 	)
 	return result
+
+
+def chase_part_paid(order) -> None:
+	"""A part-paid order past its date isn't cancelled, as money came in: staff are told on the order
+	and the customer is reminded of the rest, once."""
+	from shop.storefront import emails
+
+	owed = money_text(amount_due(order), order.currency)
+	note = _(
+		"Past its pay-by date with {0} still owed. Ask for the rest, or cancel the order and refund what was paid."
+	).format(owed)
+	if frappe.db.exists(
+		"Comment", {"reference_doctype": "Sales Order", "reference_name": order.name, "content": note}
+	):
+		return
+	order.add_comment("Info", note)
+	emails.send(
+		"payment_short",
+		order.contact_email,
+		order,
+		received=money_text(totals.order_total(order) - amount_due(order), order.currency),
+		owed=owed,
+		payment_html=bank_instructions_html(order),
+	)
 
 
 def unmatched_payments(order) -> list[str]:
