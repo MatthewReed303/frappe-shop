@@ -26,7 +26,7 @@ website_route_rules = [
 
 web_include_js = ["/assets/shop/js/login_signup.js"]
 
-doctype_js = {"Quotation": "public/js/quotation.js"}
+doctype_js = {"Quotation": "public/js/quotation.js", "Lead": "public/js/lead.js"}
 
 doc_events = {
 	# a bank transfer recorded in the desk pays the order like a card payment does

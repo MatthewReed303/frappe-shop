@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 shop.patches.set_customer_primary_contacts
 shop.patches.terms_to_terms_and_conditions
+shop.patches.remove_shop_trade_application

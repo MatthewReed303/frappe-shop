@@ -92,6 +92,23 @@ def order_fields() -> dict:
 			 "insert_after": "default_price_list",
 			 "description": "Discount % off an Item Group for every customer in this Customer Group, e.g. HATs 15%"},
 		],
+		# trade account applications from the store are ERPNext Leads (UTM Source: TRADE_SOURCE)
+		"Lead": [
+			{"fieldname": "shop_trade_section", "fieldtype": "Section Break", "label": "Trade Account Application",
+			 "insert_after": "utm_campaign", "collapsible": 1, "depends_on": "eval:doc.shop_user || doc.shop_tax_id"},
+			{"fieldname": "shop_tax_id", "fieldtype": "Data", "label": "Tax ID", "insert_after": "shop_trade_section",
+			 "description": "GST or VAT number the business gave. Copied to the Customer when approved."},
+			{"fieldname": "shop_company_number", "fieldtype": "Data", "label": "Company Number",
+			 "insert_after": "shop_tax_id"},
+			{"fieldname": "shop_user", "fieldtype": "Link", "options": "User", "label": "Applied As",
+			 "read_only": 1, "insert_after": "shop_company_number",
+			 "description": "The store login that applied, if they were signed in"},
+			{"fieldname": "shop_trade_column", "fieldtype": "Column Break", "insert_after": "shop_user"},
+			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Terms Accepted",
+			 "read_only": 1, "insert_after": "shop_trade_column"},
+			{"fieldname": "shop_terms_accepted_on", "fieldtype": "Datetime", "label": "Terms Accepted On",
+			 "read_only": 1, "insert_after": "shop_terms_version"},
+		],
 		"User": [
 			{"fieldname": "shop_terms_version", "fieldtype": "Data", "label": "Store Terms Accepted",
 			 "read_only": 1, "insert_after": "user_type"},
@@ -101,10 +118,17 @@ def order_fields() -> dict:
 	}
 
 
+TRADE_SOURCE = "Store Trade Application"
+
+
 def create_order_fields():
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 	create_custom_fields(order_fields(), ignore_validate=True)
+	if frappe.db.table_exists("UTM Source") and not frappe.db.exists("UTM Source", TRADE_SOURCE):
+		frappe.get_doc({"doctype": "UTM Source", "__newname": TRADE_SOURCE, "description": "Trade account applications made in the store"}).insert(
+			ignore_permissions=True
+		)
 
 
 def create_shop_manager_role():

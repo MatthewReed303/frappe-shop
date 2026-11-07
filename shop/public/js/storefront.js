@@ -537,7 +537,7 @@
 			event.preventDefault();
 			submitAccountForm(form, "shop.storefront.accounts.apply_trade", (data) => ({
 				application: Object.fromEntries(
-					["company_name", "company_number", "tax_id", "business_type", "website", "country", "message",
+					["company_name", "company_number", "tax_id", "industry", "website", "country", "message",
 					 "contact_name", "email", "phone", "address_line1", "address_line2", "city", "state", "pincode"]
 						.map((key) => [key, data.get(key) || ""])
 				),

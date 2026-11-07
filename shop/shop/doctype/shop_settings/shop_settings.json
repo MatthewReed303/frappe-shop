@@ -56,6 +56,8 @@
   "column_break_terms",
   "terms_checkbox_note",
   "business_buyer_label",
+  "trade_section",
+  "trade_customer_group",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -381,11 +383,24 @@
    "label": "Terms Checkbox Note",
    "depends_on": "require_terms",
    "description": "Shown beside the checkbox, after \"I accept the Terms and Conditions\". Use it for points buyers must notice."
+  },
+  {
+   "fieldname": "trade_section",
+   "fieldtype": "Section Break",
+   "label": "Trade Accounts",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "trade_customer_group",
+   "fieldtype": "Link",
+   "options": "Customer Group",
+   "label": "Trade Customer Group",
+   "description": "Approved trade customers join this Customer Group (its Price List, Payment Terms, credit limit and Store Discounts apply). Applications arrive as Leads with UTM Source \"Store Trade Application\"."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 15:17:05.294739",
+ "modified": "2026-11-07 15:26:42.416697",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

@@ -67,13 +67,63 @@ class TestTradeAccounts(IntegrationTestCase):
 			accept_terms=1,
 		)
 		frappe.set_user("Administrator")
-		application = frappe.get_doc("Shop Trade Application", result["name"])
-		application.customer_group = "_Test Trade Group"
-		application.allow_on_account = on_account
-		application.payment_terms = "_Test 20th" if on_account else None
-		application.save()
-		accounts.approve_trade(application.name)
-		return frappe.db.get_value("Shop Trade Application", application.name, "customer")
+		# the application is an ERPNext Lead from the store
+		lead = frappe.get_doc("Lead", result["name"])
+		self.assertEqual(lead.utm_source, "Store Trade Application")
+		self.assertEqual(lead.shop_user, email)
+		self.assertTrue(lead.shop_terms_version)
+		approved = accounts.approve_trade(
+			lead.name, customer_group="_Test Trade Group", allow_on_account=on_account,
+			payment_terms="_Test 20th" if on_account else None,
+		)
+		lead.reload()
+		self.assertEqual(lead.status, "Converted")
+		self.assertEqual(lead.customer, approved["customer"])
+		customer = frappe.get_doc("Customer", approved["customer"])
+		self.assertEqual(customer.lead_name, lead.name)
+		self.assertIn(email, [row.user for row in customer.portal_users])
+		self.assertTrue(frappe.db.exists("Dynamic Link", {"parenttype": "Address", "link_doctype": "Customer",
+															"link_name": customer.name}))
+		return customer.name
+
+	def test_guest_application_becomes_a_customer_made_from_the_lead(self):
+		frappe.set_user("Guest")
+		try:
+			result = accounts.apply_trade(
+				{"company_name": "Guest Trade Ltd", "contact_name": "Gina Guest", "email": "gina.guest@example.com",
+				 "tax_id": "123-456-789", "country": self.address["country"], "address_line1": "1 Depot Road", "city": "Town"},
+				accept_terms=1,
+			)
+		finally:
+			frappe.set_user("Administrator")
+		approved = accounts.approve_trade(result["name"], customer_group="_Test Trade Group")
+		customer = frappe.get_doc("Customer", approved["customer"])
+		self.assertEqual((customer.customer_name, customer.customer_type, customer.tax_id), ("Guest Trade Ltd", "Company", "123-456-789"))
+		self.assertEqual(customer.customer_group, "_Test Trade Group")
+		# ERPNext moved the Lead's contact to the Customer, and the applicant can sign in to the store
+		self.assertEqual(frappe.db.get_value("Contact", customer.customer_primary_contact, "email_id"), "gina.guest@example.com")
+		self.assertTrue(frappe.db.exists("User", "gina.guest@example.com"))
+		self.assertIn("gina.guest@example.com", [row.user for row in customer.portal_users])
+
+	def test_declined_application_is_an_unqualified_lead(self):
+		email = self.register("trade.declined@example.com")
+		frappe.set_user(email)
+		result = accounts.apply_trade(
+			{"company_name": "Declined Co", "contact_name": "Trade Tester", "email": email, "country": self.address["country"],
+			 "message": "We buy about 50 a year"},
+			accept_terms=1,
+		)
+		with self.assertRaises(frappe.ValidationError):  # one open application at a time
+			accounts.apply_trade({"company_name": "Again", "contact_name": "T", "email": email, "country": self.address["country"]}, accept_terms=1)
+		self.assertEqual(accounts.trade_status()["status"], "Pending")
+		frappe.set_user("Administrator")
+		accounts.decline_trade(result["name"], reason="Not a business")
+		lead = frappe.get_doc("Lead", result["name"])
+		self.assertEqual(lead.qualification_status, "Unqualified")
+		self.assertTrue(any("Not a business" in row.note for row in lead.notes))
+		self.assertTrue(any("50 a year" in row.note for row in lead.notes))
+		frappe.set_user(email)
+		self.assertEqual(accounts.trade_status()["status"], "Declined")
 
 	def test_sign_up_needs_the_terms_and_records_them(self):
 		with self.assertRaises(frappe.ValidationError):

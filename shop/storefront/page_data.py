@@ -337,6 +337,8 @@ def trade_page() -> dict:
 		"default_country": checkout.totals.company_country(),
 		"prefill": checkout.checkout_prefill(),
 		"trade": accounts.trade_status(),
+		# what the business does: ERPNext's Industry Types, as on a Lead
+		"industries": [{"name": name} for name in frappe.get_all("Industry Type", pluck="name", order_by="name")],
 	}
 
 
