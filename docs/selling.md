@@ -9,7 +9,14 @@ until it is turned on.
 
 - Prices come from the store's Price List. A signed-in customer gets their own: the Price
   List of their Customer or Customer Group, with ERPNext's Pricing Rules applied (trade
-  discounts, quantity breaks).
+  discounts, quantity breaks). A customer's own Price List is final: an item that isn't on
+  it isn't for sale to them, as ERPNext would price it. A guest's cart gets the Pricing
+  Rules of the default Customer Group.
+- Coupons are ERPNext Coupon Codes: the order carries the code and ERPNext applies its
+  Pricing Rule (who it is for, which items, the minimum), validates it and counts its use.
+- Products say whether they can be bought: in stock, only a few left (**Low Stock
+  Threshold**), out of stock, or not available online when they have no price. The cart
+  takes only what can be bought.
 - Checkout builds the Sales Order it will place and lets ERPNext price, tax and total it, so
   the total shown is the total charged. Coupons, Item Tax Templates and rounding follow
   ERPNext.
@@ -41,7 +48,12 @@ until it is turned on.
     reconciled with the Bank Transaction. A payment short of the total leaves the order
     waiting, and the customer is emailed the balance.
 - **Pay on account**: customers with *Pay on Account at the Store* and Payment Terms are
-  invoiced straight away. ERPNext's credit limit applies.
+  invoiced straight away, to their billing address. Their credit limit applies to orders on
+  account (approving a trade account sets ERPNext's *Bypass Credit Limit Check at Sales
+  Order*, so orders paid up front aren't held).
+- **Order Naming Series**: a short Sales Order series for store orders (e.g. `MB-.#####`),
+  so the order number fits a bank transfer reference. Deposits are matched to an order
+  whatever spaces, dashes or case the payer used.
 
 Shipping and fees are order lines (the Shipping Item, Card Fee Item, Currency Conversion Item and
 Transfer Fee Item), so they show on the order and invoice like any other line.
@@ -54,7 +66,17 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   (**Days to Pay Online**, **Days to Pay** for bank transfers) are cancelled, and the
   customer is told.
 - **Email Shipping Updates**: the customer hears when their order ships and when it is
-  delivered.
+  delivered. An order sent through a fulfilment provider shows *Preparing* until the
+  courier has it.
+- **Unpaid online orders**: the customer can pay later from their order page, and is
+  reminded once by email an hour after leaving the payment page.
+- **Returns**: customers ask from their order page once it has shipped. Approving emails
+  them; completing makes ERPNext's return Delivery Note and credit note for the quantity
+  returned, refunds the card when the order was paid online through a gateway that can
+  refund (Stripe), and records the refund as a Payment Entry.
+- **Cancelling**: staff cancel an order from the admin before it ships. An unpaid order is
+  cancelled; a paid or invoiced one is credited in full, refunded online when it was paid
+  online, and closed. The customer is emailed either way.
 - Store emails are Frappe Email Templates named *Shop: ...*, made once and never
   overwritten, so they can be edited in the desk.
 
