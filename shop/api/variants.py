@@ -1,3 +1,5 @@
+import re
+
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
@@ -48,7 +50,10 @@ def save_attribute(attribute: str, values: list) -> dict:
 
 
 def unique_abbr(value: str, used: set) -> str:
-	base = "".join(part[0] for part in value.split())[:3].upper() or value[:3].upper()
+	"""The value's abbreviation for variant codes: the value itself when it is short ("10 m" -> 10M),
+	else its initials ("Extra Large" -> EL)."""
+	compact = re.sub(r"[^A-Za-z0-9]", "", value).upper()
+	base = compact if len(compact) <= 5 else "".join(part[0] for part in value.split())[:3].upper() or compact[:3]
 	abbr = base
 	suffix = 1
 	while abbr in used:
