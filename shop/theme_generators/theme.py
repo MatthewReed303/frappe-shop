@@ -24,6 +24,8 @@ class Theme:
 	  (home_blocks, product_blocks, ...).
 	faqs: (question, answer) pairs for the FAQ page.
 	listing_subtitle: the line under the product listing's heading.
+	product_description: where the product page shows the description: "beside" the images, in
+	  the buy box column, or "below" them at full width, the images staying in view while scrolling.
 	extra_css: added after the generator's styles.
 	"""
 
@@ -44,6 +46,7 @@ class Theme:
 		blocks=None,
 		faqs=None,
 		listing_subtitle=None,
+		product_description="beside",
 		extra_css="",
 	):
 		self.group = group or self.defaults["group"]
@@ -59,6 +62,7 @@ class Theme:
 		self.blocks = blocks or {}
 		self.faqs = faqs
 		self.listing_subtitle = listing_subtitle
+		self.product_description = product_description
 		self.extra_css = extra_css
 
 	def build(self, name, default, refs):

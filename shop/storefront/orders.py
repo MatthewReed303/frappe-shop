@@ -251,11 +251,15 @@ def display_status(order, paid: bool) -> str:
 
 
 def pay_url(order, token: str | None) -> str | None:
-	from shop.payments import stripe_checkout
-
-	if not token or not stripe_checkout.is_stripe():
+	"""Where to pay an order still owed online: its Payment Request's gateway page."""
+	if not token:
 		return None
-	return stripe_checkout.pay_url(order.name, token)
+	return frappe.db.get_value(
+		"Payment Request",
+		{"reference_doctype": "Sales Order", "reference_name": order.name, "docstatus": 1, "status": ["!=", "Paid"]},
+		"payment_url",
+		order_by="creation desc",
+	)
 
 
 def order_progress(order, shipment: dict | None) -> list[dict]:

@@ -32,6 +32,7 @@ class TestThemeGenerators(IntegrationTestCase):
 			site_components={f"{group}-footer"},
 			faqs=[("Do you ship to the moon?", "Not yet.")],
 			listing_subtitle="Everything Acme makes.",
+			product_description="below",
 			extra_css=".acme-only { color: red; }",
 		)
 
@@ -54,6 +55,10 @@ class TestThemeGenerators(IntegrationTestCase):
 		self.assertIn("Do you ship to the moon?", routes["faq"].blocks)
 		self.assertIn("Everything Acme makes.", routes["products"].blocks)
 		self.assertIn(f"{group}-bar", routes["home"].blocks)
+		# the description has its own section under the images, and isn't in the buy box too
+		names = block_names(frappe.parse_json(routes["product/:slug"].blocks))
+		self.assertIn("Section · Product Description", names)
+		self.assertEqual(names.count("Product Description"), 1)
 		self.assertIn(f"{group}-footer", routes["home"].blocks)
 
 		self.assertEqual(
@@ -70,3 +75,12 @@ class TestThemeGenerators(IntegrationTestCase):
 		self.assertIn(f"{group}-hero", routes["home"].blocks)
 		self.assertNotIn(f'"{prefix}-hero"', routes["home"].blocks)
 		self.assertEqual(generator.THEME.group, generator.GROUP)
+
+
+def block_names(blocks) -> list[str]:
+	names = []
+	for node in blocks:
+		if node.get("blockName"):
+			names.append(node["blockName"])
+		names += block_names(node.get("children") or [])
+	return names

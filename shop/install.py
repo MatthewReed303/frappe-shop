@@ -86,19 +86,11 @@ def custom_fields() -> dict:
 				"description": "Unpaid store orders are cancelled after this date",
 			},
 			{
-				"fieldname": "shop_payment_reference",
-				"fieldtype": "Data",
-				"label": "Payment Reference",
-				"read_only": 1,
-				"insert_after": "shop_payment_due",
-				"allow_on_submit": 1,
-			},
-			{
 				"fieldname": "shop_shipping_option",
 				"fieldtype": "Small Text",
 				"label": "Shipping Chosen",
 				"read_only": 1,
-				"insert_after": "shop_payment_reference",
+				"insert_after": "shop_payment_due",
 			},
 			{"fieldname": "shop_column", "fieldtype": "Column Break", "insert_after": "shop_shipping_option"},
 			{

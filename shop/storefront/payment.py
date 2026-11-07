@@ -177,8 +177,12 @@ def invoice_paid_order(order) -> str | None:
 def invoice_attachments(invoice: str | None) -> list:
 	if not invoice:
 		return []
+	from shop.storefront.checkout import elevated
+
 	try:
-		return [frappe.attach_print("Sales Invoice", invoice, file_name=invoice)]
+		# the invoice goes to its own customer, also from a payment confirmed while signed out
+		with elevated():
+			return [frappe.attach_print("Sales Invoice", invoice, file_name=invoice)]
 	except Exception:
 		# the email still goes out; the invoice is on the customer's account and order page
 		frappe.log_error(title=f"Could not attach invoice {invoice}")

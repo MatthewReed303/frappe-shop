@@ -21,7 +21,6 @@ add_to_apps_screen = [
 
 website_route_rules = [
 	{"from_route": "/shop/<path:app_path>", "to_route": "shop"},
-	{"from_route": "/pay/<order_id>", "to_route": "pay"},
 ]
 
 web_include_js = ["/assets/shop/js/login_signup.js"]

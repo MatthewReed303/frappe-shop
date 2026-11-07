@@ -13,7 +13,6 @@ class ShopSettings(Document):
 
 	if TYPE_CHECKING:
 		from frappe.types import DF
-
 		from shop.shop.doctype.shop_bank_account.shop_bank_account import ShopBankAccount
 		from shop.shop.doctype.shop_theme_page.shop_theme_page import ShopThemePage
 
@@ -58,7 +57,6 @@ class ShopSettings(Document):
 		show_prices_with_tax: DF.Check
 		store_logo: DF.AttachImage | None
 		store_name: DF.Data | None
-		stripe_webhook_secret: DF.Password | None
 		tax_template: DF.Link | None
 		terms_and_conditions: DF.Link | None
 		terms_checkbox_note: DF.SmallText | None

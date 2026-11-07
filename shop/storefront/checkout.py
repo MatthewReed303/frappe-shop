@@ -210,7 +210,7 @@ def place_order(
 		}
 		if payment_method == totals.GATEWAY and totals.order_total(sales_order) > 0:
 			# the confirmation goes out once the payment succeeds (ShopPaymentRequest)
-			response["payment_url"] = create_payment_request(sales_order, customer, cart.token)
+			response["payment_url"] = create_payment_request(sales_order, customer)
 		else:
 			send_confirmation_for(sales_order, confirmation_url)
 	return response
@@ -613,10 +613,8 @@ def convert_cart(cart, sales_order):
 	cart.save(ignore_permissions=True)
 
 
-def create_payment_request(sales_order, customer: dict, token: str | None = None) -> str | None:
+def create_payment_request(sales_order, customer: dict) -> str | None:
 	from erpnext.accounts.doctype.payment_request.payment_request import make_payment_request
-
-	from shop.payments import stripe_checkout
 
 	settings = frappe.get_cached_doc("Shop Settings")
 	payment_request = make_payment_request(
@@ -628,6 +626,4 @@ def create_payment_request(sales_order, customer: dict, token: str | None = None
 		mute_email=1,
 		return_doc=1,
 	)
-	if token and stripe_checkout.is_stripe():
-		return stripe_checkout.pay_url(sales_order.name, token)
 	return payment_request.get_payment_url()

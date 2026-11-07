@@ -1,16 +1,12 @@
 """Checkout totals worked out by ERPNext: tax in or on top of prices, exports, coupons, shipping,
 card and conversion fees, other currencies, and what happens once an order is placed."""
 
-import hashlib
-import hmac
-import time
 from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, nowdate
 
-from shop.payments import stripe_checkout
 from shop.storefront import cart, checkout, payment, totals
 from shop.tests.utils import company_bank_account, service, template, terms_record
 
@@ -737,28 +733,6 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(totals.tax_name("GST @ 15.0"), "GST")
 		self.assertEqual(totals.tax_name("VAT 20% (included)"), "VAT")
 		self.assertEqual(totals.tax_name("Sales Tax 8.25%"), "Sales Tax")
-
-
-class TestStripeWebhook(IntegrationTestCase):
-	def sign(self, payload: bytes, secret: str, timestamp: int) -> str:
-		digest = hmac.new(secret.encode(), f"{timestamp}.".encode() + payload, hashlib.sha256).hexdigest()
-		return f"t={timestamp},v1={digest}"
-
-	def test_signature(self):
-		payload, now = b'{"type":"payment_intent.succeeded"}', int(time.time())
-		self.assertTrue(stripe_checkout.valid_signature(payload, self.sign(payload, "whsec", now), "whsec"))
-		self.assertFalse(stripe_checkout.valid_signature(payload, self.sign(payload, "other", now), "whsec"))
-		self.assertFalse(
-			stripe_checkout.valid_signature(payload + b" ", self.sign(payload, "whsec", now), "whsec")
-		)
-		self.assertFalse(
-			stripe_checkout.valid_signature(payload, self.sign(payload, "whsec", now - 3600), "whsec")
-		)
-		self.assertFalse(stripe_checkout.valid_signature(payload, None, "whsec"))
-
-	def test_minor_units(self):
-		self.assertEqual(stripe_checkout.minor_units(293.29, "NZD"), 29329)
-		self.assertEqual(stripe_checkout.minor_units(1000, "JPY"), 1000)
 
 
 original_hooks = frappe.get_hooks

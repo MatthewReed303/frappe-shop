@@ -1657,22 +1657,33 @@ def pdp_details(refs):
 			error_banner(refs),
 			component_ref("shop-delivery-card"),
 			component_ref("shop-trust-row"),
-			block(
-				"div",
-				text="",
-				name="Product Description",
-				classes=["product-description"],
-				visibilityCondition={"key": "product.description_text", "comesFrom": "dataScript"},
-				styles={
-					"color": refs["muted"],
-					"fontSize": "14px",
-					"height": "fit-content",
-					"lineHeight": "1.7",
-					"width": "100%",
-				},
-				dynamicValues=[dv("product.description_html", "innerHTML")],
-			),
+			*([product_description(refs)] if THEME.product_description != "below" else []),
 		],
+	)
+
+
+def product_description(refs, size="14px"):
+	return block(
+		"div",
+		text="",
+		name="Product Description",
+		classes=["product-description"],
+		visibilityCondition={"key": "product.description_text", "comesFrom": "dataScript"},
+		styles={"color": refs["muted"], "fontSize": size, "height": "fit-content", "lineHeight": "1.7", "width": "100%"},
+		dynamicValues=[dv("product.description_html", "innerHTML")],
+	)
+
+
+def description_section(refs):
+	"""The product description at full width, under the images and buy box."""
+	description = product_description(refs, size="16px")
+	description["baseStyles"]["maxWidth"] = "860px"
+	return named_section(
+		"Section · Product Description",
+		[heading(refs, "Details", size="26px", mobile_size="22px", element="h2", serif=True), description],
+		styles={"alignItems": "flex-start", "borderTopColor": refs["line"], "borderTopStyle": "solid", "borderTopWidth": "1px",
+				"gap": "16px", "padding": "40px 40px 48px"},
+		mobile={"padding": "28px 18px 32px"},
 	)
 
 
@@ -2366,9 +2377,15 @@ def apparel_band(refs):
 
 
 def product_blocks(refs):
+	below = THEME.product_description == "below"
 	crumbs = named_section("Section · Breadcrumb", [breadcrumb(refs, "product.product_name")], styles={"padding": "24px 40px 0"})
+	gallery = pdp_gallery(refs)
+	if below:
+		# the images stay in view beside the buy box while it scrolls
+		gallery["baseStyles"].update({"alignSelf": "start", "position": "sticky", "top": "24px"})
+		gallery["mobileStyles"].update({"position": "static"})
 	main = named_section("Section · Product Details", 
-		[pdp_gallery(refs), pdp_details(refs)],
+		[gallery, pdp_details(refs)],
 		styles={
 			"display": "grid",
 			"gap": "56px",
@@ -2383,6 +2400,7 @@ def product_blocks(refs):
 			component_ref("shop-navbar"),
 			crumbs,
 			main,
+			*([description_section(refs)] if below else []),
 			reviews_section(refs),
 			review_form_section(refs),
 			apparel_band(refs),

@@ -2006,17 +2006,33 @@ def pdp_details(refs):
 			actions,
 			error_banner(refs),
 			component_ref("dot-delivery-card"),
-			block(
-				"div",
-				text="",
-				name="Product Description",
-				classes=["product-description"],
-				visibilityCondition={"key": "product.description_text", "comesFrom": "dataScript"},
-				styles={"color": refs["muted"], "fontSize": "13px", "height": "fit-content", "lineHeight": "1.7", "width": "100%"},
-				dynamicValues=[dv("product.description_html", "innerHTML")],
-			),
+			*([product_description(refs)] if THEME.product_description != "below" else []),
 			component_ref("dot-trust-row"),
 		],
+	)
+
+
+def product_description(refs, size="13px"):
+	return block(
+		"div",
+		text="",
+		name="Product Description",
+		classes=["product-description"],
+		visibilityCondition={"key": "product.description_text", "comesFrom": "dataScript"},
+		styles={"color": refs["muted"], "fontSize": size, "height": "fit-content", "lineHeight": "1.7", "width": "100%"},
+		dynamicValues=[dv("product.description_html", "innerHTML")],
+	)
+
+
+def description_panel(refs):
+	"""The product description at full width, under the images and buy box."""
+	description = product_description(refs, size="15px")
+	description["baseStyles"]["maxWidth"] = "760px"
+	return panel(
+		refs,
+		[section_head(refs, "( Details )", "About this product"), description],
+		styles={"gap": "16px"},
+		name="Section · Product Description",
 	)
 
 
@@ -2234,6 +2250,12 @@ def buy_bar(refs):
 
 
 def product_blocks(refs):
+	below = THEME.product_description == "below"
+	gallery = pdp_gallery(refs)
+	if below:
+		# the images stay in view beside the buy box while it scrolls
+		gallery["baseStyles"].update({"alignSelf": "start", "position": "sticky", "top": "100px"})
+		gallery["mobileStyles"].update({"position": "static"})
 	main = panel(
 		refs,
 		[
@@ -2246,7 +2268,7 @@ def product_blocks(refs):
 					"width": "100%",
 				},
 				mobile={"gap": "26px", "gridTemplateColumns": "minmax(0, 1fr)"},
-				children=[pdp_gallery(refs), pdp_details(refs)],
+				children=[gallery, pdp_details(refs)],
 			)
 		],
 		name="Section · Product",
@@ -2263,7 +2285,11 @@ def product_blocks(refs):
 		refs,
 		[
 			component_ref("dot-navbar"),
-			stack([breadcrumb(refs, "product.product_name"), main, reviews_panel(refs), review_form_panel(refs), related]),
+			stack(
+				[breadcrumb(refs, "product.product_name"), main]
+				+ ([description_panel(refs)] if below else [])
+				+ [reviews_panel(refs), review_form_panel(refs), related]
+			),
 			component_ref("dot-footer"),
 			buy_bar(refs),
 		],

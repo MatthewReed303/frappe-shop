@@ -346,9 +346,7 @@ def accept_quote(
 		response = {"sales_order": order.name}
 		confirmation = store_url(f"order-confirmation/{order.name}?token={order.shop_access_token}")
 		if payment_method == totals.GATEWAY and totals.order_total(order) > 0:
-			response["redirect"] = create_payment_request(
-				order, {"email": order.contact_email}, order.shop_access_token
-			)
+			response["redirect"] = create_payment_request(order, {"email": order.contact_email})
 		else:
 			response["redirect"] = confirmation
 			send_confirmation_for(order, confirmation)
