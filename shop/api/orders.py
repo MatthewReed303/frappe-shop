@@ -124,6 +124,7 @@ def get_order(name: str) -> dict:
 		if order.currency == frappe.get_cached_doc("Shop Settings").currency
 		else f"{payment.totals.money(payment.amount_due(order), order.currency)} {order.currency}",
 		"bank_accounts": bank_accounts(order),
+		"refunds_due": payment.refunds_due(order.name),
 		"fulfillment_status": fulfillment_label(order),
 		"address": address_display(order.shipping_address_name),
 		"formatted_total": pricing.format_amount(order.total),
@@ -191,6 +192,14 @@ def bank_accounts(order) -> list[dict]:
 	]
 	accounts.sort(key=lambda row: (row["name"] != (told and told.bank_account), row["currency"] != order.currency))
 	return accounts
+
+
+@frappe.whitelist(methods=["POST"])
+def refund(name: str, credit_note: str, bank_account: str | None = None) -> dict:
+	"""Refund a credit note of the order, as staff approved it: to the card, or from a bank account."""
+	only_managers()
+	payment.refund(name, credit_note, bank_account)
+	return get_order(name)
 
 
 @frappe.whitelist(methods=["POST"])

@@ -5,7 +5,10 @@ import frappe
 
 
 def after_install():
+	from shop.patches.set_order_policy_defaults import execute as set_order_policy_defaults
+
 	setup()
+	set_order_policy_defaults()
 
 
 def after_migrate():

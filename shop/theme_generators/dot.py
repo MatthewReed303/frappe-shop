@@ -3066,6 +3066,7 @@ def returns_panel(refs):
 				"p",
 				text="Something not right? You have 14 days from shipping to ask for a return or a replacement.",
 				styles={"color": refs["muted"], "fontSize": "12px", "height": "fit-content", "lineHeight": "1.55", "width": "100%"},
+				dynamicValues=[dv("order.returns.window_note", "innerHTML")],
 			),
 			block(
 				"div",

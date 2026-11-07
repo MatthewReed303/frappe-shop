@@ -91,9 +91,8 @@ TEMPLATES = {
 		ORDER,
 		"Your {{ request_type|lower }} for order {{ doc.name }} is complete",
 		"<p>We've received {{ qty }} × {{ item_name }} from order {{ doc.name }}.</p>"
-		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached.</p>{% endif %}"
-		"{% if refunded %}<p>We've refunded {{ amount }} to your card; it can take a few days to show.</p>"
-		"{% elif credit_note %}<p>We'll refund {{ amount }} to you and let you know when it's paid.</p>{% endif %}"
+		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll let you "
+		"know when the refund is on its way.</p>{% endif %}"
 		"{% if note %}<p>{{ note }}</p>{% endif %}",
 	),
 	"order_cancelled_by_store": (
@@ -102,10 +101,16 @@ TEMPLATES = {
 		"Your order {{ doc.name }} has been cancelled",
 		"<p>We've cancelled your order {{ doc.name }} at {{ store_name }}.</p>"
 		"{% if note %}<p>{{ note }}</p>{% endif %}"
-		"{% if refunded %}<p>We've refunded {{ amount }} to your card; it can take a few days to show.</p>"
-		"{% elif credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll refund any "
-		"payment you made and let you know when it's paid.</p>{% endif %}"
+		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll let you "
+		"know when the refund of what you paid is on its way.</p>{% endif %}"
 		"<p>Reply to this email if you have any questions.</p>",
+	),
+	"refund_sent": (
+		"Shop: Refund Sent",
+		ORDER,
+		"Your refund for order {{ doc.name }}",
+		"<p>We've refunded {{ amount }} for order {{ doc.name }}{% if to_card %} to your card. It can take a few "
+		"days to show on your statement{% else %} to your bank account{% endif %}.</p>",
 	),
 	"order_cancelled": (
 		"Shop: Order Cancelled",

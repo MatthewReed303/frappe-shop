@@ -59,6 +59,8 @@
   "column_break_orders",
   "cancel_unpaid_orders",
   "online_payment_days",
+  "payment_reminder_hours",
+  "return_window_days",
   "terms_section",
   "require_terms",
   "terms_and_conditions",
@@ -70,6 +72,7 @@
   "trade_customer_group",
   "email_statements",
   "allow_quote_requests",
+  "quote_valid_days",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -419,6 +422,15 @@
    "label": "Allow Quote Requests"
   },
   {
+   "default": "30",
+   "depends_on": "allow_quote_requests",
+   "description": "How long a quote made from a request stays valid.",
+   "fieldname": "quote_valid_days",
+   "fieldtype": "Int",
+   "label": "Quote Valid For (Days)",
+   "non_negative": 1
+  },
+  {
    "default": "0",
    "description": "Show product, cart and checkout prices with the tax of the store's Tax Template, and the price without tax under them.",
    "fieldname": "show_prices_with_tax",
@@ -445,7 +457,7 @@
    "label": "Orders"
   },
   {
-   "description": "The Sales Order naming series for store orders, e.g. a short one like MB-.##### so the order number fits a bank transfer reference. Add it to Sales Order in Document Naming Settings first. Empty uses ERPNext's default.",
+   "description": "The Sales Order naming series for store orders, e.g. a short one like SO-.##### so the order number fits a bank transfer reference. Add it to Sales Order in Document Naming Settings first. Empty uses ERPNext's default.",
    "fieldname": "order_naming_series",
    "fieldtype": "Data",
    "label": "Order Naming Series"
@@ -483,6 +495,22 @@
    "label": "Days to Pay Online"
   },
   {
+   "default": "1",
+   "description": "Email a customer who left the payment page this many hours after the order. 0 sends no reminder.",
+   "fieldname": "payment_reminder_hours",
+   "fieldtype": "Int",
+   "label": "Remind Unpaid Online Orders After (Hours)",
+   "non_negative": 1
+  },
+  {
+   "default": "14",
+   "description": "Days after an order ships that the customer can ask for a return or replacement from their order page. 0 turns this off.",
+   "fieldname": "return_window_days",
+   "fieldtype": "Int",
+   "label": "Return Window (Days)",
+   "non_negative": 1
+  },
+  {
    "default": "0",
    "depends_on": "trade_customer_group",
    "description": "Email each customer in the trade Customer Group a statement every month, with ERPNext's Process Statement Of Accounts.",
@@ -493,7 +521,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 20:00:00.000000",
+ "modified": "2026-11-08 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

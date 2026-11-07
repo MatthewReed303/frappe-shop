@@ -108,7 +108,7 @@ class TestReturns(IntegrationTestCase):
 		listed = returns_api.get_requests(status="Approved")
 		self.assertIn(created["name"], [row.name for row in listed["requests"]])
 
-	def test_completed_return_puts_stock_back_credits_and_refunds_the_card(self):
+	def test_completed_return_credits_and_staff_approve_the_card_refund(self):
 		from shop.api import orders as orders_api
 		from shop.storefront import payment
 
@@ -139,6 +139,24 @@ class TestReturns(IntegrationTestCase):
 				return gateway
 			return real_get_doc(*args, **kwargs)
 
+		with patch("frappe.sendmail") as sendmail:
+			result = returns_api.set_status(created["name"], "Completed")
+		self.assertEqual(frappe.db.get_value("Delivery Note", result["return_delivery_note"], "is_return"), 1)
+		self.assertEqual(
+			frappe.db.get_value("Delivery Note Item", {"parent": result["return_delivery_note"]}, "qty"), -1
+		)
+		credit_note = frappe.get_doc("Sales Invoice", result["credit_note"])
+		self.assertTrue(credit_note.is_return)
+		self.assertEqual(credit_note.items[0].qty, -1)
+		subjects = [call.kwargs["subject"] for call in sendmail.call_args_list]
+		self.assertIn(f"Your return for order {order} is complete", subjects)
+		# nothing is paid back until staff approve the refund
+		self.assertFalse(result["refund"])
+		gateway.refund.assert_not_called()
+		self.assertEqual(
+			[row["credit_note"] for row in orders_api.get_order(order)["refunds_due"]], [credit_note.name]
+		)
+
 		with (
 			patch(
 				"frappe.db.get_value",
@@ -149,25 +167,16 @@ class TestReturns(IntegrationTestCase):
 			patch("frappe.get_doc", side_effect=get_doc),
 			patch("frappe.sendmail") as sendmail,
 		):
-			result = returns_api.set_status(created["name"], "Completed")
-
-		self.assertEqual(frappe.db.get_value("Delivery Note", result["return_delivery_note"], "is_return"), 1)
-		self.assertEqual(
-			frappe.db.get_value("Delivery Note Item", {"parent": result["return_delivery_note"]}, "qty"), -1
-		)
-		credit_note = frappe.get_doc("Sales Invoice", result["credit_note"])
-		self.assertTrue(credit_note.is_return)
-		self.assertEqual(credit_note.items[0].qty, -1)
+			orders_api.refund(order, credit_note.name)
 		self.assertEqual(
 			gateway.refund.call_args.args[:3],
 			("Payment Request", "PR-TEST", abs(flt(credit_note.grand_total))),
 		)
-		self.assertEqual(
-			frappe.db.get_value("Payment Entry", result["refund"], "reference_no"), "re_test_refund"
-		)
+		refund = frappe.db.get_value("Shop Return Request", created["name"], "refund")
+		self.assertEqual(frappe.db.get_value("Payment Entry", refund, "reference_no"), "re_test_refund")
 		self.assertEqual(frappe.db.get_value("Sales Invoice", credit_note.name, "outstanding_amount"), 0)
 		subjects = [call.kwargs["subject"] for call in sendmail.call_args_list]
-		self.assertIn(f"Your return for order {order} is complete", subjects)
+		self.assertIn(f"Your refund for order {order}", subjects)
 
 
 real_get_value = frappe.db.get_value

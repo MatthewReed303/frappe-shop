@@ -336,7 +336,7 @@
 				<FormControl
 					v-model="orders.order_naming_series"
 					label="Order naming series"
-					description="A short Sales Order naming series (e.g. MB-.#####) so order numbers fit bank references. Add it to Sales Order in Document Naming Settings first."
+					description="A short Sales Order naming series (e.g. SO-.#####) so order numbers fit bank references. Add it to Sales Order in Document Naming Settings first."
 					class="max-w-sm"
 				/>
 				<Switch
@@ -356,6 +356,20 @@
 					label="Days to pay online"
 					class="max-w-sm"
 				/>
+				<div class="grid max-w-lg grid-cols-2 gap-4">
+					<FormControl
+						v-model.number="orders.payment_reminder_hours"
+						type="number"
+						label="Remind unpaid online orders after (hours)"
+						description="0 sends no reminder."
+					/>
+					<FormControl
+						v-model.number="orders.return_window_days"
+						type="number"
+						label="Return window (days)"
+						description="Days after shipping customers can ask for a return. 0 turns it off."
+					/>
+				</div>
 				<Switch
 					v-model="orders.send_shipping_emails"
 					label="Email shipping updates"
@@ -405,6 +419,13 @@
 					v-model="accounts.allow_quote_requests"
 					label="Quote requests"
 					description="Shoppers can ask for a quote at checkout instead of ordering."
+				/>
+				<FormControl
+					v-if="accounts.allow_quote_requests"
+					v-model.number="accounts.quote_valid_days"
+					type="number"
+					label="Quotes valid for (days)"
+					class="max-w-sm"
 				/>
 				<template #footer>
 					<Button variant="solid" :loading="saving === 'accounts'" @click="saveSection('accounts', accounts)">
@@ -467,6 +488,8 @@ const orders = reactive({
 	cancel_unpaid_orders: false,
 	online_payment_days: 2,
 	order_naming_series: '',
+	payment_reminder_hours: 1,
+	return_window_days: 14,
 	send_shipping_emails: false,
 })
 const accounts = reactive({
@@ -476,6 +499,7 @@ const accounts = reactive({
 	trade_customer_group: '',
 	email_statements: false,
 	allow_quote_requests: false,
+	quote_valid_days: 30,
 })
 const fulfillment = reactive({ fulfillment_provider: 'manual', auto_send_to_fulfillment: false })
 const catalog = reactive({
@@ -533,6 +557,8 @@ function hydrate(doc: Record<string, any>) {
 		cancel_unpaid_orders: !!doc.cancel_unpaid_orders,
 		online_payment_days: doc.online_payment_days || 2,
 		order_naming_series: doc.order_naming_series || '',
+		payment_reminder_hours: doc.payment_reminder_hours ?? 1,
+		return_window_days: doc.return_window_days ?? 14,
 		send_shipping_emails: !!doc.send_shipping_emails,
 	})
 	Object.assign(accounts, {
@@ -542,6 +568,7 @@ function hydrate(doc: Record<string, any>) {
 		trade_customer_group: doc.trade_customer_group || '',
 		email_statements: !!doc.email_statements,
 		allow_quote_requests: !!doc.allow_quote_requests,
+		quote_valid_days: doc.quote_valid_days || 30,
 	})
 	Object.assign(fulfillment, {
 		fulfillment_provider: doc.fulfillment_provider || 'manual',

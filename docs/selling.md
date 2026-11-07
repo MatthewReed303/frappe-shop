@@ -51,7 +51,7 @@ until it is turned on.
   invoiced straight away, to their billing address. Their credit limit applies to orders on
   account (approving a trade account sets ERPNext's *Bypass Credit Limit Check at Sales
   Order*, so orders paid up front aren't held).
-- **Order Naming Series**: a short Sales Order series for store orders (e.g. `MB-.#####`),
+- **Order Naming Series**: a short Sales Order series for store orders (e.g. `SO-.#####`),
   so the order number fits a bank transfer reference. Deposits are matched to an order
   whatever spaces, dashes or case the payer used.
 
@@ -69,14 +69,20 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   delivered. An order sent through a fulfilment provider shows *Preparing* until the
   courier has it.
 - **Unpaid online orders**: the customer can pay later from their order page, and is
-  reminded once by email an hour after leaving the payment page.
-- **Returns**: customers ask from their order page once it has shipped. Approving emails
-  them; completing makes ERPNext's return Delivery Note and credit note for the quantity
-  returned, refunds the card when the order was paid online through a gateway that can
-  refund (Stripe), and records the refund as a Payment Entry.
+  reminded once by email (**Remind Unpaid Online Orders After**, in hours; 0 for none).
+- **Returns**: customers ask from their order page once it has shipped, within the **Return
+  Window** (days; 0 turns it off). Approving emails them; completing makes ERPNext's return
+  Delivery Note and credit note for the quantity returned.
 - **Cancelling**: staff cancel an order from the admin before it ships. An unpaid order is
-  cancelled; a paid or invoiced one is credited in full, refunded online when it was paid
-  online, and closed. The customer is emailed either way.
+  cancelled; a paid or invoiced one is credited in full and closed. The customer is emailed
+  either way.
+- **Refunds** are never automatic. A credit note still owed to the customer shows under
+  *Refunds due* on the admin order page, where staff refund it to the card (through a
+  gateway that can refund, such as Stripe) or record a refund paid from a bank account.
+  Either way it is an ERPNext Payment Entry against the credit note, and the customer is
+  emailed.
+- **Shipping** is booked by staff: a paid order sent to a fulfilment provider gets a draft
+  Shipment, which staff book and print the label from.
 - Store emails are Frappe Email Templates named *Shop: ...*, made once and never
   overwritten, so they can be edited in the desk.
 
@@ -90,8 +96,8 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   Lead: approving makes the Customer (or updates the applicant's own) in the **Trade
   Customer Group**, with Payment Terms, credit limit and pay on account as chosen.
 - **Quote Requests**: shoppers can ask for a quote at checkout. It arrives as a draft
-  Quotation; staff submit it and send it from the Quotation, and the customer accepts it
-  online, which places the order.
+  Quotation, valid for **Quotes Valid For** days; staff submit it and send it from the
+  Quotation, and the customer accepts it online, which places the order.
 - **Email Monthly Statements**: the trade Customer Group gets an ERPNext Process Statement
   Of Accounts each month. Customers can also download their statement from their account.
 

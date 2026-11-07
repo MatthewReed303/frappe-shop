@@ -88,6 +88,30 @@
 					</div>
 
 					<ReturnsPanel :order="doc.name" />
+					<section
+						v-if="doc.refunds_due?.length"
+						class="rounded-lg border border-outline-gray-1 p-4"
+					>
+						<h2 class="text-base font-medium text-ink-gray-8">Refunds due</h2>
+						<p class="mt-1 text-p-sm text-ink-gray-5">
+							Nothing is paid back until you refund it here.
+						</p>
+						<ul class="mt-3 divide-y divide-outline-gray-1">
+							<li
+								v-for="due in doc.refunds_due"
+								:key="due.credit_note"
+								class="flex flex-wrap items-center justify-between gap-2 py-3"
+							>
+								<span class="text-base text-ink-gray-8">
+									{{ due.formatted_amount }} · credit note {{ due.credit_note }}
+								</span>
+								<span class="flex gap-2">
+									<Button v-if="due.online" @click="openRefund(due, 'card')">Refund to card</Button>
+									<Button @click="openRefund(due, 'bank')">Refund from bank</Button>
+								</span>
+							</li>
+						</ul>
+					</section>
 
 					<div class="rounded-lg border border-outline-gray-1 p-4">
 						<h2 class="text-base font-medium text-ink-gray-8">Timeline</h2>
@@ -112,6 +136,26 @@
 		<div v-else class="flex justify-center py-20">
 			<Spinner class="size-5" />
 		</div>
+
+		<Dialog v-model="showRefund" :options="refundOptions">
+			<template #body-content>
+				<p class="text-p-base text-ink-gray-7">
+					{{
+						refund.how === 'card'
+							? `Refund ${refund.due?.formatted_amount} to the customer's card through the payment gateway? This sends the money now.`
+							: `Record a refund of ${refund.due?.formatted_amount} paid from your bank account. Pay the customer from that account yourself.`
+					}}
+				</p>
+				<FormControl
+					v-if="refund.how === 'bank'"
+					v-model="refund.bank_account"
+					class="mt-4"
+					type="select"
+					label="Paid from"
+					:options="bankAccountOptions"
+				/>
+			</template>
+		</Dialog>
 
 		<Dialog v-model="showConfirm" :options="dialogOptions">
 			<template #body-content>
@@ -207,6 +251,43 @@ const bankAccountOptions = computed(() =>
 		value: account.name,
 	})),
 )
+
+type RefundDue = { credit_note: string; amount: number; formatted_amount: string; online: boolean }
+
+const showRefund = ref(false)
+const refund = reactive<{ due: RefundDue | null; how: 'card' | 'bank'; bank_account: string }>({
+	due: null,
+	how: 'card',
+	bank_account: '',
+})
+
+function openRefund(due: RefundDue, how: 'card' | 'bank') {
+	Object.assign(refund, { due, how, bank_account: doc.value.bank_accounts?.[0]?.name || '' })
+	showRefund.value = true
+}
+
+const refundOptions = computed(() => ({
+	title: 'Refund',
+	actions: [{ label: 'Refund', variant: 'solid', theme: 'red', onClick: runRefund }],
+}))
+
+async function runRefund() {
+	if (!refund.due) return
+	try {
+		await call('shop.api.orders.refund', {
+			name: props.name,
+			credit_note: refund.due.credit_note,
+			bank_account: refund.how === 'bank' ? refund.bank_account : undefined,
+		})
+		toast.success('Refund recorded')
+		order.reload()
+	} catch (error) {
+		const messages = (error as { messages?: string[] }).messages
+		toast.error(messages?.[0] || 'Could not refund')
+	} finally {
+		showRefund.value = false
+	}
+}
 
 function confirmAction(key: ActionKey) {
 	pending.value = actions[key]

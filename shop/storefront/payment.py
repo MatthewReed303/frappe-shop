@@ -434,11 +434,31 @@ def cancel_if_unpaid(name: str) -> bool:
 	return True
 
 
-def refund_online(order_name: str, credit_note: str) -> str | None:
-	"""Refund a credit note's amount through the gateway that took the order's online payment, when
-	the gateway can, and record it as ERPNext's Payment Entry against the credit note."""
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+def refunds_due(order_name: str) -> list[dict]:
+	"""The order's credit notes still owed to the customer, and whether the card can be refunded."""
+	invoice = order_invoice(order_name)
+	if not invoice:
+		return []
+	notes = frappe.get_all(
+		"Sales Invoice",
+		filters={"return_against": invoice, "docstatus": 1, "outstanding_amount": ["<", 0]},
+		fields=["name", "outstanding_amount", "currency"],
+		order_by="creation asc",
+	)
+	online = bool(online_refund_controller(order_name))
+	return [
+		{
+			"credit_note": note.name,
+			"amount": abs(flt(note.outstanding_amount)),
+			"formatted_amount": money_text(abs(flt(note.outstanding_amount)), note.currency),
+			"online": online,
+		}
+		for note in notes
+	]
 
+
+def online_refund_controller(order_name: str):
+	"""The paid Payment Request of an order paid online, and its gateway's settings when they can refund."""
 	request_name = frappe.db.get_value(
 		"Payment Request",
 		{"reference_doctype": "Sales Order", "reference_name": order_name, "status": "Paid", "docstatus": 1},
@@ -449,8 +469,59 @@ def refund_online(order_name: str, credit_note: str) -> str | None:
 	payment_request = frappe.get_doc("Payment Request", request_name)
 	gateway = frappe.get_doc("Payment Gateway", payment_request.payment_gateway)
 	controller = frappe.get_doc(gateway.gateway_settings, gateway.gateway_controller)
-	if not hasattr(controller, "refund"):
+	return (payment_request, controller) if hasattr(controller, "refund") else None
+
+
+def refund(order_name: str, credit_note: str, bank_account: str | None = None) -> str:
+	"""Pay a credit note back, as staff approved: to the card through the gateway, or from a bank
+	account. Records ERPNext's Payment Entry and tells the customer."""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	from shop.storefront import emails
+
+	if credit_note not in [due["credit_note"] for due in refunds_due(order_name)]:
+		frappe.throw(_("Credit note {0} has nothing left to refund for this order").format(credit_note))
+	if bank_account:
+		entry = get_payment_entry(
+			"Sales Invoice",
+			credit_note,
+			bank_account=frappe.db.get_value("Bank Account", bank_account, "account"),
+		)
+		entry.bank_account = bank_account
+		entry.reference_no, entry.reference_date = credit_note, nowdate()
+		entry.flags.ignore_permissions = True
+		entry.insert(ignore_permissions=True)
+		entry.submit()
+		name = entry.name
+	else:
+		name = refund_online(order_name, credit_note)
+		if not name:
+			frappe.throw(
+				_("This order wasn't paid through a gateway that can refund. Refund it from a bank account.")
+			)
+	frappe.db.set_value("Shop Return Request", {"credit_note": credit_note}, "refund", name)
+	order = frappe.get_doc("Sales Order", order_name)
+	emails.send(
+		"refund_sent",
+		order.contact_email,
+		order,
+		amount=money_text(
+			abs(flt(frappe.db.get_value("Payment Entry", name, "paid_amount"))), order.currency
+		),
+		to_card=not bank_account,
+	)
+	return name
+
+
+def refund_online(order_name: str, credit_note: str) -> str | None:
+	"""Refund a credit note's amount through the gateway that took the order's online payment, when
+	the gateway can, and record it as ERPNext's Payment Entry against the credit note."""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	found = online_refund_controller(order_name)
+	if not found:
 		return None
+	payment_request, controller = found
 	amount = abs(flt(frappe.db.get_value("Sales Invoice", credit_note, "grand_total")))
 	reference = controller.refund("Payment Request", payment_request.name, amount, credit_note)
 	entry = get_payment_entry("Sales Invoice", credit_note, bank_account=payment_request.payment_account)
@@ -492,7 +563,7 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 	invoice = order_invoice(name)
 	if not invoice and payment_status(order) == "Paid":
 		invoice = invoice_paid_order(order)
-	result = {"credit_note": None, "refund": None}
+	result = {"credit_note": None}
 	if not invoice:
 		if flt(order.advance_paid):
 			frappe.throw(_("This order is part paid. Refund the payment in ERPNext before cancelling it."))
@@ -516,8 +587,6 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 		credit_note.insert(ignore_permissions=True)
 		credit_note.submit()
 		result["credit_note"] = credit_note.name
-		frappe.db.commit()
-		result["refund"] = refund_online(name, credit_note.name)
 		update_status("Closed", name)
 	order.add_comment("Info", CANCELLED_BY_STORE + (f" {note}" if note else ""))
 	amount = (
@@ -535,7 +604,6 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 		attachments=invoice_attachments(result["credit_note"]) if result["credit_note"] else None,
 		note=note,
 		credit_note=result["credit_note"],
-		refunded=bool(result["refund"]),
 		amount=amount,
 	)
 	return result
@@ -561,16 +629,20 @@ REMINDER = "Payment reminder sent."
 
 
 def remind_unpaid_online_orders() -> None:
-	"""Remind once a customer who left the payment page: an hour after an online order was placed."""
-	from frappe.utils import add_to_date, now_datetime
+	"""Remind once a customer who left the payment page, the store's set number of hours after an
+	online order was placed (Shop Settings)."""
+	from frappe.utils import add_to_date, cint, now_datetime
 
+	hours = cint(frappe.get_cached_doc("Shop Settings").get("payment_reminder_hours"))
+	if not hours:
+		return
 	for name in frappe.get_all(
 		"Sales Order",
 		filters={
 			"docstatus": 1,
 			"shop_payment_method": totals.GATEWAY,
 			"advance_payment_status": ["!=", "Fully Paid"],
-			"creation": ["<", add_to_date(now_datetime(), hours=-1)],
+			"creation": ["<", add_to_date(now_datetime(), hours=-hours)],
 			"shop_payment_due": [">=", nowdate()],
 		},
 		pluck="name",

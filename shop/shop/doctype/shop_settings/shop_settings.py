@@ -49,9 +49,12 @@ class ShopSettings(Document):
 		online_payment_label: DF.Data | None
 		order_naming_series: DF.Data | None
 		payment_gateway_account: DF.Link | None
+		payment_reminder_hours: DF.Int
 		price_list: DF.Link | None
 		prices_include_tax: DF.Check
+		quote_valid_days: DF.Int
 		require_terms: DF.Check
+		return_window_days: DF.Int
 		route_prefix: DF.Data | None
 		send_shipping_emails: DF.Check
 		shipping_account: DF.Link | None

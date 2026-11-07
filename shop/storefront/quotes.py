@@ -12,8 +12,6 @@ from shop.routes import store_url, token_matches
 from shop.storefront import cart as cart_module
 from shop.storefront import pricing, totals
 
-VALID_DAYS = 30
-
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=60 * 10)
@@ -106,7 +104,9 @@ def quotation_from(order, party: str, address: str, email: str):
 			"party_name": party,
 			"company": order.company,
 			"transaction_date": nowdate(),
-			"valid_till": add_days(nowdate(), VALID_DAYS),
+			"valid_till": add_days(
+				nowdate(), cint(frappe.get_cached_doc("Shop Settings").get("quote_valid_days")) or 30
+			),
 			"order_type": "Sales",
 			"currency": order.currency,
 			"conversion_rate": order.conversion_rate,

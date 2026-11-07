@@ -37,6 +37,9 @@ EDITABLE = (
 	"cancel_unpaid_orders",
 	"online_payment_days",
 	"order_naming_series",
+	"payment_reminder_hours",
+	"return_window_days",
+	"quote_valid_days",
 	"send_shipping_emails",
 	"require_terms",
 	"terms_and_conditions",
@@ -67,7 +70,14 @@ AMOUNTS = {
 	"card_fee_percent_international",
 	"card_fee_fixed_international",
 }
-COUNTS = {"low_stock_threshold", "bank_transfer_days", "online_payment_days"}
+COUNTS = {
+	"low_stock_threshold",
+	"bank_transfer_days",
+	"online_payment_days",
+	"payment_reminder_hours",
+	"return_window_days",
+	"quote_valid_days",
+}
 BANK_ACCOUNT_FIELDS = (
 	"bank_account",
 	"label",

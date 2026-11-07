@@ -1,10 +1,9 @@
 import frappe
 from frappe import _
-from frappe.utils import add_days, flt, get_datetime, now_datetime
+from frappe.utils import add_days, cint, flt, get_datetime, now_datetime
 
 from shop.storefront import orders as orders_module
 
-RETURN_WINDOW_DAYS = 14
 OPEN_STATUSES = ("Requested", "Approved")
 
 
@@ -56,12 +55,20 @@ def validate_item(order, item_code: str, qty: float):
 		frappe.throw(_("You ordered only {0} of this item").format(int(row.qty)))
 
 
+def window_days() -> int:
+	"""The store's return window (Shop Settings); 0 when customers can't ask online."""
+	return cint(frappe.get_cached_doc("Shop Settings").get("return_window_days"))
+
+
 def validate_window(order):
+	days = window_days()
+	if not days:
+		frappe.throw(_("Please contact us about returns"))
 	shipped_on = shipped_date(order.name)
 	if not shipped_on:
 		frappe.throw(_("Returns open once the order has shipped"))
-	if now_datetime() > get_datetime(add_days(shipped_on, RETURN_WINDOW_DAYS)):
-		frappe.throw(_("The {0}-day return window for this order has closed").format(RETURN_WINDOW_DAYS))
+	if now_datetime() > get_datetime(add_days(shipped_on, days)):
+		frappe.throw(_("The {0}-day return window for this order has closed").format(days))
 
 
 def shipped_date(order_name: str):
@@ -90,13 +97,17 @@ def summary(order_name: str) -> dict:
 	for request in requests:
 		request.line = f"{request.request_type} · {request.item_name}"
 	shipped_on = shipped_date(order_name)
-	eligible = bool(shipped_on and now_datetime() <= get_datetime(add_days(shipped_on, RETURN_WINDOW_DAYS)))
+	days = window_days()
+	eligible = bool(days and shipped_on and now_datetime() <= get_datetime(add_days(shipped_on, days)))
 	return {
 		"requests": requests,
 		"eligible": "true" if eligible else None,
 		"has_requests": "true" if requests else None,
 		"show": "true" if requests or eligible else None,
-		"window_days": RETURN_WINDOW_DAYS,
+		"window_days": days,
+		"window_note": _("Need to return or replace something? You have {0} days from shipping.").format(
+			days
+		),
 	}
 
 
@@ -125,11 +136,9 @@ def status_changed(request) -> None:
 	elif request.status == "Rejected":
 		notify(request, "return_rejected", order_email)
 	elif request.status == "Completed":
-		refunded = False
 		if request.request_type == "Return":
 			return_stock(request)
 			credit(request)
-			refunded = refund(request)
 		amount = (
 			frappe.utils.fmt_money(
 				abs(flt(frappe.db.get_value("Sales Invoice", request.credit_note, "grand_total"))),
@@ -147,7 +156,6 @@ def status_changed(request) -> None:
 			attachments=invoice_attachments(request.credit_note) if request.credit_note else None,
 			credit_note=request.credit_note,
 			amount=amount,
-			refunded=refunded,
 		)
 
 
@@ -206,19 +214,3 @@ def credit(request) -> None:
 	note.insert(ignore_permissions=True)
 	note.submit()
 	request.db_set("credit_note", note.name)
-	# the documents are kept even if the refund that follows fails, so it is never made twice
-	frappe.db.commit()
-
-
-def refund(request) -> bool:
-	"""Refund an order paid online for the credit note. Returns whether the money went back."""
-	from shop.storefront import payment
-
-	if request.refund:
-		return True
-	if not request.credit_note:
-		return False
-	entry = payment.refund_online(request.sales_order, request.credit_note)
-	if entry:
-		request.db_set("refund", entry)
-	return bool(entry)

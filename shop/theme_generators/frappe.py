@@ -3435,6 +3435,7 @@ def returns_section(refs):
 				"p",
 				text="Need to return or replace something? You have 14 days from shipping.",
 				styles={"color": refs["muted"], "fontSize": "12px", "height": "fit-content", "lineHeight": "1.5", "width": "100%"},
+				dynamicValues=[dv("order.returns.window_note", "innerHTML")],
 			),
 			block(
 				"div",
