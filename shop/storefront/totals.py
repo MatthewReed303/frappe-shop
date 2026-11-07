@@ -69,6 +69,45 @@ def added_tax_rate(template: str | None) -> float:
 	)
 
 
+def tax_template_for(address: frappe._dict | None) -> str | None:
+	"""The sales tax template for an order going to this address: ERPNext's Tax Rules marked "Use
+	for Shopping Cart", matched on shipping and billing country and the customer's group and tax
+	category, as ERPNext matches them; the store's own template when no rule matches."""
+	from erpnext.accounts.doctype.tax_rule.tax_rule import get_tax_template
+	from frappe.utils import nowdate
+
+	from shop.storefront import pricing
+
+	s = settings()
+	country = (address or {}).get("country") or company_country()
+	args = {"tax_type": "Sales", "company": s.company, "use_for_shopping_cart": 1,
+			"shipping_country": country, "billing_country": country}
+	customer = pricing.session_customer()
+	if customer:
+		group, category = frappe.get_cached_value("Customer", customer, ["customer_group", "tax_category"])
+		args.update(customer_group=group, tax_category=category or "")
+	return get_tax_template(nowdate(), args) or s.tax_template
+
+
+def ensure_tax_rules(company: str, home_template: str, export_template: str | None) -> list[str]:
+	"""ERPNext Tax Rules for the store: orders shipped in the company's country use home_template,
+	orders shipped anywhere else use export_template (the more specific rule wins in ERPNext)."""
+	country = frappe.get_cached_value("Company", company, "country")
+	rules = []
+	for template, shipping_country in ((home_template, country), (export_template, None)):
+		if not template:
+			continue
+		filters = {"tax_type": "Sales", "company": company, "use_for_shopping_cart": 1,
+				   "shipping_country": shipping_country or ["is", "not set"]}
+		name = frappe.db.get_value("Tax Rule", filters)
+		doc = frappe.get_doc("Tax Rule", name) if name else frappe.new_doc("Tax Rule")
+		doc.update({"tax_type": "Sales", "company": company, "use_for_shopping_cart": 1, "sales_tax_template": template,
+					"shipping_country": shipping_country, "priority": 1})
+		doc.save(ignore_permissions=True)
+		rules.append(doc.name)
+	return rules
+
+
 def is_export(address: frappe._dict | None) -> bool:
 	return bool(address and address.get("country") and address.country != company_country())
 
@@ -116,13 +155,14 @@ def card_fee_rates(export: bool) -> tuple[float, float]:
 	return flt(s.get("card_fee_percent")) / 100, flt(s.get("card_fee_fixed"))
 
 
-def card_fee_for(total: float, export: bool) -> float:
-	"""The card fee for an order whose total (with tax) is already fixed, e.g. an accepted quote."""
+def card_fee_for(total: float, export: bool, template: str | None = None) -> float:
+	"""The card fee for an order whose total (with tax) is already fixed, e.g. an accepted quote,
+	whose taxes are `template`."""
 	s = settings()
 	percent, fixed = card_fee_rates(export)
 	if not (percent or fixed):
 		return 0.0
-	tax_factor = 1 + (included_tax_rate() / 100 if s.prices_include_tax and not export else 0)
+	tax_factor = 1 + (included_tax_rate(template) / 100 if s.prices_include_tax else 0)
 	fee_ex_tax = (percent * flt(total) + fixed) / (1 - percent * tax_factor)
 	return round_up(fee_ex_tax * tax_factor)
 
@@ -253,7 +293,9 @@ def compute(
 
 	s = settings()
 	address = shipping_module.normalize_address(address)
-	export = is_export(address) and bool(s.get("export_tax_template"))
+	export = is_export(address)
+	# the order's taxes: ERPNext's Tax Rules for the store, as ERPNext picks them for an order
+	template = tax_template_for(address)
 	method = normalize_method(payment_method)
 	base_currency = company_currency()
 	if method == BANK and not currency:
@@ -264,10 +306,11 @@ def compute(
 	rate = exchange_rate(base_currency, currency)
 
 	cart_module.refresh_rates(cart)
-	tax_rate = included_tax_rate() if s.prices_include_tax else 0.0
+	# prices that include tax include the store's own tax; the order's lines include its template's
+	home_rate = included_tax_rate() if s.prices_include_tax else 0.0
+	tax_rate = included_tax_rate(template) if s.prices_include_tax else 0.0
 	tax_factor = 1 + tax_rate / 100
-	# remove included tax for exports
-	price_factor = 1 / tax_factor if export and tax_rate else 1.0
+	price_factor = tax_factor / (1 + home_rate / 100)
 
 	def convert(amount: float) -> float:
 		return flt(amount * rate, 2)
@@ -291,16 +334,14 @@ def compute(
 		chosen = quotes["options"][0]
 	shipping_amount = 0.0
 	if chosen:
-		shipping_amount = customer_amount(chosen["amount"], chosen["tax_included"], export, s)
+		shipping_amount = customer_amount(chosen["amount"], chosen["tax_included"], tax_factor, s)
 		shipping_amount = convert(shipping_amount)
 
 	goods = flt(subtotal - discount + shipping_amount, 2)
 	# tax added on top of the lines (stores whose prices exclude tax)
-	template = s.get("export_tax_template") if export else s.tax_template
 	added = 0.0 if s.prices_include_tax else added_tax_rate(template) / 100
-	taxed_fee_factor = (1 + added) if not export or added else 1.0
-	if s.prices_include_tax and not export:
-		taxed_fee_factor = tax_factor
+	# what a fee line costs the customer with its tax
+	taxed_fee_factor = tax_factor if s.prices_include_tax else 1 + added
 
 	fees = []
 	if method == CARD:
@@ -308,7 +349,7 @@ def compute(
 		if percent or fixed:
 			gross_goods = goods * (1 + added)
 			fee_ex_tax = (percent * gross_goods + fixed * rate) / (1 - percent * taxed_fee_factor)
-			fee = round_up(fee_ex_tax * (taxed_fee_factor if s.prices_include_tax and not export else 1))
+			fee = round_up(fee_ex_tax * (taxed_fee_factor if s.prices_include_tax else 1))
 			fees.append(frappe._dict(kind="card_fee", label=_("Card fee"), item=s.card_fee_item, amount=fee))
 	if method == BANK and currency != base_currency:
 		account = bank_account(currency)
@@ -328,7 +369,7 @@ def compute(
 	tax_added = flt(lines_total * added, 2)
 	total = flt(lines_total + tax_added, 2)
 	tax_included = 0.0
-	if s.prices_include_tax and not export and tax_rate:
+	if s.prices_include_tax and tax_rate:
 		tax_included = flt(total - total / tax_factor, 2)
 
 	return frappe._dict(
@@ -345,7 +386,7 @@ def compute(
 		discount=discount,
 		shipping=frappe._dict(chosen or {}, customer_amount=shipping_amount) if chosen else None,
 		shipping_options=[
-			dict(option, customer_amount=convert(customer_amount(option["amount"], option["tax_included"], export, s)))
+			dict(option, customer_amount=convert(customer_amount(option["amount"], option["tax_included"], tax_factor, s)))
 			for option in quotes["options"]
 		],
 		shipping_messages=quotes.get("messages") or [],
@@ -365,14 +406,12 @@ def domestic_tax_factor(s) -> float:
 	return 1 + rate / 100
 
 
-def customer_amount(amount: float, tax_included: bool, export: bool, s) -> float:
-	"""A shipping line as it goes on the order. When the store's prices include tax, a home order's
-	line includes it too. Otherwise (and for exports) the line is without tax: a carrier price that
-	includes the store's tax has it taken off, and tax is added on the order like any other line."""
-	factor = domestic_tax_factor(s)
-	if s.prices_include_tax and not export:
-		return flt(amount if tax_included else amount * factor, 2)
-	return flt(amount / factor if tax_included else amount, 2)
+def customer_amount(amount: float, tax_included: bool, line_tax_factor: float, s) -> float:
+	"""A shipping line as it goes on the order. A carrier price that includes the store's own tax
+	has it taken off. When the store's prices include tax, the line then includes the order's tax
+	(line_tax_factor, 1 for a tax-free order); otherwise tax is added on the order like any other line."""
+	without_tax = amount / domestic_tax_factor(s) if tax_included else amount
+	return flt(without_tax * line_tax_factor if s.prices_include_tax else without_tax, 2)
 
 
 def tax_label(template: str | None, export: bool) -> str:

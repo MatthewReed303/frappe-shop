@@ -29,7 +29,6 @@
   "fulfillment_provider",
   "auto_send_to_fulfillment",
   "shipping_item",
-  "export_tax_template",
   "payments_section",
   "enable_cod",
   "column_break_payments",
@@ -226,7 +225,8 @@
    "fieldname": "tax_template",
    "fieldtype": "Link",
    "label": "Tax Template",
-   "options": "Sales Taxes and Charges Template"
+   "options": "Sales Taxes and Charges Template",
+   "description": "The store's own taxes, used when no Tax Rule marked \"Use for Shopping Cart\" matches an order. Set Tax Rules (e.g. by shipping country) for other taxes, such as zero-rated exports."
   },
   {
    "collapsible": 1,
@@ -247,13 +247,6 @@
    "options": "Item",
    "label": "Shipping Item",
    "description": "When set, shipping is charged as a line with this item, so the order's taxes apply to it"
-  },
-  {
-   "fieldname": "export_tax_template",
-   "fieldtype": "Link",
-   "options": "Sales Taxes and Charges Template",
-   "label": "Export Tax Template",
-   "description": "Used for orders shipped outside the company's country. Tax included in prices is taken off"
   },
   {
    "fieldname": "card_fee_section",
@@ -400,7 +393,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 15:26:42.416697",
+ "modified": "2026-11-07 15:33:36.180934",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

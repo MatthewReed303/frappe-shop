@@ -16,7 +16,7 @@ from shop.storefront import cart, checkout, payment, shipping, totals
 BUYER = {"email": "totals.buyer@example.com", "full_name": "Totals Buyer", "phone": "021000000"}
 ITEM = "SHOP-DEMO-003"
 SETTINGS_FIELDS = (
-	"prices_include_tax", "tax_template", "export_tax_template", "shipping_item", "card_fee_item",
+	"prices_include_tax", "tax_template", "shipping_item", "card_fee_item",
 	"card_fee_percent", "card_fee_fixed", "card_fee_percent_international", "card_fee_fixed_international",
 	"enable_bank_transfer", "conversion_fee_item", "bank_transfer_days", "require_terms", "terms_url",
 	"terms_and_conditions", "terms_checkbox_note", "business_buyer_label", "flat_shipping_rate", "free_shipping_above", "enable_cod",
@@ -114,7 +114,6 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.set(
 			prices_include_tax=1,
 			tax_template=template(self.company, "Test VAT 15 included", 15, 1),
-			export_tax_template=template(self.company, "Test VAT 0 export", 0, 0),
 			shipping_item=service("TEST-SHIPPING", self.company),
 			card_fee_item=service("TEST-CARD-FEE", self.company),
 			conversion_fee_item=service("TEST-CONVERSION", self.company),
@@ -123,6 +122,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 			enable_bank_transfer=1, bank_transfer_days=7, enable_cod=1,
 			require_terms=0, flat_shipping_rate=0, free_shipping_above=0,
 		)
+		# taxes by ERPNext Tax Rule: home orders the store's template, everywhere else zero-rated
+		self.export_template = template(self.company, "Test VAT 0 export", 0, 0)
+		totals.ensure_tax_rules(self.company, frappe.get_cached_doc("Shop Settings").tax_template, self.export_template)
 		settings = frappe.get_doc("Shop Settings")
 		settings.bank_accounts = []
 		settings.append("bank_accounts", {"bank_account": company_bank_account(self.company, self.company_currency), "label": "Home"})
@@ -181,7 +183,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
 		self.assertTrue(quote.export)
 		self.assertEqual(quote.order_items[0].rate, flt(self.price / 1.15, 2))
-		self.assertEqual(quote.tax_template, frappe.get_cached_doc("Shop Settings").export_tax_template)
+		self.assertEqual(quote.tax_template, self.export_template)  # from the Tax Rule for other countries
 		card = totals.compute(cart.resolve_cart(), self.abroad_address, None, "card")
 		self.assertAlmostEqual(card.fees[0].amount, 0.035 * card.total + 0.30, delta=0.01)
 
@@ -224,7 +226,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 	# --- prices without tax ------------------------------------------------------------
 
 	def without_tax(self):
-		self.set(prices_include_tax=0, tax_template=template(self.company, "Test VAT 15 added", 15, 0))
+		added = template(self.company, "Test VAT 15 added", 15, 0)
+		self.set(prices_include_tax=0, tax_template=added)
+		totals.ensure_tax_rules(self.company, added, self.export_template)
 
 	def test_prices_without_tax_get_tax_added_on_every_line_and_the_invoice_matches(self):
 		self.without_tax()

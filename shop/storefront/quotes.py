@@ -180,7 +180,7 @@ def quote_summary(name: str, token: str | None) -> dict:
 
 def quote_payment_methods(quotation) -> list[dict]:
 	methods = [m for m in totals.payment_methods() if m["method"] in (totals.CARD, totals.BANK, totals.ACCOUNT)]
-	fee = totals.card_fee_for(quotation.grand_total, is_export(quotation))
+	fee = totals.card_fee_for(quotation.grand_total, is_export(quotation), quotation.taxes_and_charges)
 	return [
 		dict(m, fee_note=_("Card fee {0} added").format(totals.money(fee, quotation.currency)) if fee else "")
 		if m["method"] == totals.CARD
@@ -222,7 +222,7 @@ def accept_quote(name: str, token: str, payment_method: str, accept_terms: int =
 			shipping=frappe._dict(json.loads(quotation.shop_shipping_option)) if quotation.get("shop_shipping_option") else None,
 		)
 		set_shop_details(order, order_quote, cint(accept_terms), 0)
-		fee = totals.card_fee_for(quotation.grand_total, is_export(quotation)) if payment_method == totals.CARD else 0
+		fee = totals.card_fee_for(quotation.grand_total, is_export(quotation), quotation.taxes_and_charges) if payment_method == totals.CARD else 0
 		if fee and settings.get("card_fee_item"):
 			order.append("items", {"item_code": settings.card_fee_item, "qty": 1, "rate": fee, "description": _("Card fee")})
 		order.flags.ignore_permissions = True
