@@ -35,6 +35,8 @@ class TestCart(IntegrationTestCase):
 		)[0]
 		payload = cart.add_item(variant)
 		self.assertEqual(payload["items"][0]["slug"], "crew-neck-t-shirt")
+		values = frappe.get_all("Item Variant Attribute", filters={"parent": variant}, pluck="attribute_value", order_by="idx asc")
+		self.assertTrue(payload["items"][0]["product_name"].endswith(" / ".join(values)))
 
 	def in_stock(self, qty, allow_out_of_stock=0, threshold=0):
 		settings = frappe.get_doc("Shop Settings")

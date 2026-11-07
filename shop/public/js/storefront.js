@@ -685,7 +685,7 @@
 
 	async function submitReview(form) {
 		if (!state.reviewRating) {
-			showError("Pick a star rating first.");
+			showError("Pick a star rating first.", form);
 			return;
 		}
 		const data = new FormData(form);
@@ -698,9 +698,12 @@
 				title: data.get("title"),
 				review: data.get("review"),
 			});
-			window.location.reload();
+			const thanks = document.createElement("p");
+			thanks.className = "form-done";
+			thanks.textContent = "Thank you for your review.";
+			form.replaceWith(thanks);
 		} catch (error) {
-			showError(error.message);
+			showError(error.message, form);
 			if (submit) submit.disabled = false;
 		}
 	}

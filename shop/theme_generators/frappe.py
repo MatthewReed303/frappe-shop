@@ -707,7 +707,7 @@ def footer(refs):
 								"Shop",
 								[("All products", "/products"), ("Collections", "/products")],
 							),
-							footer_column(refs, "Support", [("Contact", "/contact"), ("FAQ", "/faq")]),
+							footer_column(refs, "Support", [("About", "/about"), ("Contact", "/contact"), ("FAQ", "/faq")]),
 							footer_column(refs, "Legal", [("Terms", "/terms")]),
 						],
 					),
@@ -1629,22 +1629,6 @@ def pdp_details(refs):
 			),
 			pdp_rating_row(refs),
 			pdp_price_block(refs),
-			block(
-				"a",
-				name="Size Guide",
-				text="Size guide",
-				visibilityCondition={"key": "product.has_variants", "comesFrom": "dataScript"},
-				attrs={"href": "/faq"},
-				styles={
-					"alignSelf": "flex-end",
-					"color": refs["muted"],
-					"fontSize": "12px",
-					"height": "fit-content",
-					"marginBottom": "-34px",
-					"textDecoration": "underline",
-					"width": "fit-content",
-				},
-			),
 			repeater(
 				"product.attribute_options",
 				attribute_group,
@@ -3901,7 +3885,7 @@ FAQS = [
 	),
 	(
 		"How do I pay?",
-		"You can pay online or choose cash on delivery at checkout.",
+		"Online by card, by bank transfer, or cash on delivery, whichever the store offers at checkout.",
 	),
 	(
 		"How do I track my order?",

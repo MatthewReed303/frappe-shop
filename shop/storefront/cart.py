@@ -161,6 +161,7 @@ def cart_payload(cart, money=None) -> dict:
 				"amount": amount,
 				"formatted_amount": money(amount),
 				**products.get(row.shop_product, {}),
+				**variant_name(row.item_code, products.get(row.shop_product, {}).get("product_name")),
 			}
 		)
 	coupon, discount = applied_discount(cart, subtotal)
@@ -249,6 +250,16 @@ def product_details(cart) -> dict:
 			"image": first_image(product.name),
 		}
 	return details
+
+
+def variant_name(item_code: str, product_name: str | None) -> dict:
+	"""A variant's line names its options: "Zip Hoodie – Medium / Charcoal"."""
+	values = frappe.get_all(
+		"Item Variant Attribute", filters={"parent": item_code}, pluck="attribute_value", order_by="idx asc"
+	)
+	if not values or not product_name:
+		return {}
+	return {"product_name": f"{product_name} – {' / '.join(values)}"}
 
 
 def first_image(shop_product: str) -> str | None:

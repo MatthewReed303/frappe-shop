@@ -847,7 +847,7 @@ def footer(refs):
 						mobile={"gap": "22px", "gridTemplateColumns": "repeat(3, minmax(0, 1fr))", "width": "100%"},
 						children=[
 							footer_column(refs, "Shop", [("All products", "/products"), ("Collections", "/products")]),
-							footer_column(refs, "Support", [("Contact", "/contact"), ("FAQ", "/faq")]),
+							footer_column(refs, "Support", [("About", "/about"), ("Contact", "/contact"), ("FAQ", "/faq")]),
 							footer_column(refs, "Legal", [("Terms", "/terms")]),
 						],
 					),
@@ -2060,6 +2060,7 @@ def pdp_rating_row(refs):
 				styles=mono(size="11px", color=refs["ink"], spacing="0.06em", upper=False),
 				dynamicValues=[dv("product.rating.average", "innerHTML")],
 			),
+			run(refs, [(False, "("), (True, "product.rating.count"), (False, " reviews)")], size="11px", family=THEME.mono),
 			block(
 				"a",
 				text="Read reviews",
@@ -2501,6 +2502,7 @@ def coupon_box(refs):
 		visibilityCondition={"key": "cart.coupon.code", "comesFrom": "dataScript"},
 		styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "10px", "width": "100%"},
 		children=[
+			block("p", text="Coupon", styles=mono(size="10px", color=refs["muted"], spacing="0.12em")),
 			block(
 				"p",
 				text="",
@@ -2674,7 +2676,7 @@ def checkout_blocks(refs):
 						 dynamicValues=[dv("bank_currency_note", "innerHTML")]),
 				],
 			),
-			hint(refs, "You will be redirected to a secure payment page to complete your purchase.",
+			hint(refs, "You'll be redirected to a secure payment page to complete your purchase.",
 				 attrs={"data-shop": "gateway-note", "hidden": "hidden"}),
 			terms_box(margin="8px"),
 			submit_button(refs, "Place order"),
@@ -2971,6 +2973,8 @@ def confirmation_blocks(refs):
 					pill(refs, "Continue shopping", href="/products", variant="outline"),
 				],
 			),
+			block("a", text="Need help with your order? Contact support.", attrs={"href": "/contact"},
+				  styles=mono(size="10px", color=refs["muted"], spacing="0.1em")),
 		],
 		name="Section · Order",
 	)
@@ -3416,7 +3420,7 @@ FAQS = [
 		"Yes, within 14 days of delivery, unused and in its original packaging. Ask for a return from your order page and we will arrange a pickup.",
 	),
 	("How do sizes run?", "True to size with a modern fit. If you are between sizes, size up for a relaxed fit."),
-	("How do I pay?", "You can pay online or choose cash on delivery at checkout."),
+	("How do I pay?", "Online by card, by bank transfer, or cash on delivery, whichever the store offers at checkout."),
 	("How do I track my order?", "Open the link in your order email, or sign in with the email you ordered with and open Account."),
 ]
 
