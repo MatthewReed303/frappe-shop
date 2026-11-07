@@ -73,7 +73,7 @@ def get_orders(
 def decorate(orders: list) -> None:
 	for order in orders:
 		order["formatted_total"] = pricing.format_amount(order.grand_total)
-		order["display_status"] = DISPLAY_STATUS.get(order.status, order.status)
+		order["display_status"] = display_status(order)
 		order["payment_status"] = payment.payment_status(frappe.get_doc("Sales Order", order.name))
 		order["fulfillment_status"] = fulfillment_label(order)
 
@@ -85,6 +85,18 @@ FULFILLMENT_LABELS = {
 	"Delivered": "Fulfilled",
 	"Failed": "Unfulfilled",
 }
+
+
+def display_status(order) -> str:
+	"""The order's status for staff. ERPNext calls a delivered order To Bill, but one handed to a
+	carrier is still open until the parcel ships."""
+	from shop.storefront.orders import is_cancelled
+
+	if is_cancelled(order):
+		return "Cancelled"
+	if order.status == "To Bill" and fulfillment_label(order) == "Preparing":
+		return "Open"
+	return DISPLAY_STATUS.get(order.status, order.status)
 
 
 def fulfillment_label(order) -> str:
@@ -116,7 +128,7 @@ def get_order(name: str) -> dict:
 		"transaction_date": str(order.transaction_date),
 		"delivery_date": str(order.delivery_date) if order.delivery_date else None,
 		"status": order.status,
-		"display_status": "Cancelled" if order.docstatus == 2 else DISPLAY_STATUS.get(order.status, order.status),
+		"display_status": display_status(order),
 		"docstatus": order.docstatus,
 		"payment_status": payment.payment_status(order),
 		"amount_due": payment.amount_due(order),

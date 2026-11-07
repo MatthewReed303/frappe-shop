@@ -94,6 +94,7 @@
 					v-model="chosenKey"
 					type="select"
 					label="Provider"
+					@update:model-value="picked = true"
 					:options="providerOptions"
 					class="max-w-xs"
 				/>
@@ -159,6 +160,7 @@ const emit = defineEmits<{ changed: [] }>()
 
 const busy = ref('')
 const chosenKey = ref('')
+const picked = ref(false)
 const showShipDialog = ref(false)
 
 const fulfillment = createResource({
@@ -219,10 +221,11 @@ const chosenProvider = computed(
 	() => providerList.value.find((provider) => provider.key === chosenKey.value) || null,
 )
 
+// the store's default provider, once the settings say which it is, unless staff picked one
 watch(
-	[providerList, defaultProviderKey],
+	[providerList, () => settings.data],
 	() => {
-		if (!chosenKey.value && providerList.value.length) chosenKey.value = defaultProviderKey.value
+		if (!picked.value && providerList.value.length && settings.data) chosenKey.value = defaultProviderKey.value
 	},
 	{ immediate: true },
 )

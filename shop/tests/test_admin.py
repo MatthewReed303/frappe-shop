@@ -176,6 +176,15 @@ class TestAdminApi(IntegrationTestCase):
 		self.assertEqual(saved["weight"], 0.25)
 		self.assertEqual(saved["item_tax_template"], template[0] if template else None)
 
+	def test_an_order_with_its_parcel_being_prepared_is_open(self):
+		name = self.place_order()
+		order = frappe.get_doc("Sales Order", name)
+		order.status = "To Bill"
+		with patch.object(orders, "fulfillment_label", return_value="Preparing"):
+			self.assertEqual(orders.display_status(order), "Open")
+		with patch.object(orders, "fulfillment_label", return_value="Shipped"):
+			self.assertEqual(orders.display_status(order), "Fulfilled")
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True
