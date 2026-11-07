@@ -41,7 +41,7 @@ def bank_instructions(order) -> dict | None:
 	account = totals.bank_account(order.currency)
 	if not account:
 		return None
-	lines = [line.strip() for line in (account.account_details or "").splitlines() if line.strip()]
+	lines = account.details
 	return {
 		"currency": order.currency,
 		"label": account.label or order.currency,

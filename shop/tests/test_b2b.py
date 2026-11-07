@@ -138,7 +138,9 @@ class TestTradeAccounts(IntegrationTestCase):
 		settings.card_fee_item = None
 		settings.enable_bank_transfer = 1
 		settings.bank_accounts = []
-		settings.append("bank_accounts", {"currency": settings.currency, "account_details": "Acct: 1"})
+		from shop.tests.test_checkout_totals import company_bank_account
+
+		settings.append("bank_accounts", {"bank_account": company_bank_account(settings.company, settings.currency)})
 		settings.save(ignore_permissions=True)
 
 		def restore():
@@ -146,7 +148,7 @@ class TestTradeAccounts(IntegrationTestCase):
 			doc.enable_bank_transfer = enabled
 			doc.bank_accounts = []
 			for row in banks:
-				doc.append("bank_accounts", {k: row[k] for k in ("currency", "label", "conversion_fee_percent", "account_details")})
+				doc.append("bank_accounts", {k: row[k] for k in ("bank_account", "label", "conversion_fee_percent", "instructions")})
 			doc.save(ignore_permissions=True)
 
 		self.addCleanup(restore)

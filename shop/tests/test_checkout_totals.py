@@ -38,6 +38,28 @@ def rates_with_tax(context):
 	return [{"id": "test:taxed", "label": "Taxed Courier", "amount": 13.80, "tax_included": True}]
 
 
+def company_bank_account(company: str, currency: str) -> str:
+	"""An ERPNext company Bank Account in a currency, with test details, as a store would set up."""
+	name = f"_Test Shop {currency}"
+	if frappe.db.exists("Bank Account", {"account_name": name, "company": company}):
+		return frappe.db.get_value("Bank Account", {"account_name": name, "company": company})
+	if not frappe.db.exists("Bank", "_Test Shop Bank"):
+		frappe.get_doc({"doctype": "Bank", "bank_name": "_Test Shop Bank", "swift_number": "TESTXX22"}).insert(ignore_permissions=True)
+	parent = frappe.db.get_value("Account", {"company": company, "account_type": "Bank", "is_group": 1}) or frappe.db.get_value(
+		"Account", {"company": company, "root_type": "Asset", "is_group": 1}
+	)
+	account = frappe.db.get_value("Account", {"company": company, "account_name": name})
+	if not account:
+		account = frappe.get_doc(
+			{"doctype": "Account", "account_name": name, "company": company, "parent_account": parent,
+			 "account_type": "Bank", "account_currency": currency}
+		).insert(ignore_permissions=True).name
+	return frappe.get_doc(
+		{"doctype": "Bank Account", "account_name": name, "bank": "_Test Shop Bank", "is_company_account": 1,
+		 "company": company, "account": account, "branch_code": "2", "bank_account_no": "3"}
+	).insert(ignore_permissions=True).name
+
+
 def terms_record() -> str:
 	"""An ERPNext Terms and Conditions record for the store, using Jinja as ERPNext allows."""
 	if not frappe.db.exists("Terms and Conditions", "_Test Store Terms"):
@@ -103,9 +125,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		)
 		settings = frappe.get_doc("Shop Settings")
 		settings.bank_accounts = []
-		settings.append("bank_accounts", {"currency": self.company_currency, "label": "Home", "account_details": "Acct: 1"})
-		settings.append("bank_accounts", {"currency": self.foreign, "label": "Foreign", "conversion_fee_percent": 1,
-										  "account_details": "Routing: 2\nAccount: 3"})
+		settings.append("bank_accounts", {"bank_account": company_bank_account(self.company, self.company_currency), "label": "Home"})
+		settings.append("bank_accounts", {"bank_account": company_bank_account(self.company, self.foreign), "label": "Foreign",
+										  "conversion_fee_percent": 1, "instructions": "Pay by ACH"})
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 		if not frappe.db.exists("Currency Exchange", {"from_currency": self.company_currency, "to_currency": self.foreign}):
@@ -125,7 +147,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		settings.update(self.original)
 		settings.bank_accounts = []
 		for row in self.original_banks:
-			settings.append("bank_accounts", {k: row[k] for k in ("currency", "label", "conversion_fee_percent", "account_details")})
+			settings.append("bank_accounts", {k: row[k] for k in ("bank_account", "label", "conversion_fee_percent", "instructions")})
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 
@@ -178,7 +200,12 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(order.contact_email, BUYER["email"])
 		info = payment.bank_instructions(order)
 		self.assertEqual(info["reference"], order.name)
-		self.assertIn("Routing: 2", info["details"])
+		# the details come from the ERPNext Bank Account, Bank and the account's currency
+		branch = "ACH routing number" if self.foreign == "USD" else "Branch code"
+		self.assertIn(f"{branch}: 2", info["details"])
+		self.assertIn("Account number: 3", info["details"])
+		self.assertIn("BIC/SWIFT: TESTXX22", info["details"])
+		self.assertIn("Pay by ACH", info["details"])
 
 	# --- shipping ----------------------------------------------------------------
 

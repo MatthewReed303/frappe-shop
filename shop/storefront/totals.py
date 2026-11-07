@@ -139,8 +139,51 @@ def card_fee_note(export: bool) -> str:
 	return _("Card fee {0}, added to the total").format(" + ".join(parts))
 
 
+# how a branch code is known in the currency's home banking system
+BRANCH_CODE_LABELS = {"USD": "ACH routing number", "AUD": "BSB", "GBP": "Sort code", "CAD": "Transit number"}
+
+
 def bank_accounts() -> list[frappe._dict]:
-	return [frappe._dict(row.as_dict()) for row in settings().get("bank_accounts") or []]
+	"""The store's bank transfer accounts: ERPNext company Bank Accounts with the currency of
+	their account and the details customers pay to."""
+	rows = []
+	for row in settings().get("bank_accounts") or []:
+		if not row.bank_account:
+			continue
+		account = frappe.get_cached_doc("Bank Account", row.bank_account)
+		if account.disabled:
+			continue
+		currency = frappe.get_cached_value("Account", account.account, "account_currency") if account.account else None
+		if not currency:
+			continue
+		rows.append(
+			frappe._dict(
+				bank_account=row.bank_account,
+				currency=currency,
+				label=row.label or currency,
+				conversion_fee_percent=flt(row.conversion_fee_percent),
+				details=bank_account_details(account, currency) + [
+					line.strip() for line in (row.instructions or "").splitlines() if line.strip()
+				],
+			)
+		)
+	return rows
+
+
+def bank_account_details(account, currency: str) -> list[str]:
+	"""The lines a customer needs to pay into a Bank Account."""
+	bank = frappe.get_cached_doc("Bank", account.bank) if account.bank else None
+	# a company bank account is held by the company
+	holder = frappe.get_cached_value("Company", account.company, "company_name") if account.company else account.account_name
+	lines = [
+		(_("Account name"), holder),
+		(_("Bank"), bank.bank_name if bank else None),
+		(_(BRANCH_CODE_LABELS.get(currency, "Branch code")), account.branch_code),
+		(_("Account number"), account.bank_account_no),
+		(_("IBAN"), account.iban),
+		(_("BIC/SWIFT"), bank.swift_number if bank else None),
+	]
+	return [f"{label}: {value}" for label, value in lines if value]
 
 
 def bank_currencies() -> list[str]:
