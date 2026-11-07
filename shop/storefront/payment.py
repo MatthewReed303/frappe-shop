@@ -95,22 +95,10 @@ def on_payment_entry(doc, method=None) -> None:
 
 
 def notify_paid(order) -> None:
-	if not order.contact_email:
-		return
+	from shop.storefront import emails
+
 	invoice = order_invoice(order.name)
-	message = _("<p>Thank you, we've received your payment for order {0}. We'll let you know when it ships.</p>").format(
-		order.name
-	)
-	if invoice:
-		message += _("<p>Your invoice {0} is attached.</p>").format(invoice)
-	send_email(
-		recipients=[order.contact_email],
-		subject=_("Payment received for order {0}").format(order.name),
-		message=message,
-		attachments=invoice_attachments(invoice),
-		reference_doctype="Sales Order",
-		reference_name=order.name,
-	)
+	emails.send("payment_received", order.contact_email, order, attachments=invoice_attachments(invoice), invoice=invoice)
 
 
 def order_invoice(order_name: str) -> str | None:
@@ -204,20 +192,9 @@ def cancel_if_unpaid(name: str) -> bool:
 
 
 def notify_cancelled(order) -> None:
-	if not order.contact_email:
-		return
-	store = frappe.get_cached_doc("Shop Settings").store_name or _("our store")
-	send_email(
-		recipients=[order.contact_email],
-		subject=_("Your order {0} has been cancelled").format(order.name),
-		message=_(
-			"<p>We didn't receive payment for order {0} by {1}, so it has been cancelled.</p>"
-			"<p>If you still want the items, please place a new order at {2}. If you have paid, reply to this "
-			"email and we'll sort it out.</p>"
-		).format(order.name, frappe.utils.formatdate(order.shop_payment_due), frappe.utils.escape_html(store)),
-		reference_doctype="Sales Order",
-		reference_name=order.name,
-	)
+	from shop.storefront import emails
+
+	emails.send("order_cancelled", order.contact_email, order, due_date=frappe.utils.formatdate(order.shop_payment_due))
 
 
 def send_email(**kwargs) -> None:

@@ -250,28 +250,24 @@ def queue_confirmation_email(sales_order, email: str, confirmation_url: str):
 	try:
 		from shop.storefront import payment
 
+		from shop.storefront import emails
+
 		bank = payment.method(sales_order) == totals.BANK and not payment.is_paid(sales_order)
-		attachments = payment.invoice_attachments(payment.order_invoice(sales_order.name))
-		frappe.sendmail(
-			recipients=[email],
-			attachments=attachments,
-			subject=(
-				_("Your order {0}: how to pay").format(sales_order.name)
-				if bank
-				else _("Your order {0} is confirmed").format(sales_order.name)
-			),
-			message=confirmation_email_html(sales_order, confirmation_url),
-			reference_doctype="Sales Order",
-			reference_name=sales_order.name,
+		emails.send(
+			"order_payment_instructions" if bank else "order_confirmed",
+			email,
+			sales_order,
+			attachments=payment.invoice_attachments(payment.order_invoice(sales_order.name)),
+			**order_email_parts(sales_order, confirmation_url),
 		)
 	except Exception:
 		frappe.log_error(title="Order confirmation email failed")
 
 
-def confirmation_email_html(sales_order, confirmation_url: str) -> str:
+def order_email_parts(sales_order, confirmation_url: str) -> dict:
+	"""The pieces the order emails' templates show: lines and totals, how to pay, links, terms."""
 	from shop.storefront import payment
 
-	settings = frappe.get_cached_doc("Shop Settings")
 	esc = frappe.utils.escape_html
 
 	def fmt(amount):
@@ -294,8 +290,12 @@ def confirmation_email_html(sales_order, confirmation_url: str) -> str:
 		if not tax.included_in_print_rate and tax.tax_amount:
 			rows += row(tax.description, fmt(tax.tax_amount))
 	rows += row(_("Total"), f"{fmt(sales_order.grand_total)} {sales_order.currency}", bold=True)
-	included = sum(frappe.utils.flt(t.tax_amount_after_discount_amount) for t in sales_order.taxes if t.included_in_print_rate)
-	tax_note = f"<p style='color:#666;font-size:13px'>{esc(_('Includes {0} GST').format(fmt(included)))}</p>" if included else ""
+	included_rows = [t for t in sales_order.taxes if t.included_in_print_rate]
+	included = sum(frappe.utils.flt(t.tax_amount_after_discount_amount) for t in included_rows)
+	tax_note = (
+		f"<p style='color:#666;font-size:13px'>{esc(_('Includes {0}: {1}').format(included_rows[0].description, fmt(included)))}</p>"
+		if included else ""
+	)
 	pay = ""
 	if sales_order.get("shop_payment_method") == totals.ACCOUNT:
 		invoice = frappe.db.get_value(
@@ -324,16 +324,12 @@ def confirmation_email_html(sales_order, confirmation_url: str) -> str:
 			f"<p style='color:#666;font-size:13px'>{esc(_('You accepted our terms and conditions ({0}):').format(sales_order.shop_terms_version))} "
 			f"<a href='{frappe.utils.get_url(terms_url)}'>{esc(frappe.utils.get_url(terms_url))}</a></p>"
 		)
-	return f"""
-	<p>{esc(_("Thank you for your order at {0}.").format(settings.store_name or _("our store")))}</p>
-	<p>{esc(_("Order"))}: <b>{esc(sales_order.name)}</b></p>
-	<table style="width:100%;max-width:520px;border-collapse:collapse">{rows}</table>
-	{tax_note}
-	{payment.bank_instructions_html(sales_order)}
-	{pay}
-	<p><a href="{frappe.utils.get_url(confirmation_url)}">{esc(_("View your order"))}</a></p>
-	{terms}
-	"""
+	return {
+		"lines_html": f"<table style='width:100%;max-width:520px;border-collapse:collapse'>{rows}</table>{tax_note}",
+		"payment_html": payment.bank_instructions_html(sales_order) + pay,
+		"order_url": frappe.utils.get_url(confirmation_url),
+		"terms_html": terms,
+	}
 
 
 @contextmanager

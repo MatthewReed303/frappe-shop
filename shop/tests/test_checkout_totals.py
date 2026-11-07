@@ -350,6 +350,34 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 2)
 		self.assertEqual(sendmail.call_args.kwargs["recipients"], [BUYER["email"]])
 
+	def test_store_emails_are_editable_email_templates(self):
+		from shop.storefront import emails
+
+		emails.ensure_templates()
+		for name, *_rest in emails.TEMPLATES.values():
+			self.assertTrue(frappe.db.exists("Email Template", name), name)
+		template = frappe.get_doc("Email Template", "Shop: Order Cancelled")
+		template.subject = "Order {{ doc.name }} was cancelled ({{ store_name }})"
+		template.save(ignore_permissions=True)
+		self.basket(1)
+		name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank")["sales_order"]
+		frappe.db.set_value("Sales Order", name, "shop_payment_due", add_days(nowdate(), -1))
+		with patch("frappe.sendmail") as sendmail:
+			payment.cancel_if_unpaid(name)
+		kwargs = sendmail.call_args.kwargs
+		self.assertTrue(kwargs["subject"].startswith(f"Order {name} was cancelled ("))
+		self.assertEqual((kwargs["reference_doctype"], kwargs["reference_name"]), ("Sales Order", name))
+		emails.ensure_templates()  # an edited template is never overwritten
+		self.assertEqual(frappe.db.get_value("Email Template", "Shop: Order Cancelled", "subject"), template.subject)
+
+	def test_shopper_text_is_escaped_in_emails(self):
+		from shop.storefront import emails
+
+		doc = frappe._dict(doctype="Lead", name="X", company_name="<b>Evil</b> Ltd", country="")
+		subject, body = emails.render("trade_application_declined", doc, reason="<script>x</script>")
+		self.assertNotIn("<script>", body)
+		self.assertNotIn("<b>Evil</b>", body)
+
 	def test_paid_bank_order_is_not_cancelled(self):
 		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 

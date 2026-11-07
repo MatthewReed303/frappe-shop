@@ -16,6 +16,7 @@ def after_migrate():
 def setup():
 	create_shop_manager_role()
 	create_order_fields()
+	create_email_templates()
 	sync_templates()
 	apply_default_theme()
 	apply_route_prefix()
@@ -33,6 +34,12 @@ def enable_customer_signup():
 		frappe.db.set_single_value("Website Settings", "disable_signup", 1)
 	elif frappe.db.get_single_value("Website Settings", "disable_signup"):
 		frappe.db.set_single_value("Website Settings", "disable_signup", 0)
+
+
+def create_email_templates():
+	from shop.storefront.emails import ensure_templates
+
+	ensure_templates()
 
 
 def sync_agent():

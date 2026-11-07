@@ -24,7 +24,7 @@ VALID_DAYS = 30
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=60 * 10)
 def request_quote(customer: dict, address: dict, shipping_option: str | None = None, message: str | None = None) -> dict:
-	from shop.storefront.accounts import send, staff_emails
+	from shop.storefront.accounts import staff_emails
 	from shop.storefront.checkout import create_address, elevated, get_or_create_customer
 
 	cart = cart_module.resolve_cart()
@@ -81,17 +81,13 @@ def request_quote(customer: dict, address: dict, shipping_option: str | None = N
 			)
 		quotation.flags.ignore_permissions = True
 		quotation.insert(ignore_permissions=True)
-		esc = frappe.utils.escape_html
-		send(customer["email"], _("We've received your quote request {0}").format(quotation.name),
-			 _("<p>Thanks, we've received your request. We'll check it and email you the quote, usually "
-			   "within one working day.</p>"), "Quotation", quotation.name)
-		staff = staff_emails()
-		if staff:
-			send(staff, _("Quote request {0} from {1}").format(quotation.name, customer["full_name"]),
-				 f"<p>{esc(customer['full_name'])} ({esc(customer['email'])}) asked for a quote.</p>"
-				 f"<p>{esc(message or '')}</p>"
-				 f'<p><a href="{frappe.utils.get_url("/desk/quotation/" + quotation.name)}">Open the quotation</a></p>',
-				 "Quotation", quotation.name)
+		from shop.storefront import emails
+
+		emails.send("quote_request_received", customer["email"], quotation)
+		emails.send(
+			"quote_request_staff", staff_emails(), quotation, customer_name=customer["full_name"],
+			email=customer["email"], message=message or "", desk_url=frappe.utils.get_url("/desk/quotation/" + quotation.name),
+		)
 	return {"quote": quotation.name, "message": _("Thanks. We'll email your quote.")}
 
 
@@ -111,13 +107,10 @@ def send_quote(name: str) -> str:
 		frappe.throw(_("The quotation has no contact email"))
 	if not quotation.get("shop_access_token"):
 		quotation.db_set("shop_access_token", frappe.generate_hash(length=32))
-	from shop.storefront.accounts import send
+	from shop.storefront import emails
 
 	link = quote_url(quotation.name, quotation.shop_access_token)
-	send(email, _("Your quote {0}").format(quotation.name),
-		 _("<p>Here is your quote. It's valid until {0}.</p><p><a href=\"{1}\">View and accept the quote</a></p>").format(
-			 frappe.utils.formatdate(quotation.valid_till), link),
-		 "Quotation", quotation.name)
+	emails.send("quote_ready", email, quotation, quote_url=link, valid_till=frappe.utils.formatdate(quotation.valid_till))
 	quotation.add_comment("Info", _("Quote emailed to {0}.").format(email))
 	return link
 

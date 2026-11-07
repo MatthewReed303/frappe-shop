@@ -160,12 +160,10 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 		lead.insert(ignore_permissions=True)
 		if values["address_line1"] and values["city"]:
 			add_address("Lead", lead.name, values)
-		notify_staff_of_application(lead)
-		store = frappe.get_cached_doc("Shop Settings").store_name or _("our store")
-		send(values["email"], _("We've received your trade account application"),
-			 _("<p>Thanks for applying for a {0} trade account for {1}. We'll review it and email you.</p>").format(
-				 frappe.utils.escape_html(store), frappe.utils.escape_html(values["company_name"])),
-			 "Lead", lead.name)
+		from shop.storefront import emails
+
+		emails.send("trade_application_staff", staff_emails(), lead, desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"))
+		emails.send("trade_application_received", values["email"], lead)
 	return {"name": lead.name, "message": _("Thanks. We'll review your application and email you.")}
 
 
@@ -176,17 +174,6 @@ def pending_application(email: str) -> str | None:
 		{"email_id": email, "utm_source": trade_source(), "status": ["!=", "Converted"],
 		 "qualification_status": ["!=", "Unqualified"]},
 	)
-
-
-def notify_staff_of_application(lead) -> None:
-	recipients = staff_emails()
-	if not recipients:
-		return
-	link = frappe.utils.get_url(f"/desk/lead/{lead.name}")
-	send(recipients, _("Trade account application: {0}").format(lead.company_name),
-		 f"<p>{frappe.utils.escape_html(lead.company_name)} ({frappe.utils.escape_html(lead.country or '')}) applied for a trade account.</p>"
-		 f'<p><a href="{link}">Review the application</a></p>',
-		 "Lead", lead.name)
 
 
 def staff_emails() -> list[str]:
@@ -255,15 +242,12 @@ def approve_trade(
 	doc.reload()
 	doc.db_set({"status": "Converted", "customer": customer.name, "qualification_status": "Qualified",
 				"qualified_by": frappe.session.user, "qualified_on": nowdate()})
-	store = frappe.get_cached_doc("Shop Settings").store_name or _("store")
-	send(doc.email_id, _("Your {0} trade account is ready").format(store),
-		 _("<p>Your trade account for {0} is approved. Sign in to see your trade prices{1}.</p>"
-		   "<p><a href=\"{2}\">Sign in</a></p>").format(
-			 frappe.utils.escape_html(doc.company_name),
-			 _(" and pay on account") if cint(allow_on_account) else "",
-			 frappe.utils.get_url("/login?redirect-to=" + store_url("account/orders")),
-		 ),
-		 "Lead", doc.name)
+	from shop.storefront import emails
+
+	emails.send(
+		"trade_account_approved", doc.email_id, doc, on_account=bool(cint(allow_on_account)),
+		sign_in_url=frappe.utils.get_url("/login?redirect-to=" + store_url("account/orders")),
+	)
 	return {"customer": customer.name, "user": user}
 
 
@@ -297,26 +281,9 @@ def decline_trade(lead: str, reason: str | None = None) -> None:
 		doc.append("notes", {"note": frappe.utils.escape_html(reason), "added_by": frappe.session.user, "added_on": now_datetime()})
 	doc.qualification_status = "Unqualified"
 	doc.save(ignore_permissions=True)
-	store = frappe.get_cached_doc("Shop Settings").store_name or _("store")
-	send(doc.email_id, _("Your {0} trade account application").format(store),
-		 _("<p>Thank you for applying. We can't open a trade account for {0} at the moment.</p>{1}"
-		   "<p>You can still buy at retail prices in the store.</p>").format(
-			 frappe.utils.escape_html(doc.company_name),
-			 f"<p>{frappe.utils.escape_html(reason)}</p>" if reason else "",
-		 ),
-		 "Lead", doc.name)
+	from shop.storefront import emails
 
-
-def send(recipients, subject: str, message: str, doctype: str, name: str) -> None:
-	from shop.storefront.payment import send_email
-
-	send_email(
-		recipients=recipients if isinstance(recipients, list) else [recipients],
-		subject=subject,
-		message=message,
-		reference_doctype=doctype,
-		reference_name=name,
-	)
+	emails.send("trade_application_declined", doc.email_id, doc, reason=reason or "")
 
 
 # --- account overview --------------------------------------------------------------

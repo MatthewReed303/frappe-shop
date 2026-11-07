@@ -87,35 +87,21 @@ def apply_result(fulfillment, result: dict) -> None:
 
 def notify_customer(fulfillment, status: str) -> None:
 	"""Tell the customer their order has shipped (with tracking) or been delivered."""
-	order = frappe.db.get_value("Sales Order", fulfillment.sales_order, ["contact_email", "name"], as_dict=True)
-	if not order or not order.contact_email:
+	if not frappe.db.get_value("Sales Order", fulfillment.sales_order, "contact_email"):
 		return
-	esc = frappe.utils.escape_html
 	from shop.routes import store_url
+	from shop.storefront import emails
 
-	token = frappe.db.get_value("Shop Cart", {"sales_order": order.name}, "token")
+	order = frappe.get_doc("Sales Order", fulfillment.sales_order)
+	token = frappe.db.get_value("Shop Cart", {"sales_order": order.name}, "token") or order.get("shop_access_token")
 	link = frappe.utils.get_url(store_url(f"order-confirmation/{order.name}" + (f"?token={token}" if token else "")))
 	if status == "Shipped":
-		subject = _("Your order {0} is on its way").format(order.name)
-		body = f"<p>{esc(_('Good news: your order {0} has shipped.').format(order.name))}</p>"
-		if fulfillment.carrier or fulfillment.tracking_number:
-			body += f"<p>{esc(' · '.join(filter(None, [fulfillment.carrier, fulfillment.tracking_number])))}</p>"
-		if fulfillment.tracking_url:
-			body += f'<p><a href="{esc(fulfillment.tracking_url)}">{esc(_("Track your parcel"))}</a></p>'
-	else:
-		subject = _("Your order {0} has been delivered").format(order.name)
-		body = f"<p>{esc(_('Your order {0} has been delivered. Thank you for shopping with us.').format(order.name))}</p>"
-	body += f'<p><a href="{link}">{esc(_("View your order"))}</a></p>'
-	try:
-		frappe.sendmail(
-			recipients=[order.contact_email],
-			subject=subject,
-			message=body,
-			reference_doctype="Sales Order",
-			reference_name=order.name,
+		emails.send(
+			"order_shipped", order.contact_email, order, order_url=link, tracking_url=fulfillment.tracking_url,
+			carrier_line=" · ".join(filter(None, [fulfillment.carrier, fulfillment.tracking_number])),
 		)
-	except Exception:
-		frappe.log_error(title="Shipping notification email failed")
+	else:
+		emails.send("order_delivered", order.contact_email, order, order_url=link)
 
 
 def record_delivery(fulfillment) -> None:
