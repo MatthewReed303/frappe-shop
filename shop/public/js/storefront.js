@@ -608,6 +608,7 @@
 		else if (action === "qty-dec") setQty(target.dataset.itemCode, rowQty(target.dataset.itemCode) - 1);
 		else if (action === "remove") setQty(target.dataset.itemCode, 0);
 		else if (action === "request-quote") submitQuoteRequest(target);
+		else if (action === "forgot-password") forgotPassword(target.closest("form"));
 	});
 
 	document.addEventListener("keydown", (event) => {
@@ -620,6 +621,9 @@
 		if (form.dataset.shop === "checkout-form") {
 			event.preventDefault();
 			submitCheckout(form);
+		} else if (form.dataset.shop === "signin-form") {
+			event.preventDefault();
+			signIn(form);
 		} else if (form.dataset.shop === "register-form") {
 			event.preventDefault();
 			submitAccountForm(form, "shop.storefront.accounts.register", (data) => ({
@@ -671,7 +675,7 @@
 		} else if (prompt) {
 			prompt.setAttribute(
 				"href",
-				"/login?redirect-to=" + encodeURIComponent(window.location.pathname)
+				base + "/account/signin?redirect-to=" + encodeURIComponent(window.location.pathname)
 			);
 		}
 	}
@@ -762,6 +766,49 @@
 		} catch (error) {
 			showError(error.message);
 			if (submit) submit.disabled = false;
+		}
+	}
+
+	// Frappe's own login and password reset, from the store's sign-in page
+	async function signIn(form) {
+		const data = new FormData(form);
+		const submit = form.querySelector('[type="submit"]');
+		const next = form.dataset.redirect || base + "/account/orders";
+		hideError(form);
+		if (submit) submit.disabled = true;
+		let result;
+		try {
+			result = await call("login", { usr: data.get("email"), pwd: data.get("password") });
+		} catch (error) {
+			showError("That email and password don't match an account. Check them, or reset your password.", form);
+			if (submit) submit.disabled = false;
+			return;
+		}
+		// two-factor sign-in needs Frappe's own page
+		if (result === undefined || (result && result.verification)) {
+			window.location.href = "/login?redirect-to=" + encodeURIComponent(next);
+			return;
+		}
+		window.location.href = next;
+	}
+
+	async function forgotPassword(form) {
+		const email = form && form.querySelector('[name="email"]');
+		if (!email || !email.value || !email.checkValidity()) {
+			showError("Enter your email address first, then choose Forgot your password.", form);
+			if (email) email.focus();
+			return;
+		}
+		hideError(form);
+		const done = form.parentElement.querySelector('[data-shop="form-done"]');
+		try {
+			await call("frappe.core.doctype.user.user.reset_password", { user: email.value });
+			if (done) {
+				done.textContent = "If " + email.value + " has an account, we've emailed it a link to set a new password.";
+				done.hidden = false;
+			}
+		} catch (error) {
+			showError(error.message, form);
 		}
 	}
 

@@ -13,7 +13,16 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
-from shop.theme_generators.store_ui import form_error, hint, notice, pager, shown_with_form, store_css, terms_box
+from shop.theme_generators.store_ui import (
+	forgot_password,
+	form_error,
+	hint,
+	notice,
+	pager,
+	shown_with_form,
+	store_css,
+	terms_box,
+)
 from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "dot"
@@ -79,6 +88,7 @@ def _generate():
 			False,
 		),
 		("dot-account-orders", "Your Orders", "account/orders", build("account_blocks", account_blocks), "account_orders", (), True),
+		("dot-signin", "Sign in", "account/signin", build("signin_blocks", signin_blocks), "signin_page", (), False),
 		("dot-register", "Create an account", "account/register", build("register_blocks", register_blocks), "register_page", (), False),
 		("dot-trade", "Trade account", "account/trade", build("trade_blocks", trade_blocks), "trade_page", ("prefill", "default_country"), False),
 		("dot-quote", "Your quote", "quote/:quote_id", build("quote_blocks", quote_blocks), "quote_page", (), False),
@@ -2235,7 +2245,7 @@ def review_form_panel(refs):
 				"a",
 				name="Review Sign-in",
 				text="Sign in to write a review",
-				attrs={"data-shop": "review-signin", "href": "/login"},
+				attrs={"data-shop": "review-signin", "href": "/account/signin"},
 				styles={**mono(size="11px", color=refs["ink"], spacing="0.12em"), "textDecoration": "underline"},
 			),
 			form,
@@ -3234,7 +3244,7 @@ def account_blocks(refs):
 						block(
 							"a",
 							text="Sign out",
-							attrs={"href": "/login", "data-shop": "sign-out"},
+							attrs={"href": "/account/signin", "data-shop": "sign-out"},
 							styles=mono(size="10px", color=refs["muted"], spacing="0.14em"),
 						)
 					],
@@ -3256,6 +3266,22 @@ def page_blocks(refs, index, title, subtitle, children):
 	])
 
 
+def signin_blocks(refs):
+	"""Signing in to the store with Frappe's login, and its password reset."""
+	form = shown_with_form(block("form", name="Sign In Form", attrs={"data-shop": "signin-form"}, classes=["account-form"],
+								 dynamicValues=[dv("redirect_to", "data-redirect", "attribute")], children=[
+		input_block(refs, "email", "Email address", "email", required=True),
+		input_block(refs, "password", "Password", "password", required=True),
+		forgot_password(refs),
+		form_error(),
+		submit_button(refs, "Sign in"),
+	]))
+	return page_blocks(refs, "( Account )", "Sign in", "See your orders, invoices and quotes, and check out faster.",
+					   [form, block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
+						hint(refs, 'New here? <a href="/account/register">Create an account</a>. Buying for a business? '
+								   '<a href="/account/trade">Apply for a trade account</a>.')])
+
+
 def register_blocks(refs):
 	"""Store sign-up: a Website User and Customer, with the store's terms accepted."""
 	form = shown_with_form(block("form", name="Register Form", attrs={"data-shop": "register-form"}, classes=["account-form"], children=[
@@ -3268,7 +3294,7 @@ def register_blocks(refs):
 	return page_blocks(refs, "( Account )", "Create an account",
 					   "Track your orders, see invoices and quotes, and check out faster. We'll email you a link to set your password.",
 					   [form, block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
-						hint(refs, 'Already have an account? <a href="/login">Sign in</a>. Buying for a business? '
+						hint(refs, 'Already have an account? <a href="/account/signin">Sign in</a>. Buying for a business? '
 								   '<a href="/account/trade">Apply for a trade account</a>.')])
 
 

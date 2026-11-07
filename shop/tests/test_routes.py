@@ -9,6 +9,7 @@ from shop.routes import (
 	rewrite_blocks,
 	rewrite_html,
 	rewrite_url,
+	signin_url,
 	store_url,
 	with_prefix_script,
 )
@@ -20,6 +21,14 @@ class TestRouteHelpers(UnitTestCase):
 		self.assertEqual(normalize_prefix(" /Store/ "), "store")
 		self.assertEqual(normalize_prefix("shop//nz"), "shop/nz")
 		self.assertEqual(normalize_prefix(None), "")
+
+	def test_signin_comes_back_only_to_this_site(self):
+		from shop.storefront.page_data import return_path
+
+		self.assertEqual(signin_url("/store/cart"), store_url("account/signin") + "?redirect-to=/store/cart")
+		self.assertEqual(return_path("/store/product/mug"), "/store/product/mug")
+		for elsewhere in ("https://example.com", "//example.com", "/\\example.com", None):
+			self.assertEqual(return_path(elsewhere), store_url("account/orders"))
 
 	def test_store_url(self):
 		self.assertEqual(store_url("cart", prefix="store"), "/store/cart")

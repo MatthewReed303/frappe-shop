@@ -12,6 +12,7 @@ The prefix comes from Shop Settings > Route Prefix, falling back to the
 
 import json
 import re
+from urllib.parse import quote
 
 import frappe
 
@@ -67,6 +68,12 @@ def store_url(path: str = "", prefix: str | None = None) -> str:
 	if not path:
 		return base or "/"
 	return f"{base}/{path}"
+
+
+def signin_url(redirect_to: str | None = None) -> str:
+	"""The store's sign-in page, coming back to redirect_to."""
+	url = store_url("account/signin")
+	return f"{url}?redirect-to={quote(redirect_to)}" if redirect_to else url
 
 
 def page_route(template_route: str, prefix: str | None = None) -> str:

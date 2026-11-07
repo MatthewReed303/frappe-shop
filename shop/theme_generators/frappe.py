@@ -13,7 +13,16 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
-from shop.theme_generators.store_ui import form_error, hint, notice, pager, shown_with_form, store_css, terms_box
+from shop.theme_generators.store_ui import (
+	forgot_password,
+	form_error,
+	hint,
+	notice,
+	pager,
+	shown_with_form,
+	store_css,
+	terms_box,
+)
 from shop.theme_generators.theme import Theme as SiteTheme
 
 GROUP = "frappe"
@@ -77,6 +86,7 @@ def _generate():
 			False,
 		),
 		("frappe-account-orders", "Your Orders", "account/orders", build("account_blocks", account_blocks), "account_orders", (), True),
+		("frappe-signin", "Sign in", "account/signin", build("signin_blocks", signin_blocks), "signin_page", (), False),
 		("frappe-register", "Create an account", "account/register", build("register_blocks", register_blocks), "register_page", (), False),
 		("frappe-trade", "Trade account", "account/trade", build("trade_blocks", trade_blocks), "trade_page", ("prefill", "default_country"), False),
 		("frappe-quote", "Your quote", "quote/:quote_id", build("quote_blocks", quote_blocks), "quote_page", (), False),
@@ -2289,7 +2299,7 @@ def review_form_section(refs):
 		"a",
 		name="Review Sign-in",
 		text="Sign in to write a review",
-		attrs={"data-shop": "review-signin", "href": "/login"},
+		attrs={"data-shop": "review-signin", "href": "/account/signin"},
 		styles={
 			"color": refs["ink"],
 			"fontSize": "14px",
@@ -3592,7 +3602,7 @@ def account_blocks(refs):
 			block(
 				"a",
 				text="Sign out",
-				attrs={"href": "/login", "data-shop": "sign-out"},
+				attrs={"href": "/account/signin", "data-shop": "sign-out"},
 				styles={"color": refs["muted"], "fontSize": "13px", "textDecoration": "underline", "width": "fit-content"},
 			),
 			block(
@@ -3642,6 +3652,25 @@ def html_block(key, name, classes=None):
 	return block("div", text="", name=name, classes=classes or [], styles={"width": "100%"}, dynamicValues=[dv(key, "innerHTML")])
 
 
+def signin_blocks(refs):
+	"""Signing in to the store with Frappe's login, and its password reset."""
+	form = shown_with_form(block("form", name="Sign In Form", attrs={"data-shop": "signin-form"}, classes=["account-form"],
+								 dynamicValues=[dv("redirect_to", "data-redirect", "attribute")], children=[
+		input_block(refs, "email", "Email address", "email", required=True),
+		input_block(refs, "password", "Password", "password", required=True),
+		forgot_password(refs),
+		form_error(),
+		submit_button(refs, "Sign in"),
+	]))
+	return page_shell(refs, "Sign in", [
+		intro(refs, "See your orders, invoices and quotes, and check out faster."),
+		form,
+		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
+		hint(refs, 'New here? <a href="/account/register">Create an account</a>. Buying for a business? '
+				   '<a href="/account/trade">Apply for a trade account</a>.'),
+	], width="560px")
+
+
 def register_blocks(refs):
 	"""Store sign-up: a Website User and Customer, with the store's terms accepted."""
 	form = shown_with_form(block("form", name="Register Form", attrs={"data-shop": "register-form"}, classes=["account-form"], children=[
@@ -3655,7 +3684,7 @@ def register_blocks(refs):
 		intro(refs, "Track your orders, see invoices and quotes, and check out faster. We'll email you a link to set your password."),
 		form,
 		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
-		hint(refs, 'Already have an account? <a href="/login">Sign in</a>. Buying for a business? '
+		hint(refs, 'Already have an account? <a href="/account/signin">Sign in</a>. Buying for a business? '
 				   '<a href="/account/trade">Apply for a trade account</a>.'),
 	], width="560px")
 

@@ -18,6 +18,7 @@ Every storefront page gets its data from a one line page data script that calls
 | `checkout`                     | `checkout_page`      | `store`, `cart`, `payment_methods`, `addresses`, `prefill`, `countries`, `terms`            |
 | `order-confirmation/:order_id` | `order_confirmation` | `store`, `order` (with `totals_html`, `payment_html`)                                       |
 | `account/orders`               | `account_orders`     | `store`, `orders`, `account_html`, `trade`                                                  |
+| `account/signin`               | `signin_page`        | `store`, `show_form`, `notice`, `redirect_to` (Frappe's login and password reset)             |
 | `account/register`             | `register_page`      | `store`, `terms`, `show_form`, `notice`                                                     |
 | `account/trade`                | `trade_page`         | `store`, `terms`, `countries`, `prefill`, `industries`, `show_form`, `notice`               |
 | `quote/:quote_id`              | `quote_page`         | `store`, `quote`, `quote_invalid`, `terms`                                                  |

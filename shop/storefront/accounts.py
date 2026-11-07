@@ -8,7 +8,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, cstr, flt, now_datetime, nowdate, validate_email_address
 
-from shop.routes import store_url
+from shop.routes import signin_url, store_url
 from shop.storefront import pricing
 
 
@@ -343,7 +343,7 @@ def approve_trade(
 		doc.email_id,
 		doc,
 		on_account=bool(cint(allow_on_account)),
-		sign_in_url=frappe.utils.get_url("/login?redirect-to=" + store_url("account/orders")),
+		sign_in_url=frappe.utils.get_url(signin_url(store_url("account/orders"))),
 	)
 	return {"customer": customer.name, "user": user}
 

@@ -15,10 +15,10 @@ class TestThemes(IntegrationTestCase):
 		settings = frappe.get_doc("Shop Settings")
 		self.assertEqual(settings.active_theme, "frappe")
 		live_pages = frappe.get_all("Builder Page", filters={"is_template": 0}, fields=["route", "published"])
-		self.assertEqual(len(live_pages), 15)
+		self.assertEqual(len(live_pages), 16)
 		routes = {page.route for page in live_pages}
 		# the store's account, trade, quote and terms pages are part of the theme
-		for route in ("account/register", "account/trade", "quote/:quote_id", "terms"):
+		for route in ("account/signin", "account/register", "account/trade", "quote/:quote_id", "terms"):
 			self.assertTrue(any(r.endswith(route) for r in routes), route)
 		self.assertTrue(all(page.published for page in live_pages))
 

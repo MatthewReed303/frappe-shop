@@ -3,7 +3,7 @@ from frappe import _
 from frappe.utils import cint, escape_html, flt
 from frappe.utils.caching import redis_cache
 
-from shop.routes import store_url
+from shop.routes import signin_url, store_url
 from shop.storefront import cart, catalog, checkout, orders, pricing, product
 
 PAGE_SIZE = 24
@@ -359,6 +359,25 @@ def register_page() -> dict:
 
 
 @frappe.whitelist(allow_guest=True)
+def signin_page() -> dict:
+	signed_in = frappe.session.user != "Guest"
+	return {
+		"store": store_details(),
+		"show_form": None if signed_in else "true",
+		"notice": _("You're signed in. Your orders and invoices are on your account page.") if signed_in else None,
+		"redirect_to": return_path(frappe.form_dict.get("redirect-to")),
+		"register_url": store_url("account/register"),
+	}
+
+
+def return_path(path: str | None) -> str:
+	"""Where to go after signing in: a page on this site, else the account page."""
+	if path and path.startswith("/") and not path.startswith("//") and "\\" not in path:
+		return path
+	return store_url("account/orders")
+
+
+@frappe.whitelist(allow_guest=True)
 def trade_page() -> dict:
 	from shop.storefront import accounts, checkout
 
@@ -428,9 +447,7 @@ def store_details() -> dict:
 		"returns_note": returns_note,
 		"delivery_card": "true" if delivery_note or returns_note or settings.enable_cod else None,
 		"account_label": frappe._("Account") if signed_in else frappe._("Sign in"),
-		"account_url": store_url("account/orders")
-		if signed_in
-		else "/login?redirect-to=" + store_url("account/orders"),
+		"account_url": store_url("account/orders") if signed_in else signin_url(store_url("account/orders")),
 		"register_url": None if signed_in else store_url("account/register"),
 		"home_url": store_url(""),
 		"display_currency": pricing.display_currency(),

@@ -211,6 +211,27 @@ def pager(refs):
 	)
 
 
+def forgot_password(refs):
+	"""Sends Frappe's password reset email to the address in the sign-in form."""
+	return block(
+		"button",
+		text="Forgot your password?",
+		attrs={"type": "button", "data-shop": "forgot-password"},
+		styles={
+			"backgroundColor": "transparent",
+			"borderWidth": "0px",
+			"color": refs["muted"],
+			"cursor": "pointer",
+			"fontSize": "12px",
+			"gridColumn": "span 2",
+			"justifySelf": "start",
+			"padding": "0px",
+			"textDecoration": "underline",
+			"width": "fit-content",
+		},
+	)
+
+
 def notice(refs):
 	"""A message a page shows instead of its form (page data key `notice`)."""
 	return block(
