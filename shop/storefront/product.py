@@ -72,8 +72,10 @@ def variant_details(template: str, compare_at: float | None = None) -> dict:
 		"attributes": attribute_options(template, variants),
 		"variants": variants,
 		"price": min(rates) if rates else None,
-		"formatted_price": pricing.display_price(min(rates)) if rates else None,
-		"price_note": pricing.display_price_without_tax(min(rates)) if rates else None,
+		"formatted_price": pricing.display_price(min(rates), pricing.item_tax_rate(template)) if rates else None,
+		"price_note": pricing.display_price_without_tax(min(rates), pricing.item_tax_rate(template))
+		if rates
+		else None,
 		"in_stock": any(v["purchasable"] for v in variants),
 		"purchasable": bool(default and default["purchasable"]),
 		"stock_status": default["stock_status"] if default else _("Not available online"),
@@ -108,20 +110,20 @@ def load_variants(template: str, compare_at: float | None = None) -> list[dict]:
 				"price_note": price.get("display_excl"),
 				**stock.availability(item_code, priced=price.get("rate") is not None),
 				"image": images.get(item_code),
-				**variant_savings(price.get("rate"), compare_at),
+				**variant_savings(price.get("rate"), compare_at, item_code),
 			}
 		)
 	return variants
 
 
-def variant_savings(rate: float | None, compare_at: float | None) -> dict:
+def variant_savings(rate: float | None, compare_at: float | None, item_code: str | None = None) -> dict:
 	from frappe.utils import flt
 
 	if not rate or not compare_at or flt(compare_at) <= flt(rate):
 		return {"formatted_savings": None, "discount_pct": None}
 	saved = flt(compare_at) - flt(rate)
 	return {
-		"formatted_savings": pricing.display_amount(saved),
+		"formatted_savings": pricing.display_amount(saved, pricing.item_tax_rate(item_code)),
 		"discount_pct": round(saved * 100 / flt(compare_at)),
 	}
 

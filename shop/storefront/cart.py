@@ -130,10 +130,14 @@ def refresh_rates(cart):
 		row.rate = prices.get(row.item_code, {}).get("rate", 0)
 
 
-def cart_payload(cart, money=None) -> dict:
-	"""The cart for display. Amounts are shown in the shopper's chosen currency (approximate),
-	or with money=pricing.store_amount exactly in the store currency, as checkout does."""
-	money = money or pricing.display_amount
+def cart_payload(cart, exact: bool = False) -> dict:
+	"""The cart for display. Amounts are shown in the shopper's chosen currency (approximate), with
+	each item's tax when the store shows prices with tax, or exactly in the store currency, as
+	checkout does."""
+
+	def money(amount, tax_rate=None):
+		return pricing.store_amount(amount) if exact else pricing.display_amount(amount, tax_rate)
+
 	if not cart or not cart.items:
 		return {
 			"items": [],
@@ -148,38 +152,44 @@ def cart_payload(cart, money=None) -> dict:
 		}
 	products = product_details(cart)
 	items = []
-	subtotal = 0.0
+	subtotal = tax = 0.0
 	for row in cart.items:
 		amount = flt(row.rate) * flt(row.qty)
+		tax_rate = pricing.item_tax_rate(row.item_code)
 		subtotal += amount
+		tax += amount * tax_rate
 		items.append(
 			{
 				"item_code": row.item_code,
 				"qty": display_qty(row.qty),
 				"rate": row.rate,
-				"formatted_rate": money(row.rate),
+				"formatted_rate": money(row.rate, tax_rate),
 				"amount": amount,
-				"formatted_amount": money(amount),
+				"formatted_amount": money(amount, tax_rate),
 				**products.get(row.shop_product, {}),
 				**variant_name(row.item_code, products.get(row.shop_product, {}).get("product_name")),
 			}
 		)
-	coupon, discount = applied_discount(cart, subtotal)
+	# the items' rates together; a discount comes off each item, its tax with it
+	cart_rate = tax / subtotal if subtotal else None
+	coupon, discount = applied_discount(cart, subtotal, cart_rate)
 	shipping = shipping_charge(subtotal - discount)
 	total = subtotal - discount + shipping
+	total_tax = (subtotal - discount) * flt(cart_rate) + shipping * pricing.domestic_tax_rate()
+	total_rate = total_tax / total if total else None
 	return {
 		"items": items,
 		"item_count": display_qty(sum(flt(row.qty) for row in cart.items)),
 		"is_empty": False,
 		"subtotal": subtotal,
-		"formatted_subtotal": money(subtotal),
+		"formatted_subtotal": money(subtotal, cart_rate),
 		"coupon": coupon,
 		"discount": discount,
-		"formatted_discount": money(discount),
+		"formatted_discount": money(discount, cart_rate),
 		"shipping": shipping,
 		"formatted_shipping": money(shipping) if shipping else "Free",
 		"total": total,
-		"formatted_total": money(total),
+		"formatted_total": money(total, total_rate),
 	}
 
 
@@ -203,7 +213,7 @@ def shipping_charge(order_value: float) -> float:
 	return rate
 
 
-def applied_discount(cart, subtotal: float):
+def applied_discount(cart, subtotal: float, tax_rate: float | None = None):
 	if not cart.coupon_code:
 		return None, 0.0
 	from shop.storefront import coupons
@@ -217,7 +227,7 @@ def applied_discount(cart, subtotal: float):
 		return None, 0.0
 	if not coupon:
 		return None, 0.0
-	return dict(coupon, formatted_discount=pricing.display_amount(discount)), discount
+	return dict(coupon, formatted_discount=pricing.display_amount(discount, tax_rate)), discount
 
 
 def preview_coupon(cart):

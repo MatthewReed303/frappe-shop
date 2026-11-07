@@ -16,7 +16,7 @@ def get_checkout_summary() -> dict:
 	cart = cart_module.resolve_cart()
 	settings = frappe.get_cached_doc("Shop Settings")
 	return {
-		"cart": cart_module.cart_payload(cart, money=pricing.store_amount),
+		"cart": cart_module.cart_payload(cart, exact=True),
 		"payment_methods": totals.payment_methods(),
 		"currency": settings.currency,
 		"prefill": checkout_prefill(),
@@ -334,7 +334,7 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 
 	lines, notes, factor = totals.shown_lines(sales_order)
 	rows = "".join(
-		row(f"{line.item_name} × {cart_module.display_qty(line.qty)}", fmt(flt(line.amount) * factor))
+		row(f"{line.item_name} × {cart_module.display_qty(line.qty)}", fmt(flt(line.amount) * factor(line)))
 		for line in sales_order.items
 		if not totals.is_charge_item(line.item_code)
 	)

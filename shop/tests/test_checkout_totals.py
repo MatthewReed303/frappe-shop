@@ -584,8 +584,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
 		self.assertEqual(totals.order_total(order), quote.total)
 
-	def test_an_item_tax_template_is_charged_as_erpnext_charges_it(self):
-		self.without_tax()
+	def zero_rate(self, item_code):
 		tax_account = frappe.db.get_value(
 			"Account", {"company": self.company, "account_type": "Tax", "is_group": 0}
 		)
@@ -600,15 +599,53 @@ class TestCheckoutTotals(IntegrationTestCase):
 				}
 			).insert(ignore_permissions=True)
 		item_tax = frappe.db.get_value("Item Tax Template", {"title": title, "company": self.company})
-		item = frappe.get_doc("Item", "SHOP-DEMO-011")
-		item.append("taxes", {"item_tax_template": item_tax})
-		item.save(ignore_permissions=True)
+		item = frappe.get_doc("Item", item_code)
+		if item_tax not in [row.item_tax_template for row in item.taxes]:
+			item.append("taxes", {"item_tax_template": item_tax})
+			item.save(ignore_permissions=True)
+		if hasattr(frappe.local, "shop_item_tax_rates"):
+			del frappe.local.shop_item_tax_rates
+
+	def test_an_item_tax_template_is_charged_as_erpnext_charges_it(self):
+		self.without_tax()
+		self.zero_rate("SHOP-DEMO-011")
 		self.basket(1)
 		quote = totals.compute(self.basket(1, "SHOP-DEMO-011"), self.home_address, None, "bank")
 		taxed = sum(row.net_amount for row in quote.order.items if row.item_code == ITEM)
 		self.assertAlmostEqual(line(quote, "tax")[0], taxed * 0.15, delta=0.01)
 		order = frappe.get_doc("Sales Order", self.place(expected_total=quote.total))
 		self.assertEqual(totals.order_total(order), quote.total)
+
+	def test_a_zero_rated_item_is_shown_without_tax(self):
+		from shop.storefront import pricing
+
+		self.without_tax()
+		self.set(show_prices_with_tax=1)
+		self.zero_rate("SHOP-DEMO-011")
+		self.assertEqual(pricing.item_tax_rate("SHOP-DEMO-011"), 0)
+		self.assertEqual(pricing.item_tax_rate(ITEM), pricing.domestic_tax_rate())
+		shown = pricing.display_fields(100, "SHOP-DEMO-011")
+		self.assertEqual(shown["display"], pricing.display_amount(100, 0))
+		self.assertIsNone(shown["display_excl"])
+
+		self.basket(1)
+		basket = self.basket(1, "SHOP-DEMO-011")
+		in_cart = {row["item_code"]: row for row in cart.cart_payload(basket)["items"]}
+		zero = in_cart["SHOP-DEMO-011"]
+		self.assertEqual(zero["formatted_amount"], pricing.display_amount(zero["amount"], 0))
+		taxed = in_cart[ITEM]
+		self.assertEqual(taxed["formatted_amount"], pricing.display_amount(taxed["amount"]))
+
+		quote = totals.compute(basket, self.home_address, None, "bank")
+		payload = totals.payload(quote)
+		amounts = {row["item_code"]: row["formatted_amount"] for row in payload["items"]}
+		rows = {row.item_code: row for row in quote.order.items}
+		self.assertEqual(amounts["SHOP-DEMO-011"], totals.money(rows["SHOP-DEMO-011"].amount, quote.currency))
+		self.assertEqual(
+			amounts[ITEM],
+			totals.money(flt(rows[ITEM].amount) * (1 + pricing.domestic_tax_rate() / 100), quote.currency),
+		)
+		self.assertEqual(flt(sum(line["amount"] for line in payload["lines"]), 2), quote.total)
 
 	def test_rounded_total_is_what_the_customer_pays(self):
 		from frappe.custom.doctype.property_setter.property_setter import make_property_setter

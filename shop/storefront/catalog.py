@@ -60,7 +60,11 @@ def get_products(
 def apply_post_filters(products, price_min, price_max, in_stock):
 	def keep(product):
 		# the price ranges are the prices as the store shows them
-		price = pricing.shown_amount(product.price) if product.price is not None else None
+		price = (
+			pricing.shown_amount(product.price, pricing.item_tax_rate(product.item))
+			if product.price is not None
+			else None
+		)
 		if price_min is not None and (price is None or price < flt(price_min)):
 			return False
 		if price_max is not None and (price is None or price >= flt(price_max)):
@@ -156,9 +160,10 @@ def apply_compare_at(target, price) -> None:
 	if not price or compare_at <= flt(price):
 		target["compare_at_price"] = None
 		return
-	target["formatted_compare_at"] = pricing.display_amount(compare_at)
+	tax_rate = pricing.item_tax_rate(target.get("item"))
+	target["formatted_compare_at"] = pricing.display_amount(compare_at, tax_rate)
 	target["discount_pct"] = round((compare_at - flt(price)) * 100 / compare_at)
-	target["formatted_savings"] = pricing.display_amount(compare_at - flt(price))
+	target["formatted_savings"] = pricing.display_amount(compare_at - flt(price), tax_rate)
 
 
 def star_string(average: float) -> str:
@@ -190,7 +195,7 @@ def display_prices(products: list, customer: str | None = "session") -> dict:
 	for template, codes in variants.items():
 		rates = [prices[code]["rate"] for code in codes if code in prices]
 		if rates:
-			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), **pricing.display_fields(min(rates))}
+			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), **pricing.display_fields(min(rates), template)}
 	return prices
 
 

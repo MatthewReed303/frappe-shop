@@ -231,7 +231,7 @@ def lines_html(doc) -> str:
 	lines, notes, factor = totals.shown_lines(doc)
 	rows = "".join(
 		f'<div class="order-item"><span>{esc(row.item_name)}</span>'
-		f'<span class="order-qty">{cart_module.display_qty(row.qty)}</span><span class="order-amount">{esc(fmt(flt(row.amount) * factor))}</span></div>'
+		f'<span class="order-qty">{cart_module.display_qty(row.qty)}</span><span class="order-amount">{esc(fmt(flt(row.amount) * factor(row)))}</span></div>'
 		for row in doc.items
 		if not totals.is_charge_item(row.item_code)
 	)

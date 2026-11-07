@@ -160,7 +160,7 @@ def order_summary(order, token: str | None = None) -> dict:
 				"rate": row.rate,
 				"formatted_rate": fmt(row.rate),
 				"amount": row.amount,
-				"formatted_amount": fmt(frappe.utils.flt(row.amount) * factor),
+				"formatted_amount": fmt(frappe.utils.flt(row.amount) * factor(row)),
 				"image": row.image,
 			}
 			for row in products

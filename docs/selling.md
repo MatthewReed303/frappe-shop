@@ -26,7 +26,8 @@ until it is turned on.
 - **Prices Include Tax**: the price list includes the Tax Template's tax (its rows must be
   *Included in Print Rate*).
 - **Show Prices With Tax**: product, cart and checkout prices are shown with the tax, and
-  the price without tax under them.
+  the price without tax under them. Each item is shown at the rate of its Item Tax Template
+  (on the Item or its Item Group), so a zero-rated item is shown without tax.
 
 ## Paying
 

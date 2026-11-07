@@ -1,6 +1,8 @@
 """Checkout totals, worked out by ERPNext on the Sales Order the checkout would place."""
 
+import json
 import math
+from collections.abc import Callable
 
 import frappe
 from frappe import _
@@ -624,6 +626,7 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 					"kind": kinds.get(item.item_code, "charge"),
 					"label": item.description or item.item_name,
 					"amount": flt(item.amount),
+					"row": item.idx,
 				}
 			)
 	notes = []
@@ -646,31 +649,56 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 	return lines, notes
 
 
+def row_tax_rate(order, row=None) -> float:
+	"""Percent of tax the order adds on top of a row's amount, as ERPNext works it out: its taxes on
+	the net total, at the rates of the row's Item Tax Template where it has one. Without a row, the
+	order's own rates."""
+	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX
+
+	item_rates = json.loads(row.item_tax_rate or "{}") if row else {}
+	rates = [
+		item_rates.get(tax.account_head, tax.rate)
+		for tax in order.taxes
+		if tax.charge_type == "On Net Total" and not tax.included_in_print_rate
+	]
+	return sum(flt(rate) for rate in rates if rate != NOT_APPLICABLE_TAX)
+
+
 def shown_with_tax(lines: list[dict], order) -> list[dict]:
 	"""Lines with the tax added on top spread into them, for stores that show prices with tax; the
 	subtotal takes any rounding difference so the lines still add up to the total."""
-	added = sum(line["amount"] for line in lines if line["kind"] == "tax")
-	# the tax is on what is left after a discount, so the rate comes from the order's net total
-	if not added or not flt(order.net_total):
+	if not any(line["kind"] == "tax" for line in lines):
 		return lines
-	factor = 1 + added / flt(order.net_total)
+	rows = {row.idx: row for row in order.items}
+
+	def with_tax(amount, row=None):
+		return amount * (1 + row_tax_rate(order, row) / 100)
+
 	# a discount on the Grand Total includes the tax already
 	discount_has_tax = order.apply_discount_on == "Grand Total"
 	shown = [dict(line) for line in lines if line["kind"] != "tax"]
 	for line in shown[1:]:
 		if line["kind"] == "rounding" or (line["kind"] == "discount" and discount_has_tax):
 			continue
-		line["amount"] = flt(line["amount"] * factor, order.precision("grand_total"))
+		if line["kind"] == "discount":
+			# the tax is on what is left of each row after the discount
+			amount = -sum(with_tax(flt(row.amount) - flt(row.net_amount), row) for row in order.items)
+		elif line.get("row"):
+			amount = with_tax(line["amount"], rows[line["row"]])
+		else:
+			continue
+		line["amount"] = flt(amount, order.precision("grand_total"))
 	shown[0]["amount"] = flt(
 		order_total(order) - sum(line["amount"] for line in shown[1:]), order.precision("grand_total")
 	)
 	return shown
 
 
-def shown_lines(order, export: bool = False) -> tuple[list[dict], list[str], float]:
+def shown_lines(order, export: bool = False) -> tuple[list[dict], list[str], Callable]:
 	"""An order's lines as the shopper sees them everywhere (checkout, order page, emails, quotes):
 	with the tax spread into them when the store shows prices with tax, rounding part of the
-	subtotal. Also the factor that turns a product's amount into its shown amount."""
+	subtotal. Also factor(row), which turns a row's amount into its shown amount (without a row:
+	an amount the order would add, like a shipping option)."""
 	lines, notes = summary_lines(order)
 	if order.get("coupon_code"):
 		code = frappe.db.get_value("Coupon Code", order.coupon_code, "coupon_code")
@@ -678,10 +706,16 @@ def shown_lines(order, export: bool = False) -> tuple[list[dict], list[str], flo
 			if line["kind"] == "discount":
 				line["label"] = _("Discount ({0})").format(code)
 	taxes_added = [line for line in lines if line["kind"] == "tax"]
-	factor = 1
+
+	def factor(row=None):
+		return 1
+
 	if settings().get("show_prices_with_tax") and taxes_added and not export:
 		lines = shown_with_tax(lines, order)
-		factor = 1 + sum(line["amount"] for line in taxes_added) / flt(order.net_total)
+
+		def factor(row=None):
+			return 1 + row_tax_rate(order, row) / 100
+
 		notes.insert(
 			0,
 			_("Includes {0}: {1}").format(
@@ -730,8 +764,8 @@ def payload(quote: frappe._dict) -> dict:
 
 	def option_amount(option):
 		amount = option["customer_amount"]
-		if factor != 1 and amount:
-			amount = flt(amount * factor, order.precision("grand_total"))
+		if amount:
+			amount = flt(amount * factor(), order.precision("grand_total"))
 		return money(amount, currency) if amount else _("Free")
 
 	return {
@@ -740,7 +774,7 @@ def payload(quote: frappe._dict) -> dict:
 		"lines": lines,
 		# each product's amount as the summary lists it: in the order currency, with tax when shown so
 		"items": [
-			{"item_code": row.item_code, "formatted_amount": money(flt(row.amount) * factor, currency)}
+			{"item_code": row.item_code, "formatted_amount": money(flt(row.amount) * factor(row), currency)}
 			for row in order.items
 			if not is_charge_item(row.item_code)
 		],
@@ -766,7 +800,7 @@ def payload(quote: frappe._dict) -> dict:
 		"bank_currencies": [
 			{"currency": row.currency, "label": row.label or row.currency} for row in bank_accounts()
 		],
-		"bank_routes": bank_routes(currency, factor) if quote.payment_method in BANK_METHODS else [],
+		"bank_routes": bank_routes(currency, factor()) if quote.payment_method in BANK_METHODS else [],
 		"suggested_bank_method": suggested_bank_method(quote.address, currency)
 		if quote.payment_method in BANK_METHODS
 		else None,

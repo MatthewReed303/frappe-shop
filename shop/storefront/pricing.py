@@ -28,7 +28,7 @@ def get_prices(item_codes: list[str], qtys: dict | None = None, customer: str | 
 			if code in retail and price_list == frappe.get_cached_doc("Shop Settings").price_list:
 				prices[code] = retail[code]
 			continue
-		entry = {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)}
+		entry = {"rate": rate, "formatted": format_amount(rate), **display_fields(rate, code)}
 		base = retail.get(code, {}).get("rate")
 		if base and rate < flt(base) - 0.004:
 			entry.update(retail=base, formatted_retail=format_amount(base))
@@ -59,13 +59,17 @@ def store_prices(item_codes: list[str]) -> dict:
 			continue
 		rates[row.item_code] = row.price_list_rate
 	return {
-		code: {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)}
+		code: {"rate": rate, "formatted": format_amount(rate), **display_fields(rate, code)}
 		for code, rate in rates.items()
 	}
 
 
-def display_fields(rate: float) -> dict:
-	return {"display": display_price(rate), "display_excl": display_price_without_tax(rate)}
+def display_fields(rate: float, item_code: str | None = None) -> dict:
+	tax_rate = item_tax_rate(item_code)
+	return {
+		"display": display_price(rate, tax_rate),
+		"display_excl": display_price_without_tax(rate, tax_rate),
+	}
 
 
 def get_price(item_code: str) -> dict | None:
@@ -149,7 +153,7 @@ def domestic_taxes() -> list:
 					"parenttype": "Sales Taxes and Charges Template",
 					"charge_type": "On Net Total",
 				},
-				fields=["rate", "description"],
+				fields=["account_head", "rate", "description"],
 				order_by="idx",
 			)
 			if template
@@ -161,6 +165,40 @@ def domestic_taxes() -> list:
 def domestic_tax_rate() -> float:
 	"""Percent of the store's own tax, whether its prices include it or not."""
 	return sum(flt(row.rate) for row in domestic_taxes())
+
+
+def item_tax_rate(item_code: str | None) -> float:
+	"""Percent of the store's own tax on an item: the Item Tax Template ERPNext picks for it (from the
+	item or its Item Group) changes the rate of the taxes it names."""
+	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, get_item_tax_map, get_item_tax_template
+
+	if not item_code:
+		return domestic_tax_rate()
+	settings = frappe.get_cached_doc("Shop Settings")
+	cache = request_cache("shop_item_tax_rates")
+	key = (settings.tax_template, item_code)
+	if key not in cache:
+		taxes = domestic_taxes()
+		ctx = {
+			"company": settings.company,
+			"transaction_date": nowdate(),
+			"tax_category": settings.tax_template
+			and frappe.get_cached_value(
+				"Sales Taxes and Charges Template", settings.tax_template, "tax_category"
+			),
+		}
+		template = get_item_tax_template(ctx, frappe.get_cached_doc("Item", item_code))
+		rates = get_item_tax_map(
+			doc={"company": settings.company, "taxes": [dict(row) for row in taxes]},
+			tax_template=template,
+			as_json=False,
+		)
+		cache[key] = sum(
+			flt(rates.get(row.account_head))
+			for row in taxes
+			if rates.get(row.account_head) != NOT_APPLICABLE_TAX
+		)
+	return cache[key]
 
 
 def tax_name() -> str:
@@ -176,18 +214,19 @@ def shows_tax() -> bool:
 	return bool(frappe.get_cached_doc("Shop Settings").get("show_prices_with_tax") and domestic_tax_rate())
 
 
-def with_and_without_tax(amount: float) -> tuple[float, float]:
-	"""A price-list amount as (including tax, excluding tax) at the store's own tax rate."""
-	factor = 1 + domestic_tax_rate() / 100
+def with_and_without_tax(amount: float, tax_rate: float | None = None) -> tuple[float, float]:
+	"""A price-list amount as (including tax, excluding tax) at the store's own tax rate, or at the
+	item's (item_tax_rate)."""
+	factor = 1 + (domestic_tax_rate() if tax_rate is None else tax_rate) / 100
 	if frappe.get_cached_doc("Shop Settings").prices_include_tax:
 		return flt(amount), flt(amount) / factor
 	return flt(amount) * factor, flt(amount)
 
 
-def shown_amount(amount: float) -> float:
+def shown_amount(amount: float, tax_rate: float | None = None) -> float:
 	"""A price-list amount as the store shows it in its own currency: with tax when it shows prices
 	with tax."""
-	return with_and_without_tax(amount)[0] if shows_tax() else flt(amount)
+	return with_and_without_tax(amount, tax_rate)[0] if shows_tax() else flt(amount)
 
 
 def shows_store_currency() -> bool:
@@ -195,11 +234,11 @@ def shows_store_currency() -> bool:
 	return currency == store_currency() or not display_rate(currency)
 
 
-def display_amount(amount: float) -> str:
+def display_amount(amount: float, tax_rate: float | None = None) -> str:
 	"""A price-list amount as the shopper sees it: in the store currency as the price list has it,
 	or with tax when the store shows prices with tax. In another currency the buyer pays no local
 	tax: the price without tax, converted at ERPNext's rate and marked approximate."""
-	including, excluding = with_and_without_tax(amount)
+	including, excluding = with_and_without_tax(amount, tax_rate)
 	if shows_store_currency():
 		shown = including if shows_tax() else flt(amount)
 		return with_code(fmt_money(flt(shown, 2), currency=store_currency()), store_currency())
@@ -207,19 +246,19 @@ def display_amount(amount: float) -> str:
 	return f"≈ {fmt_money(excluding * display_rate(currency), currency=currency)} {currency}"
 
 
-def display_price(amount: float) -> str:
+def display_price(amount: float, tax_rate: float | None = None) -> str:
 	"""A product's headline price: display_amount, saying it includes tax when it does."""
-	shown = display_amount(amount)
-	if shows_store_currency() and shows_tax():
+	shown = display_amount(amount, tax_rate)
+	if shows_store_currency() and shows_tax() and tax_rate != 0:
 		return _("{0} incl. {1}").format(shown, tax_name())
 	return shown
 
 
-def display_price_without_tax(amount: float) -> str | None:
+def display_price_without_tax(amount: float, tax_rate: float | None = None) -> str | None:
 	"""The line under a headline price shown with tax: the price without it."""
-	if not shows_store_currency() or not shows_tax():
+	if not shows_store_currency() or not shows_tax() or tax_rate == 0:
 		return None
-	excluding = with_and_without_tax(amount)[1]
+	excluding = with_and_without_tax(amount, tax_rate)[1]
 	return _("{0} excl. {1}").format(
 		with_code(fmt_money(flt(excluding, 2), currency=store_currency()), store_currency()), tax_name()
 	)
@@ -315,7 +354,7 @@ def guest_prices(retail: dict, qtys: dict) -> dict:
 		prices[code] = {
 			"rate": rate,
 			"formatted": format_amount(rate),
-			**display_fields(rate),
+			**display_fields(rate, code),
 			"retail": entry["rate"],
 			"formatted_retail": format_amount(entry["rate"]),
 		}
