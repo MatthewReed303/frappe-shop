@@ -5,7 +5,7 @@ from frappe import _
 from frappe.utils import cint, flt
 
 from shop.api import only_managers
-from shop.api.products import item_group, receive_stock, save_product, set_price, unique_item_code
+from shop.api.products import default_item_group, receive_stock, save_product, set_price, unique_item_code
 from shop.storefront import pricing, stock
 
 
@@ -296,6 +296,7 @@ def create_variant_product(
 	images: list | None = None,
 	collections: list | None = None,
 	published: bool = True,
+	item_group: str | None = None,
 ) -> dict:
 	"""Create a product that varies by options, with every combination ready to sell."""
 	only_managers()
@@ -307,7 +308,7 @@ def create_variant_product(
 			"doctype": "Item",
 			"item_code": item_code,
 			"item_name": product_name,
-			"item_group": item_group(),
+			"item_group": item_group or default_item_group(),
 			"stock_uom": "Nos",
 			"is_stock_item": 1,
 			"has_variants": 1,

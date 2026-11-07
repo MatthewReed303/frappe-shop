@@ -103,6 +103,28 @@ class TestAdminApi(IntegrationTestCase):
 		detail = orders.fulfill(name)
 		self.assertEqual(detail["fulfillment_status"], "Fulfilled")
 
+	def test_a_product_is_made_in_the_item_group_chosen(self):
+		groups = products.get_item_groups()
+		self.assertIn(groups["default"], groups["item_groups"])
+		if not frappe.db.exists("Item Group", "_Test Shop Sensors"):
+			frappe.get_doc(
+				{
+					"doctype": "Item Group",
+					"item_group_name": "_Test Shop Sensors",
+					"parent_item_group": "All Item Groups",
+				}
+			).insert(ignore_permissions=True)
+		created = products.create_product(
+			product_name="Test Probe", price=50, item_group="_Test Shop Sensors"
+		)
+		self.addCleanup(products.delete_product, created["name"])
+		self.assertEqual(created["item_group"], "_Test Shop Sensors")
+		moved = products.save_product(
+			{"name": created["name"], "item_group": groups["default"], "published": True}
+		)
+		self.assertEqual(frappe.db.get_value("Item", created["item"], "item_group"), groups["default"])
+		self.assertEqual(moved["item_group"], groups["default"])
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

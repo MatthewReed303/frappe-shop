@@ -119,6 +119,13 @@
 
 				<CatalogSection title="Organization">
 					<Autocomplete
+						v-if="isEdit || !isLink"
+						v-model="itemGroupValue"
+						label="Item Group"
+						placeholder="Select an Item Group"
+						:options="itemGroupOptions"
+					/>
+					<Autocomplete
 						v-model="collectionValue"
 						label="Collections"
 						placeholder="Select collections"
@@ -210,6 +217,8 @@ const leaving = ref(false)
 const baseline = ref('')
 const detail = ref<ProductDetail | null>(null)
 const collectionOptions = ref<Option[]>([])
+const itemGroupOptions = ref<Option[]>([])
+const defaultItemGroup = ref('')
 const itemHasVariants = ref(false)
 const withOptions = ref(false)
 const options = ref<ProductOption[]>([{ attribute: '', values: [] }])
@@ -228,6 +237,7 @@ const form = reactive({
 	highlights: '',
 	images: [] as string[],
 	collections: [] as string[],
+	item_group: '',
 })
 
 const title = computed(() => {
@@ -261,6 +271,11 @@ const collectionValue = computed({
 	set: (selected: Option[]) => (form.collections = selected.map((option) => option.value)),
 })
 
+const itemGroupValue = computed({
+	get: () => (form.item_group ? { label: form.item_group, value: form.item_group } : null),
+	set: (selected: Option | null) => (form.item_group = selected?.value || defaultItemGroup.value),
+})
+
 const dirty = computed(() => !loading.value && snapshot() !== baseline.value)
 
 watch(() => props.name, load, { immediate: true })
@@ -274,7 +289,7 @@ async function load() {
 	loadError.value = false
 	try {
 		resetForm()
-		await loadCollections()
+		await Promise.all([loadCollections(), loadItemGroups()])
 		if (isEdit.value) await loadProduct(props.name as string)
 		baseline.value = snapshot()
 	} catch (error) {
@@ -300,6 +315,7 @@ function resetForm() {
 		highlights: '',
 		images: [],
 		collections: [],
+		item_group: '',
 	})
 	detail.value = null
 	itemHasVariants.value = false
@@ -313,6 +329,13 @@ async function loadCollections() {
 		label: row.title,
 		value: row.name,
 	}))
+}
+
+async function loadItemGroups() {
+	const result = await call('shop.api.products.get_item_groups')
+	itemGroupOptions.value = result.item_groups.map((name: string) => ({ label: name, value: name }))
+	defaultItemGroup.value = result.default
+	if (!form.item_group) form.item_group = result.default
 }
 
 async function loadProduct(name: string) {
@@ -330,6 +353,7 @@ async function loadProduct(name: string) {
 		highlights: doc.highlights || '',
 		images: (doc.images || []).map((row: { image: string }) => row.image),
 		collections: doc.collections || [],
+		item_group: doc.item_group || '',
 	})
 }
 
@@ -403,6 +427,7 @@ async function createFresh() {
 			images: form.images,
 			collections: form.collections,
 			published: form.published,
+			item_group: form.item_group,
 		})
 		return finishCreate(doc.name)
 	}
@@ -418,6 +443,7 @@ async function createFresh() {
 		images: form.images,
 		collections: form.collections,
 		published: form.published,
+		item_group: form.item_group,
 	})
 	return finishCreate(result.product)
 }
@@ -446,6 +472,7 @@ function payload() {
 		published: form.published,
 		images: form.images,
 		collections: form.collections,
+		item_group: isEdit.value ? form.item_group : undefined,
 		price: variantPricing.value ? undefined : form.price,
 	}
 }

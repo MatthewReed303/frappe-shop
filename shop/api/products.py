@@ -102,6 +102,7 @@ def get_product(name: str) -> dict:
 		"has_variants": doc.has_variants,
 		"images": [{"image": row.image, "alt_text": row.alt_text} for row in doc.images],
 		"collections": [row.collection for row in doc.collections],
+		"item_group": frappe.db.get_value("Item", doc.item, "item_group"),
 		"price": prices.get(doc.item, {}).get("rate") if not doc.has_variants else None,
 		"variants": [
 			{
@@ -141,6 +142,10 @@ def save_product(payload: dict) -> dict:
 	)
 	if payload.get("price") is not None and not doc.has_variants:
 		set_price(doc.item, flt(payload["price"]))
+	if payload.get("item_group") and payload["item_group"] != frappe.db.get_value("Item", doc.item, "item_group"):
+		item = frappe.get_doc("Item", doc.item)
+		item.item_group = payload["item_group"]
+		item.save(ignore_permissions=True)
 	return get_product(doc.name)
 
 
@@ -189,6 +194,7 @@ def create_product(
 	images: list | None = None,
 	collections: list | None = None,
 	published: bool = True,
+	item_group: str | None = None,
 ) -> dict:
 	"""Create the ERPNext Item, its price and stock, and the storefront product in one step."""
 	only_managers()
@@ -199,7 +205,7 @@ def create_product(
 			"doctype": "Item",
 			"item_code": item_code,
 			"item_name": product_name,
-			"item_group": item_group(),
+			"item_group": item_group or default_item_group(),
 			"stock_uom": "Nos",
 			"is_stock_item": 1,
 			"description": short_description or product_name,
@@ -232,11 +238,23 @@ def unique_item_code(product_name: str) -> str:
 	return code
 
 
-def item_group() -> str:
-	for group in ("Products", "All Item Groups"):
-		if frappe.db.exists("Item Group", group):
+def default_item_group() -> str:
+	"""ERPNext's Default Item Group (Stock Settings), else its usual "Products" group."""
+	group = frappe.db.get_single_value("Stock Settings", "item_group")
+	for group in (group, "Products", "All Item Groups"):
+		if group and frappe.db.exists("Item Group", group):
 			return group
 	return frappe.db.get_value("Item Group", {}, "name")
+
+
+@frappe.whitelist()
+def get_item_groups() -> dict:
+	"""The Item Groups a product can be in, and the one new products get."""
+	only_managers()
+	return {
+		"item_groups": frappe.get_all("Item Group", order_by="lft", pluck="name"),
+		"default": default_item_group(),
+	}
 
 
 def receive_stock(item_code: str, qty: float, rate: float, settings) -> None:
