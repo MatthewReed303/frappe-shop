@@ -14,6 +14,7 @@ from shop.theme_generators.blocks import (
 	upsert_variables,
 )
 from shop.theme_generators.store_ui import (
+	breadcrumbs,
 	forgot_password,
 	form_error,
 	hint,
@@ -21,6 +22,7 @@ from shop.theme_generators.store_ui import (
 	pager,
 	shown_with_form,
 	store_css,
+	sub_collections,
 	terms_box,
 )
 from shop.theme_generators.theme import Theme as SiteTheme
@@ -1648,10 +1650,11 @@ def collection_blocks(refs):
 		name="Page Header",
 		styles={"display": "flex", "flexDirection": "column", "gap": "12px", "padding": "26px 4px 6px", "width": "100%"},
 		mobile={"padding": "16px 4px 2px"},
-		children=[label(refs, "( Collection )"), title, description],
+		children=[label(refs, "( Collection )"), breadcrumbs(refs, size="12px"), title, description],
 	)
+	inside = sub_collections(component_ref("dot-collection-tile"))
 	grid = panel(refs, [product_grid(refs, "products", "collection"), pager(refs)], name="Section · Collection Grid")
-	return shell(refs, [component_ref("dot-navbar"), stack([header, grid]), component_ref("dot-footer")])
+	return shell(refs, [component_ref("dot-navbar"), stack([header, inside, grid]), component_ref("dot-footer")])
 
 
 def inset(refs, children, styles=None, **extra):

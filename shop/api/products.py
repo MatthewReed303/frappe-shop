@@ -297,10 +297,12 @@ def get_collections() -> list[dict]:
 	only_managers()
 	collections = frappe.get_all(
 		"Shop Collection",
-		fields=["name", "title", "slug", "description", "image", "published", "ranking"],
+		fields=["name", "title", "slug", "description", "image", "published", "ranking", "parent_collection"],
 		order_by="ranking desc, title asc",
 	)
+	titles = {collection.name: collection.title for collection in collections}
 	for collection in collections:
+		collection["parent_title"] = titles.get(collection.parent_collection)
 		collection["product_count"] = frappe.db.count(
 			"Shop Product Collection", {"collection": collection.name}
 		)
@@ -320,10 +322,15 @@ def save_collection(payload: dict) -> None:
 	doc.image = payload.get("image")
 	doc.ranking = cint(payload.get("ranking"))
 	doc.published = 1 if payload.get("published") else 0
+	doc.parent_collection = payload.get("parent_collection") or None
 	doc.save(ignore_permissions=True) if not doc.is_new() else doc.insert(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])
 def delete_collection(name: str) -> None:
 	only_managers()
+	# the collections inside it move up to where it was
+	parent = frappe.db.get_value("Shop Collection", name, "parent_collection")
+	for child in frappe.get_all("Shop Collection", filters={"parent_collection": name}, pluck="name"):
+		frappe.db.set_value("Shop Collection", child, "parent_collection", parent)
 	frappe.delete_doc("Shop Collection", name, ignore_permissions=True)

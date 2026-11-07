@@ -23,7 +23,7 @@ def listing() -> dict:
 	form = frappe.form_dict
 	page = max(cint(form.get("page")) or 1, 1)
 	price_min, price_max = parse_price_bucket(form.get("price"))
-	collections = catalog.get_collections()
+	collections = catalog.get_collections(nested=True)
 	result = catalog.get_products(
 		collection=form.get("collection"),
 		search=form.get("search"),
@@ -142,7 +142,8 @@ def listing_filters(form, collections) -> list[dict]:
 			"label": "Collection",
 			"options": [
 				option("All", "collection", None),
-				*[option(row.title, "collection", row.slug) for row in collections],
+				# a collection inside another is listed under it
+				*[option("– " * row.level + row.title, "collection", row.slug) for row in collections],
 			],
 		},
 		*(
@@ -228,19 +229,23 @@ def related_products(detail: dict) -> list:
 @frappe.whitelist(allow_guest=True)
 def collection_page() -> dict:
 	slug = frappe.form_dict.slug
-	collection = frappe.db.get_value(
-		"Shop Collection",
-		{"slug": slug, "published": 1},
-		["title", "slug", "description", "image"],
-		as_dict=True,
-	)
-	if not collection:
+	tree = catalog.published_collections()
+	row = next((row for row in tree.values() if row.slug == slug), None)
+	if not row:
 		frappe.throw(frappe._("Collection not found"), frappe.DoesNotExistError)
+	name = row.name
+	collection = {key: row.get(key) for key in ("title", "slug", "description", "image")}
 	page = max(cint(frappe.form_dict.get("page")) or 1, 1)
 	result = catalog.get_products(collection=slug, start=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE)
 	return {
 		"store": store_details(),
 		"collection": collection,
+		# where the collection sits (Sensors › Temperature sensors), and the collections inside it
+		"breadcrumbs": [
+			{"title": row.title, "route": store_url(f"collection/{row.slug}")} for row in catalog.ancestors(tree, name)
+		]
+		or None,
+		"sub_collections": catalog.get_collections(parent=name) or None,
 		"pager": pager(page, result["total"]),
 		**result,
 	}

@@ -125,6 +125,17 @@ class TestAdminApi(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("Item", created["item"], "item_group"), groups["default"])
 		self.assertEqual(moved["item_group"], groups["default"])
 
+	def test_deleting_a_collection_moves_those_inside_it_up(self):
+		products.save_collection({"title": "Outer (test)", "published": 1})
+		outer = frappe.db.get_value("Shop Collection", {"title": "Outer (test)"})
+		products.save_collection({"title": "Inner (test)", "published": 1, "parent_collection": outer})
+		inner = frappe.db.get_value("Shop Collection", {"title": "Inner (test)"})
+		self.addCleanup(frappe.delete_doc, "Shop Collection", inner, force=True)
+		row = next(c for c in products.get_collections() if c.name == inner)
+		self.assertEqual(row.parent_title, "Outer (test)")
+		products.delete_collection(outer)
+		self.assertIsNone(frappe.db.get_value("Shop Collection", inner, "parent_collection"))
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

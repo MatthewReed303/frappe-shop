@@ -77,19 +77,58 @@ def apply_post_filters(products, price_min, price_max, in_stock):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_collections() -> list[dict]:
-	collections = frappe.get_all(
-		"Shop Collection",
-		filters={"published": 1},
-		fields=["name", "title", "slug", "description", "image"],
-		order_by="ranking desc, title asc",
-	)
+def get_collections(parent: str | None = None, nested: bool = False) -> list[dict]:
+	"""Published collections: those inside parent (the top ones when not given), or with nested
+	every one, each followed by the collections inside it."""
+	tree = published_collections()
+	if nested:
+		collections = [row for top in children(tree, None) for row in with_descendants(tree, top)]
+	else:
+		collections = children(tree, parent)
 	counts = collection_counts([c.name for c in collections])
 	for row in collections:
 		row.route = store_url(f"collection/{row.slug}")
 		row.product_count = counts.get(row.name, 0)
 		row.image_css = tile_background(row.image)
 	return collections
+
+
+def published_collections() -> dict:
+	"""Published collections by name. One inside an unpublished collection is left out with it."""
+	rows = frappe.get_all(
+		"Shop Collection",
+		filters={"published": 1},
+		fields=["name", "title", "slug", "description", "image", "parent_collection"],
+		order_by="ranking desc, title asc",
+	)
+	tree = {row.name: row for row in rows}
+	for row in rows:
+		row.level = 0
+		parent = row.parent_collection
+		while parent:
+			if parent not in tree:
+				row.hidden = True
+				break
+			row.level += 1
+			parent = tree[parent].parent_collection
+	return {name: row for name, row in tree.items() if not row.get("hidden")}
+
+
+def children(tree: dict, parent: str | None) -> list:
+	return [row for row in tree.values() if (row.parent_collection or None) == parent]
+
+
+def with_descendants(tree: dict, row) -> list:
+	return [row, *[d for child in children(tree, row.name) for d in with_descendants(tree, child)]]
+
+
+def ancestors(tree: dict, name: str) -> list:
+	"""The collections a collection is inside, outermost first."""
+	trail, parent = [], tree[name].parent_collection
+	while parent in tree:
+		trail.insert(0, tree[parent])
+		parent = tree[parent].parent_collection
+	return trail
 
 
 def tile_background(image: str | None) -> str | None:
@@ -99,25 +138,35 @@ def tile_background(image: str | None) -> str | None:
 
 
 def collection_members(slug: str) -> list[str]:
-	collection = frappe.db.get_value("Shop Collection", {"slug": slug, "published": 1})
+	"""The products in a collection and in the collections inside it."""
+	tree = published_collections()
+	collection = next((row for row in tree.values() if row.slug == slug), None)
 	if not collection:
 		return []
-	return frappe.get_all(
-		"Shop Product Collection", filters={"collection": collection}, pluck="parent"
+	names = [row.name for row in with_descendants(tree, collection)]
+	return list(
+		set(frappe.get_all("Shop Product Collection", filters={"collection": ["in", names]}, pluck="parent"))
 	)
 
 
 def collection_counts(collections: list[str]) -> dict:
+	"""How many products each collection has, with those in the collections inside it."""
 	if not collections:
 		return {}
-	from collections import Counter
-
-	rows = frappe.get_all(
+	tree = published_collections()
+	if not any(name in tree for name in collections):
+		return {}
+	inside = {name: [row.name for row in with_descendants(tree, tree[name])] for name in collections if name in tree}
+	members = {}
+	for row in frappe.get_all(
 		"Shop Product Collection",
-		filters={"collection": ["in", collections]},
-		pluck="collection",
-	)
-	return Counter(rows)
+		filters={"collection": ["in", list({n for names in inside.values() for n in names})]},
+		fields=["collection", "parent"],
+	):
+		members.setdefault(row.collection, set()).add(row.parent)
+	return {
+		name: len(set().union(*(members.get(n, set()) for n in names))) for name, names in inside.items()
+	}
 
 
 def search_filters(search: str | None) -> list | None:

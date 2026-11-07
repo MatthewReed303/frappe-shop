@@ -1,7 +1,7 @@
 """Store pieces both themes share: the store's own CSS (checkout, orders, accounts, quotes, terms)
 and the form blocks the store's endpoints read."""
 
-from shop.theme_generators.blocks import block, dv
+from shop.theme_generators.blocks import block, dv, repeater
 
 
 def store_css(refs, radius: str = "2px"):
@@ -208,6 +208,49 @@ def pager(refs):
 				dynamicValues=[dv("pager.next_url", "href", "attribute")],
 			),
 		],
+	)
+
+
+def breadcrumbs(refs, size="13px"):
+	"""The collections a collection is inside (page data key `breadcrumbs`), each a link and a separator."""
+	crumb = block(
+		"div",
+		styles={"alignItems": "center", "display": "flex", "gap": "6px"},
+		children=[
+			block(
+				"a",
+				text="Collection",
+				attrs={"href": "#"},
+				styles={"color": refs["muted"], "fontSize": size, "textDecoration": "none"},
+				dynamicValues=[dv("title", "innerHTML"), dv("route", "href", "attribute")],
+			),
+			block("span", text="\u203a", styles={"color": refs["muted"], "fontSize": size}),
+		],
+	)
+	return repeater(
+		"breadcrumbs",
+		crumb,
+		{"display": "flex", "flexWrap": "wrap", "gap": "6px", "width": "100%"},
+		name="Breadcrumbs",
+		visibilityCondition={"key": "breadcrumbs", "comesFrom": "dataScript"},
+	)
+
+
+def sub_collections(tile: dict) -> dict:
+	"""The collections inside this one (page data key `sub_collections`), as tiles."""
+	return repeater(
+		"sub_collections",
+		tile,
+		{
+			"display": "grid",
+			"gap": "16px",
+			"gridTemplateColumns": "repeat(4, minmax(0, 1fr))",
+			"width": "100%",
+		},
+		mobile={"gridTemplateColumns": "repeat(2, minmax(0, 1fr))"},
+		tablet={"gridTemplateColumns": "repeat(3, minmax(0, 1fr))"},
+		name="Grid · sub-collections",
+		visibilityCondition={"key": "sub_collections", "comesFrom": "dataScript"},
 	)
 
 

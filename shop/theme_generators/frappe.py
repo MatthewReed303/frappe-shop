@@ -14,6 +14,7 @@ from shop.theme_generators.blocks import (
 	upsert_variables,
 )
 from shop.theme_generators.store_ui import (
+	breadcrumbs,
 	forgot_password,
 	form_error,
 	hint,
@@ -21,6 +22,7 @@ from shop.theme_generators.store_ui import (
 	pager,
 	shown_with_form,
 	store_css,
+	sub_collections,
 	terms_box,
 )
 from shop.theme_generators.theme import Theme as SiteTheme
@@ -2416,6 +2418,7 @@ def collection_blocks(refs):
 	title["dynamicValues"] = [dv("collection.title", "innerHTML")]
 	header = named_section("Section · Collection Header", 
 		[
+			breadcrumbs(refs),
 			title,
 			block(
 				"p",
@@ -2427,8 +2430,11 @@ def collection_blocks(refs):
 		],
 		styles={"gap": "8px", "padding": "52px 40px 8px"},
 	)
+	inside = named_section("Section · Sub-collections", [sub_collections(component_ref("shop-collection-tile"))],
+						   styles={"padding": "20px 40px 0px"}, mobile={"padding": "16px 18px 0px"})
+	inside["visibilityCondition"] = {"key": "sub_collections", "comesFrom": "dataScript"}
 	grid = named_section("Section · Collection Grid", [product_grid(refs, "products", "collection", columns=3), pager(refs)], styles={"padding": "28px 40px 88px"})
-	return shell(refs, [component_ref("shop-navbar"), header, grid, component_ref("shop-footer")])
+	return shell(refs, [component_ref("shop-navbar"), header, inside, grid, component_ref("shop-footer")])
 
 
 def summary_card(refs, children):

@@ -14,6 +14,13 @@
 			<FormControl v-model="form.description" type="textarea" :rows="3" label="Description" />
 			<CatalogImageInput v-model="form.image" label="Image" />
 			<FormControl
+				v-model="form.parent_collection"
+				type="select"
+				label="Inside"
+				:options="parentOptions"
+				description="Show this collection inside another, e.g. Temperature sensors inside Sensors"
+			/>
+			<FormControl
 				v-model.number="form.ranking"
 				type="number"
 				label="Ranking"
@@ -26,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { Dialog, FormControl, Switch, call, toast } from 'frappe-ui'
 
 import CatalogImageInput from '@/components/CatalogImageInput.vue'
@@ -40,9 +47,33 @@ export interface CollectionRow {
 	published: number
 	ranking: number
 	product_count: number
+	parent_collection: string | null
+	parent_title: string | null
 }
 
-const props = defineProps<{ editRow: CollectionRow | null }>()
+const props = defineProps<{ editRow: CollectionRow | null; collections: CollectionRow[] }>()
+
+// any other collection, except those already inside this one
+const parentOptions = computed(() => {
+	const inside = new Set<string>()
+	if (props.editRow) {
+		inside.add(props.editRow.name)
+		let added = true
+		while (added) {
+			added = false
+			for (const row of props.collections) {
+				if (row.parent_collection && inside.has(row.parent_collection) && !inside.has(row.name)) {
+					inside.add(row.name)
+					added = true
+				}
+			}
+		}
+	}
+	return [
+		{ label: 'None (top level)', value: '' },
+		...props.collections.filter((row) => !inside.has(row.name)).map((row) => ({ label: row.title, value: row.name })),
+	]
+})
 
 const show = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ saved: [] }>()
@@ -53,6 +84,7 @@ const form = reactive({
 	image: '',
 	ranking: 0,
 	published: true,
+	parent_collection: '',
 })
 
 watch(show, (open) => {
@@ -66,6 +98,7 @@ function reset() {
 		image: props.editRow?.image || '',
 		ranking: props.editRow?.ranking || 0,
 		published: props.editRow ? !!props.editRow.published : true,
+		parent_collection: props.editRow?.parent_collection || '',
 	})
 }
 

@@ -13,7 +13,7 @@ Every storefront page gets its data from a one line page data script that calls
 | `home`                         | `home`               | `store`, `collections`, `featured_products`                                                 |
 | `products`                     | `listing`            | `store`, `products`, `collections`, `filters`, `search`, `page`, `has_more`                 |
 | `product/:slug`                | `product_page`       | `store`, `product`, `related_products`, `reviews`                                           |
-| `collection/:slug`             | `collection_page`    | `store`, `collection`, `products`                                                           |
+| `collection/:slug`             | `collection_page`    | `store`, `collection`, `products`, `breadcrumbs`, `sub_collections`                         |
 | `cart`                         | `cart_page`          | `store`, `cart`                                                                             |
 | `checkout`                     | `checkout_page`      | `store`, `cart`, `payment_methods`, `addresses`, `prefill`, `countries`, `terms`            |
 | `order-confirmation/:order_id` | `order_confirmation` | `store`, `order` (with `totals_html`, `payment_html`)                                       |

@@ -32,6 +32,47 @@ class TestCatalog(IntegrationTestCase):
 		self.assertEqual(len(collections), 4)
 		self.assertTrue(all(c.product_count > 0 for c in collections))
 
+	def test_a_collection_inside_another(self):
+		from shop.storefront import page_data
+
+		apparel = frappe.get_doc("Shop Collection", {"slug": "apparel"})
+		inner = frappe.get_doc(
+			{
+				"doctype": "Shop Collection",
+				"title": "Tees (test)",
+				"published": 1,
+				"parent_collection": apparel.name,
+			}
+		).insert(ignore_permissions=True)
+		mug = frappe.get_doc("Shop Product", {"slug": "ceramic-mug"})
+		mug.append("collections", {"collection": inner.name})
+		mug.save(ignore_permissions=True)
+
+		def remove():
+			frappe.db.delete("Shop Product Collection", {"collection": inner.name})
+			frappe.delete_doc("Shop Collection", inner.name, force=True)
+
+		self.addCleanup(remove)
+
+		# the top collections stay the same; the new one is inside Apparel
+		self.assertNotIn(inner.name, [c.name for c in catalog.get_collections()])
+		self.assertEqual([c.name for c in catalog.get_collections(parent=apparel.name)], [inner.name])
+		# Apparel lists the products of the collections inside it
+		self.assertIn("ceramic-mug", {p.slug for p in catalog.get_products(collection="apparel")["products"]})
+		nested = catalog.get_collections(nested=True)
+		names = [c.name for c in nested]
+		self.assertEqual(names.index(inner.name), names.index(apparel.name) + 1)
+
+		with patch.object(frappe.local, "form_dict", frappe._dict(slug=inner.slug)):
+			data = page_data.collection_page()
+		self.assertEqual([crumb["title"] for crumb in data["breadcrumbs"]], [apparel.title])
+		with patch.object(frappe.local, "form_dict", frappe._dict(slug="apparel")):
+			self.assertEqual([c.name for c in page_data.collection_page()["sub_collections"]], [inner.name])
+
+		# a collection can't end up inside itself
+		apparel.parent_collection = inner.name
+		self.assertRaises(frappe.ValidationError, apparel.save)
+
 	def test_product_detail_simple(self):
 		detail = product.get_product("ceramic-mug")
 		self.assertEqual(detail["item"], "SHOP-DEMO-003")

@@ -325,8 +325,8 @@ function resetForm() {
 
 async function loadCollections() {
 	const rows = await call('shop.api.products.get_collections')
-	collectionOptions.value = rows.map((row: { name: string; title: string }) => ({
-		label: row.title,
+	collectionOptions.value = rows.map((row: { name: string; title: string; parent_title: string | null }) => ({
+		label: row.parent_title ? `${row.parent_title} › ${row.title}` : row.title,
 		value: row.name,
 	}))
 }
