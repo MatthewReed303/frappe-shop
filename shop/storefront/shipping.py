@@ -7,7 +7,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, now_datetime, time_diff_in_seconds
+from frappe.utils import cint, flt, fmt_money, now_datetime, time_diff_in_seconds
 
 FLAT_RATE_ID = "flat"
 QUOTE_TTL_SECONDS = 30 * 60
@@ -145,6 +145,14 @@ def clean_option(option: dict) -> dict:
 		"eta": option.get("eta"),
 		"meta": option.get("meta") or {},
 	}
+
+
+def free_shipping_note() -> str | None:
+	settings = frappe.get_cached_doc("Shop Settings")
+	threshold = flt(settings.get("free_shipping_above"))
+	if not threshold or not flat_rate_option(0):
+		return None
+	return _("Free shipping on orders over {0}").format(fmt_money(threshold, currency=settings.currency))
 
 
 def flat_rate_option(subtotal: float) -> dict | None:

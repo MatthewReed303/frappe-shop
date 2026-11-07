@@ -406,13 +406,14 @@ def cancel_if_unpaid(name: str) -> bool:
 		return False
 	unmatched = unmatched_payments(order)
 	if unmatched:
-		# the customer may have paid without the payment being matched to the order
-		order.add_comment(
-			"Info",
-			_(
-				"Not cancelled: {0} has payments not matched to an order yet ({1}). Match them in ERPNext's Payment Reconciliation."
-			).format(order.customer, ", ".join(unmatched)),
-		)
+		# the customer may have paid without the payment being matched to the order; said once
+		note = _(
+			"Not cancelled: {0} has payments not matched to an order yet ({1}). Match them in ERPNext's Payment Reconciliation."
+		).format(order.customer, ", ".join(unmatched))
+		if not frappe.db.exists(
+			"Comment", {"reference_doctype": "Sales Order", "reference_name": order.name, "content": note}
+		):
+			order.add_comment("Info", note)
 		return False
 	for request in frappe.get_all(
 		"Payment Request",
@@ -537,7 +538,7 @@ CANCELLED_BY_STORE = "Cancelled by the store."
 
 def cancel_by_store(name: str, note: str | None = None) -> dict:
 	"""Cancel an order that hasn't shipped. An unpaid order is cancelled; an invoiced or paid one is
-	credited in full, refunded online when it was paid online, and closed. The customer is told."""
+	credited in full and closed, and staff refund it from its refunds due. The customer is told."""
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 	from erpnext.selling.doctype.sales_order.sales_order import update_status
 

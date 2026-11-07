@@ -6,6 +6,7 @@ from frappe.tests import IntegrationTestCase
 from shop.api import analytics, carts, customers, discounts, inventory, orders, products, reviews, settings
 from shop.storefront import cart as storefront_cart
 from shop.storefront import checkout
+from shop.storefront.orders import order_summary
 
 BUYER = {"email": "admin-test-buyer@example.com", "full_name": "Admin Test Buyer"}
 ADDRESS = {"address_line1": "11 Admin Way", "city": "Bengaluru", "country": "India"}
@@ -68,6 +69,10 @@ class TestAdminApi(IntegrationTestCase):
 		mail = next(c.kwargs for c in sendmail.call_args_list if c.kwargs.get("reference_name") == name)
 		self.assertEqual(mail["subject"], f"Your order {name} has been cancelled")
 		self.assertIn("Out of stock at the supplier", mail["message"])
+		summary = order_summary(frappe.get_doc("Sales Order", name))
+		self.assertEqual(summary["heading"], "Your order has been cancelled")
+		self.assertIsNone(summary["confirmed"])
+		self.assertIsNone(summary["awaiting_shipment"])
 
 	def test_store_cancels_a_paid_order_with_a_credit_note(self):
 		name = self.place_order()
@@ -76,6 +81,7 @@ class TestAdminApi(IntegrationTestCase):
 			orders.cancel_order(name)
 		order = frappe.get_doc("Sales Order", name)
 		self.assertEqual(order.status, "Closed")
+		self.assertEqual(order_summary(order)["display_status"], "Cancelled")
 		from shop.storefront import payment
 
 		invoice = payment.order_invoice(name)

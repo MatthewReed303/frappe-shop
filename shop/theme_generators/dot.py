@@ -980,9 +980,12 @@ def error_banner(refs):
 	)
 
 
-def page_header(refs, index, title, subtitle=None, extra=None, aside=None):
+def page_header(refs, index, title, subtitle=None, extra=None, aside=None, title_value=None):
 	"""Headings sit straight on the dot canvas; content lives in the panels below."""
-	children = [label(refs, index), display(refs, title, size="38px", mobile_size="26px", element="h1")]
+	heading = display(refs, title, size="38px", mobile_size="26px", element="h1")
+	if title_value:
+		heading["dynamicValues"] = [dv(title_value, "innerHTML")]
+	children = [label(refs, index), heading]
 	if subtitle:
 		children.append(prose(refs, subtitle, size="14px", width="min(520px, 100%)"))
 	children.extend(extra or [])
@@ -1051,7 +1054,7 @@ def hero(refs):
 					pill(refs, "Collections", href="/products", variant="outline"),
 				],
 			),
-			spec_strip(refs, ["48h dispatch", "14 day returns", "Free shipping", "Cash on delivery"]),
+			spec_strip(refs, ["Secure checkout", "Order tracking", "Support that replies"]),
 		],
 		styles={"gap": "20px", "padding": "56px 40px 34px"},
 		mobile={"gap": "18px", "padding": "30px 18px 22px"},
@@ -1376,8 +1379,18 @@ def delivery_card(refs):
 			"width": "100%",
 		},
 		children=[
-			block("p", text="Free delivery", styles=mono(size="11px", color=refs["ink"], spacing="0.12em")),
-			line("Ships in 48 hours. 14 day easy returns."),
+			block(
+				"p",
+				text="Free shipping on orders over $100",
+				styles=mono(size="11px", color=refs["ink"], spacing="0.12em"),
+				visibilityCondition={"key": "store.delivery_note", "comesFrom": "dataScript"},
+				dynamicValues=[dv("store.delivery_note", "innerHTML")],
+			),
+			line(
+				"14-day returns",
+				visibilityCondition={"key": "store.returns_note", "comesFrom": "dataScript"},
+				dynamicValues=[dv("store.returns_note", "innerHTML")],
+			),
 			line(
 				"Cash on delivery available.",
 				visibilityCondition={"key": "store.enable_cod", "comesFrom": "dataScript"},
@@ -1387,7 +1400,7 @@ def delivery_card(refs):
 
 
 def trust_row(refs):
-	return spec_strip(refs, ["Secure payments", "Easy returns", "Quality checked", "Support that replies"])
+	return spec_strip(refs, ["Secure payments", "Order tracking", "Support that replies"])
 
 
 def home_blocks(refs):
@@ -2776,7 +2789,7 @@ def checkout_blocks(refs):
 			),
 			block(
 				"p",
-				text="Secure checkout · 14 day easy returns",
+				text="Secure checkout",
 				styles={**mono(size="9px", color=refs["muted"], spacing="0.14em"), "textAlign": "center", "width": "100%"},
 			),
 		],
@@ -2959,7 +2972,7 @@ def confirmation_blocks(refs):
 				children=[
 					info_tile(
 						"Shipping",
-						"Your order ships in 48 hours. We will email you the tracking number.",
+						"We'll email you the tracking number when your order ships.",
 						name="Shipping Tile",
 						visibilityCondition={"key": "order.awaiting_shipment", "comesFrom": "dataScript"},
 					),
@@ -2988,8 +3001,9 @@ def confirmation_blocks(refs):
 				[
 					page_header(
 						refs,
-						"( Confirmed )",
+						"( Order )",
 						"Thank you for your order!",
+						title_value="order.heading",
 						extra=[
 							{
 								**prose(refs, "We've emailed you a copy of this order.", width="min(520px, 100%)"),
@@ -3418,7 +3432,10 @@ def contact_blocks(refs):
 
 
 FAQS = [
-	("How long does delivery take?", "Orders are dispatched within 48 hours and usually arrive in 3 to 5 working days."),
+	(
+		"How long does delivery take?",
+		"The delivery options for your address, with their prices, are shown at checkout. We email you the tracking number when your order ships.",
+	),
 	(
 		"Can I return a product?",
 		"Yes, unused and in its original packaging, within the return window shown on your order page. Ask for a return from your order page once it has shipped.",

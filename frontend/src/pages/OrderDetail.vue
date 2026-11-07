@@ -200,13 +200,14 @@ const order = createResource({
 
 const doc = computed(() => order.data)
 
-const canMarkPaid = computed(() => doc.value.docstatus === 1 && doc.value.payment_status !== 'Paid')
+const isOpen = computed(() => doc.value.docstatus === 1 && doc.value.status !== 'Closed')
+const canMarkPaid = computed(() => isOpen.value && doc.value.payment_status !== 'Paid')
 const canFulfill = computed(
 	() =>
-		doc.value.docstatus === 1 &&
+		isOpen.value &&
 		!['Preparing', 'Shipped', 'Fulfilled', 'Cancelled'].includes(doc.value.fulfillment_status),
 )
-const canCancel = computed(() => doc.value.docstatus !== 2)
+const canCancel = computed(() => isOpen.value)
 
 const actions = {
 	markPaid: {
@@ -229,7 +230,7 @@ const actions = {
 	},
 	cancel: {
 		title: 'Cancel order',
-		message: `Cancel ${props.name} and email the customer. An unpaid order is cancelled; a paid or invoiced one gets a credit note, a card payment is refunded, and the order is closed. This can't be undone.`,
+		message: `Cancel ${props.name} and email the customer. An unpaid order is cancelled; a paid or invoiced one gets a credit note and is closed, and you refund it from Refunds due. This can't be undone.`,
 		buttonLabel: 'Cancel order',
 		theme: 'red',
 		method: 'shop.api.orders.cancel_order',

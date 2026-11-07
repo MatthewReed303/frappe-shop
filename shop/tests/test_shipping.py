@@ -37,6 +37,14 @@ class TestShipping(IntegrationTestCase):
 		)
 		frappe.clear_cache(doctype="Shop Settings")
 
+	def test_free_shipping_is_promised_only_when_the_store_offers_it(self):
+		from shop.storefront.page_data import store_details
+
+		self.configure(rate=49)
+		self.assertIsNone(store_details()["delivery_note"])
+		self.configure(rate=49, threshold=500)
+		self.assertIn("500", store_details()["delivery_note"])
+
 	def test_no_charge_without_account(self):
 		frappe.db.set_single_value("Shop Settings", {"flat_shipping_rate": 99, "shipping_account": None})
 		frappe.clear_cache(doctype="Shop Settings")

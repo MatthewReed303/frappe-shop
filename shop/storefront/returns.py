@@ -60,6 +60,11 @@ def window_days() -> int:
 	return cint(frappe.get_cached_doc("Shop Settings").get("return_window_days"))
 
 
+def returns_note() -> str | None:
+	days = window_days()
+	return _("{0}-day returns").format(days) if days else None
+
+
 def validate_window(order):
 	days = window_days()
 	if not days:
@@ -74,9 +79,12 @@ def validate_window(order):
 def shipped_date(order_name: str):
 	"""When the order left: the courier's pickup for an order sent through a fulfilment provider,
 	else its first Delivery Note."""
-	shipment = orders_module.shipment_summary(order_name)
-	if shipment:
-		return get_datetime(shipment["shipped_on"]) if shipment.get("shipped_on") else None
+	if orders_module.is_cancelled(frappe.get_doc("Sales Order", order_name)):
+		return None
+	if frappe.db.exists("Shop Fulfillment", {"sales_order": order_name}):
+		# sent through a fulfilment provider: only a shipment the courier has counts
+		shipment = orders_module.shipment_summary(order_name)
+		return get_datetime(shipment["shipped_on"]) if shipment and shipment.get("shipped_on") else None
 	delivered = frappe.db.get_value(
 		"Delivery Note Item",
 		{"against_sales_order": order_name, "docstatus": 1},

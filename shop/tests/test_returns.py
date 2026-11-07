@@ -50,6 +50,16 @@ class TestReturns(IntegrationTestCase):
 				order=order, item_code="SHOP-DEMO-003", request_type="Return", reason="x", token="wrong"
 			)
 
+	def test_the_return_window_is_the_stores_setting(self):
+		days = frappe.db.get_single_value("Shop Settings", "return_window_days")
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "return_window_days", days)
+		frappe.db.set_single_value("Shop Settings", "return_window_days", 30)
+		frappe.clear_cache(doctype="Shop Settings")
+		self.assertEqual(returns.returns_note(), "30-day returns")
+		frappe.db.set_single_value("Shop Settings", "return_window_days", 0)
+		frappe.clear_cache(doctype="Shop Settings")
+		self.assertIsNone(returns.returns_note())
+
 	def test_unshipped_orders_are_not_returnable(self):
 		cart.add_item("SHOP-DEMO-004")
 		order = checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
@@ -73,6 +83,13 @@ class TestReturns(IntegrationTestCase):
 			)
 		fulfillment_api.mark_shipped(name, carrier="Delhivery", tracking_number="RTN-2")
 		self.assertTrue(returns.summary(order)["eligible"])
+
+	def test_a_cancelled_shipment_is_not_returnable(self):
+		cart.add_item("SHOP-DEMO-004")
+		order = checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
+		name = service.send(order, "manual")
+		service.cancel(name)
+		self.assertFalse(returns.summary(order)["eligible"])
 
 	def test_one_open_request_per_item(self):
 		order, token = self.shipped_order()

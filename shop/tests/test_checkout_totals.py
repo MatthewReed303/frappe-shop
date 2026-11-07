@@ -404,6 +404,11 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(fee_row(swift, "TEST-TRANSFER-FEE").amount, 6.11)
 		self.assertAlmostEqual(swift.total - local.total, 6.11, delta=0.01)
 
+		# the currencies offered stay the same whichever way the shopper pays
+		self.assertEqual(
+			[row["currency"] for row in totals.payload(swift)["bank_currencies"]],
+			[row["currency"] for row in totals.payload(local)["bank_currencies"]],
+		)
 		routes = totals.payload(swift)["bank_routes"]
 		self.assertEqual([route["method"] for route in routes], ["bank", "swift"])
 		self.assertIn(totals.money(6.11, self.foreign), routes[1]["label"])
@@ -882,8 +887,11 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.addCleanup(entry.cancel)
 		self.assertFalse(payment.cancel_if_unpaid(name))
 		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 1)
-		self.assertTrue(
-			frappe.db.exists("Comment", {"reference_name": order.name, "content": ["like", "%not matched%"]})
+		# the next run doesn't say it again
+		self.assertFalse(payment.cancel_if_unpaid(name))
+		self.assertEqual(
+			frappe.db.count("Comment", {"reference_name": order.name, "content": ["like", "%not matched%"]}),
+			1,
 		)
 
 	def test_a_customer_who_left_the_payment_page_is_reminded_once(self):

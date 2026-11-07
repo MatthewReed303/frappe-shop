@@ -392,6 +392,8 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 	if not order.ignore_pricing_rule:
 		from erpnext.accounts.doctype.pricing_rule.utils import apply_pricing_rule_on_transaction
 
+		# rules for the whole order (a coupon's minimum amount) look at its totals
+		calculate(order)
 		apply_pricing_rule_on_transaction(order)
 	remove_included_tax(order, template)
 	return order
@@ -760,9 +762,9 @@ def payload(quote: frappe._dict) -> dict:
 		"can_ship": bool(quote.shipping),
 		"payment_methods": payment_methods(quote.export),
 		"payment_method": quote.payment_method,
+		# every currency the store takes bank transfers in; one without Swift details is paid locally
 		"bank_currencies": [
-			{"currency": row.currency, "label": row.label or row.currency}
-			for row in bank_accounts(quote.payment_method if quote.payment_method in BANK_METHODS else BANK)
+			{"currency": row.currency, "label": row.label or row.currency} for row in bank_accounts()
 		],
 		"bank_routes": bank_routes(currency, factor) if quote.payment_method in BANK_METHODS else [],
 		"suggested_bank_method": suggested_bank_method(quote.address, currency)

@@ -105,22 +105,27 @@ def order_summary(order, token: str | None = None) -> dict:
 	product_total = sum(frappe.utils.flt(row.amount) for row in products)
 	paid = payment.is_paid(order)
 	method = payment.method(order)
+	cancelled = is_cancelled(order)
 	return {
 		"returns": returns.summary(order.name),
+		"confirmed": None if cancelled else "true",
+		"heading": _("Your order has been cancelled") if cancelled else _("Thank you for your order!"),
 		"name": order.name,
 		"status": order.status,
 		"display_status": display_status(order, paid),
 		# signed in, the account lists every order; a guest keeps this page's own link
 		"track_url": store_url("account/orders") if session_customers() else order_url(order.name),
 		# an order waiting on an online payment is emailed once it is paid
-		"confirmation_note": _("Your order is waiting for payment.")
+		"confirmation_note": _("We've emailed you the details.")
+		if cancelled
+		else _("Your order is waiting for payment.")
 		if order.docstatus == 1 and not paid and method == totals.GATEWAY
 		else _("We've emailed you a copy of this order."),
 		"progress": order_progress(order, shipment),
 		"shipment": shipment,
 		# paid, or to be paid on account or on delivery, and not sent yet
 		"awaiting_shipment": "true"
-		if not shipment and order.docstatus == 1 and (paid or method in (totals.ACCOUNT, totals.COD, None))
+		if not shipment and not cancelled and order.docstatus == 1 and (paid or method in (totals.ACCOUNT, totals.COD, None))
 		else None,
 		"transaction_date": str(order.transaction_date),
 		"currency": order.currency,

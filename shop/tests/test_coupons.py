@@ -86,6 +86,16 @@ class TestCoupons(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "doesn't apply"):
 			cart.apply_coupon("GROUPONLY")
 
+	def test_coupon_with_a_minimum_applies_above_it(self):
+		rule = frappe.db.get_value("Coupon Code", {"coupon_code": "WELCOME10"}, "pricing_rule")
+		original = frappe.db.get_value("Pricing Rule", rule, "min_amt")
+		frappe.db.set_value("Pricing Rule", rule, "min_amt", 1)
+		self.addCleanup(frappe.db.set_value, "Pricing Rule", rule, "min_amt", original)
+		cart.add_item("SHOP-DEMO-011")
+		payload = cart.apply_coupon("WELCOME10")
+		self.assertEqual(payload["coupon"]["code"], "WELCOME10")
+		self.assertGreater(payload["discount"], 0)
+
 	def test_remove_coupon(self):
 		cart.add_item("SHOP-DEMO-003")
 		cart.apply_coupon("WELCOME10")

@@ -414,13 +414,19 @@ def terms_page() -> dict:
 
 
 def store_details() -> dict:
+	from shop.storefront import returns, shipping
+
 	settings = frappe.get_cached_doc("Shop Settings")
 	signed_in = frappe.session.user not in ("Guest", None)
+	delivery_note, returns_note = shipping.free_shipping_note(), returns.returns_note()
 	return {
 		"name": settings.store_name,
 		"logo": settings.store_logo,
 		"currency": settings.currency,
 		"enable_cod": settings.enable_cod,
+		"delivery_note": delivery_note,
+		"returns_note": returns_note,
+		"delivery_card": "true" if delivery_note or returns_note or settings.enable_cod else None,
 		"account_label": frappe._("Account") if signed_in else frappe._("Sign in"),
 		"account_url": store_url("account/orders")
 		if signed_in

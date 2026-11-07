@@ -1883,13 +1883,17 @@ def delivery_card(refs):
 		children=[
 			block(
 				"p",
-				text="Free delivery",
+				text="Free shipping on orders over $100",
+				visibilityCondition={"key": "store.delivery_note", "comesFrom": "dataScript"},
 				styles={"fontSize": "13px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
+				dynamicValues=[dv("store.delivery_note", "innerHTML")],
 			),
 			block(
 				"p",
-				text="Ships in 48 hours · 14-day easy returns",
+				text="14-day returns",
+				visibilityCondition={"key": "store.returns_note", "comesFrom": "dataScript"},
 				styles={"color": refs["muted"], "fontSize": "13px", "height": "fit-content", "width": "fit-content"},
+				dynamicValues=[dv("store.returns_note", "innerHTML")],
 			),
 			block(
 				"p",
@@ -1937,8 +1941,7 @@ def trust_row(refs):
 		},
 		children=[
 			item("Secure payments"),
-			item("Easy returns"),
-			item("Quality checked"),
+			item("Order tracking"),
 			item("Support that replies"),
 		],
 	)
@@ -3258,6 +3261,7 @@ def confirmation_blocks(refs):
 			block(
 				"p",
 				text="✓",
+				visibilityCondition={"key": "order.confirmed", "comesFrom": "dataScript"},
 				styles={
 					"alignItems": "center",
 					"backgroundColor": refs["ink"],
@@ -3273,6 +3277,7 @@ def confirmation_blocks(refs):
 			block(
 				"h1",
 				text="Thank you for your order!",
+				dynamicValues=[dv("order.heading", "innerHTML")],
 				styles={
 					"color": refs["ink"],
 					"fontSize": "28px",
@@ -3322,7 +3327,7 @@ def confirmation_blocks(refs):
 				children=[
 					info_tile(
 						"Shipping info",
-						"Your order ships in 48 hours. We will email you the tracking number.",
+						"We'll email you the tracking number when your order ships.",
 						name="Shipping Tile",
 						visibilityCondition={"key": "order.awaiting_shipment", "comesFrom": "dataScript"},
 					),
@@ -3877,7 +3882,7 @@ def contact_blocks(refs):
 FAQS = [
 	(
 		"How long does delivery take?",
-		"Orders are dispatched within 48 hours and usually arrive in 3 to 5 working days.",
+		"The delivery options for your address, with their prices, are shown at checkout. We email you the tracking number when your order ships.",
 	),
 	(
 		"Can I return a product?",
