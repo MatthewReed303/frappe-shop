@@ -545,13 +545,20 @@ def create_sales_order(
 
 
 def billing_address(party: str) -> str | None:
-	"""The customer's billing address: ERPNext's default address for them, when it is a billing one."""
-	from frappe.contacts.doctype.address.address import get_default_address
-
-	address = get_default_address("Customer", party, sort_key="is_primary_address")
-	if address and frappe.db.get_value("Address", address, "address_type") == "Billing":
-		return address
-	return None
+	"""The customer's billing address: their primary Billing address, else their latest one."""
+	linked = frappe.get_all(
+		"Dynamic Link",
+		filters={"parenttype": "Address", "link_doctype": "Customer", "link_name": party},
+		pluck="parent",
+	)
+	if not linked:
+		return None
+	return frappe.db.get_value(
+		"Address",
+		{"name": ["in", linked], "address_type": "Billing", "disabled": 0},
+		"name",
+		order_by="is_primary_address desc, modified desc",
+	)
 
 
 def check_credit_limit(sales_order) -> None:

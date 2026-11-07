@@ -17,7 +17,7 @@ def get_prices(item_codes: list[str], qtys: dict | None = None, customer: str | 
 	if customer == "session":
 		customer = session_customer()
 	if not customer:
-		return retail
+		return guest_prices(retail, qtys) if qtys else retail
 	price_list = customer_price_list(customer)
 	prices = {}
 	for code in item_codes:
@@ -301,10 +301,34 @@ def customer_price_list(customer: str) -> str:
 	return settings.price_list
 
 
-def customer_rate(item_code: str, customer: str, price_list: str, qty: float) -> float | None:
-	"""The customer's net price for one unit at this quantity, after pricing rules."""
+def guest_prices(retail: dict, qtys: dict) -> dict:
+	"""A guest's cart prices: the store's prices with the Pricing Rules for the default Customer Group
+	(quantity breaks), as checkout prices the order."""
+	group = frappe.db.get_single_value("Selling Settings", "customer_group")
+	price_list = frappe.get_cached_doc("Shop Settings").price_list
+	prices = {}
+	for code, entry in retail.items():
+		rate = customer_rate(code, None, price_list, flt(qtys.get(code)) or 1, customer_group=group)
+		if rate is None or rate >= flt(entry["rate"]) - 0.004:
+			prices[code] = entry
+			continue
+		prices[code] = {
+			"rate": rate,
+			"formatted": format_amount(rate),
+			**display_fields(rate),
+			"retail": entry["rate"],
+			"formatted_retail": format_amount(entry["rate"]),
+		}
+	return prices
+
+
+def customer_rate(
+	item_code: str, customer: str | None, price_list: str, qty: float, customer_group: str | None = None
+) -> float | None:
+	"""The customer's (or, without one, the Customer Group's) net price for one unit at this
+	quantity, after pricing rules."""
 	cache = request_cache("shop_customer_rates")
-	key = (item_code, customer, price_list, qty)
+	key = (item_code, customer, customer_group, price_list, qty)
 	if key in cache:
 		return cache[key]
 	from erpnext.stock.get_item_details import get_item_details
@@ -315,6 +339,7 @@ def customer_rate(item_code: str, customer: str, price_list: str, qty: float) ->
 	args = frappe._dict(
 		item_code=item_code,
 		customer=customer,
+		customer_group=customer_group,
 		company=settings.company,
 		currency=settings.currency,
 		price_list=price_list,

@@ -359,6 +359,15 @@ class TestCheckoutTotals(IntegrationTestCase):
 				self.assertEqual(totals.order_total(order), quote.total)
 				self.basket(3)
 
+	def test_a_guests_cart_shows_the_quantity_break(self):
+		self.quantity_break(3, 15)
+		basket = self.basket(3)
+		cart.refresh_rates(basket)
+		self.assertAlmostEqual(basket.items[0].rate, flt(self.price * 0.85, 2), delta=0.01)
+		quote = totals.compute(basket, self.home_address, None, "bank")
+		line = next(item for item in quote.order.items if item.item_code == ITEM)
+		self.assertAlmostEqual(basket.items[0].rate, flt(line.rate), delta=0.01)
+
 	def test_quote_keeps_its_pricing_rule(self):
 		from shop.storefront import quotes
 
