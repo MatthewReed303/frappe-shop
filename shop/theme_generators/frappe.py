@@ -3,7 +3,6 @@
 from shop.theme_generators.store_ui import store_css
 from shop.theme_generators.blocks import (
 	block,
-	component_ref,
 	dv,
 	repeater,
 	root,
@@ -12,6 +11,7 @@ from shop.theme_generators.blocks import (
 	upsert_page,
 	upsert_variables,
 )
+from shop.theme_generators.blocks import component_ref as block_component_ref
 
 GROUP = "frappe"
 HEAD = "Source Serif 4"
@@ -37,39 +37,104 @@ def data_script(fn: str, expose: tuple = ()) -> str:
 	return "\n".join(lines)
 
 
-def generate():
-	refs = upsert_variables(GROUP, PALETTE)
-	styles = upsert_client_script("frappe-styles", "CSS", theme_css(refs))
+class Theme:
+	"""What a site theme changes in this generator; pass one to generate(). Anything left unset
+	keeps Shop's frappe theme, so a site theme holds only what makes it different.
+
+	title: the theme's display name, used in its components' names (e.g. "Acme Store Navbar").
+	group, head, body, palette: the theme's name (its pages' group and name prefix), heading and
+	  body fonts, and colours ({name: (light, dark)}, the keys of PALETTE).
+	skip_routes: pages the site already has, which the theme leaves out (e.g. "about").
+	component_ids: Shop component id -> the theme's own id, e.g. {"shop-navbar": "acme-store-bar"}.
+	site_components: ids among those that the site already has (e.g. its own footer); they are
+	  placed on the pages but not generated.
+	header_component: a site component placed above every page (e.g. the site's header).
+	blocks: builder name -> function(refs) returning the block to use instead of Shop's, for the
+	  components (nav, footer, hero, trust_row, delivery_card, ...) and pages (home_blocks,
+	  product_blocks, ...).
+	faqs: (question, answer) pairs for the FAQ page.
+	listing_subtitle: the line under "All Products".
+	extra_css: added after the theme's styles.
+	"""
+
+	def __init__(self, group=None, title=None, head=None, body=None, palette=None, skip_routes=(), component_ids=None,
+				 site_components=(), header_component=None, blocks=None, faqs=None, listing_subtitle=None,
+				 extra_css=""):
+		self.group = group or GROUP
+		self.title = title or self.group.title()
+		self.head = head or HEAD
+		self.body = body or BODY
+		self.palette = {**PALETTE, **(palette or {})}
+		self.skip_routes = set(skip_routes)
+		self.component_ids = component_ids or {}
+		self.site_components = set(site_components)
+		self.header_component = header_component
+		self.blocks = blocks or {}
+		self.faqs = faqs
+		self.listing_subtitle = listing_subtitle
+		self.extra_css = extra_css
+
+	def build(self, name, default, refs):
+		return self.blocks.get(name, default)(refs)
+
+	def page_name(self, name):
+		return name.replace("frappe-", f"{self.group}-", 1)
+
+
+THEME = Theme()
+
+
+def component_ref(component_id):
+	"""A component placed on a page: the theme's own id for it when it has one."""
+	return block_component_ref(THEME.component_ids.get(component_id, component_id))
+
+
+def generate(theme: Theme | None = None):
+	"""Write the theme's template pages and components. A site theme passes a Theme with what differs."""
+	global THEME
+	THEME = theme or Theme()
+	try:
+		_generate()
+	finally:
+		THEME = Theme()
+
+
+def _generate():
+	refs = upsert_variables(THEME.group, THEME.palette)
+	styles = upsert_client_script(f"{THEME.group}-styles", "CSS", theme_css(refs) + THEME.extra_css)
 	register_components(refs)
+	build = lambda name, default: THEME.build(name, default, refs)  # noqa: E731
 	pages = [
-		("frappe-home", "Home", "home", home_blocks(refs), "home", (), False),
-		("frappe-products", "Products", "products", products_blocks(refs), "listing", (), False),
-		("frappe-product", "Product", "product/:slug", product_blocks(refs), "product_page", ("product",), False),
-		("frappe-collection", "Collection", "collection/:slug", collection_blocks(refs), "collection_page", (), False),
-		("frappe-cart", "Cart", "cart", cart_blocks(refs), "cart_page", ("cart",), False),
-		("frappe-checkout", "Checkout", "checkout", checkout_blocks(refs), "checkout_page", ("cart", "addresses", "prefill", "default_country"), False),
+		("frappe-home", "Home", "home", build("home_blocks", home_blocks), "home", (), False),
+		("frappe-products", "Products", "products", build("products_blocks", products_blocks), "listing", (), False),
+		("frappe-product", "Product", "product/:slug", build("product_blocks", product_blocks), "product_page", ("product",), False),
+		("frappe-collection", "Collection", "collection/:slug", build("collection_blocks", collection_blocks), "collection_page", (), False),
+		("frappe-cart", "Cart", "cart", build("cart_blocks", cart_blocks), "cart_page", ("cart",), False),
+		("frappe-checkout", "Checkout", "checkout", build("checkout_blocks", checkout_blocks), "checkout_page", ("cart", "addresses", "prefill", "default_country"), False),
 		(
 			"frappe-order-confirmation",
 			"Order Confirmed",
 			"order-confirmation/:order_id",
-			confirmation_blocks(refs),
+			build("confirmation_blocks", confirmation_blocks),
 			"order_confirmation",
 			(),
 			False,
 		),
-		("frappe-account-orders", "Your Orders", "account/orders", account_blocks(refs), "account_orders", (), True),
-		("frappe-register", "Create an account", "account/register", register_blocks(refs), "register_page", (), False),
-		("frappe-trade", "Trade account", "account/trade", trade_blocks(refs), "trade_page", ("prefill", "default_country"), False),
-		("frappe-quote", "Your quote", "quote/:quote_id", quote_blocks(refs), "quote_page", (), False),
-		("frappe-terms", "Terms and Conditions", "terms", terms_blocks(refs), "terms_page", (), False),
-		("frappe-about", "About", "about", about_blocks(refs), "basic", (), False),
-		("frappe-contact", "Contact", "contact", contact_blocks(refs), "basic", (), False),
-		("frappe-faq", "FAQ", "faq", faq_blocks(refs), "basic", (), False),
+		("frappe-account-orders", "Your Orders", "account/orders", build("account_blocks", account_blocks), "account_orders", (), True),
+		("frappe-register", "Create an account", "account/register", build("register_blocks", register_blocks), "register_page", (), False),
+		("frappe-trade", "Trade account", "account/trade", build("trade_blocks", trade_blocks), "trade_page", ("prefill", "default_country"), False),
+		("frappe-quote", "Your quote", "quote/:quote_id", build("quote_blocks", quote_blocks), "quote_page", (), False),
+		("frappe-terms", "Terms and Conditions", "terms", build("terms_blocks", terms_blocks), "terms_page", (), False),
+		("frappe-about", "About", "about", build("about_blocks", about_blocks), "basic", (), False),
+		("frappe-contact", "Contact", "contact", build("contact_blocks", contact_blocks), "basic", (), False),
+		("frappe-faq", "FAQ", "faq", build("faq_blocks", faq_blocks), "basic", (), False),
 	]
 	for page_name, title, route, blocks, data_fn, expose, authenticated in pages:
+		if route in THEME.skip_routes:
+			continue
 		upsert_page(
-			GROUP,
-			page_name,
+			THEME.group,
+			THEME.page_name(page_name),
 			title,
 			route,
 			blocks,
@@ -81,19 +146,23 @@ def generate():
 
 def register_components(refs):
 	"""Reusable building blocks listed in Builder's insert panel; pages reference them via component_ref."""
-	for component_id, component_name, node in [
-		("shop-navbar", "Shop Navbar", nav(refs)),
-		("shop-footer", "Shop Footer", footer(refs)),
-		("shop-cart-drawer", "Shop Cart Drawer", cart_drawer()),
-		("shop-hero", "Shop Hero", hero(refs)),
-		("shop-product-card", "Shop Product Card", product_card(refs)),
-		("shop-collection-tile", "Shop Collection Tile", collection_tile(refs)),
-		("shop-filter-bar", "Shop Filter Bar", filter_bar(refs)),
-		("shop-review-card", "Shop Review Card", review_card(refs)),
-		("shop-delivery-card", "Shop Delivery Promise", delivery_card(refs)),
-		("shop-trust-row", "Shop Trust Row", trust_row(refs)),
+	for component_id, component_name, builder, default in [
+		("shop-navbar", "Shop Navbar", "nav", nav),
+		("shop-footer", "Shop Footer", "footer", footer),
+		("shop-cart-drawer", "Shop Cart Drawer", "cart_drawer", lambda refs: cart_drawer()),
+		("shop-hero", "Shop Hero", "hero", hero),
+		("shop-product-card", "Shop Product Card", "product_card", product_card),
+		("shop-collection-tile", "Shop Collection Tile", "collection_tile", collection_tile),
+		("shop-filter-bar", "Shop Filter Bar", "filter_bar", filter_bar),
+		("shop-review-card", "Shop Review Card", "review_card", review_card),
+		("shop-delivery-card", "Shop Delivery Promise", "delivery_card", delivery_card),
+		("shop-trust-row", "Shop Trust Row", "trust_row", trust_row),
 	]:
-		upsert_component(component_id, component_name, node)
+		theme_id = THEME.component_ids.get(component_id, component_id)
+		if theme_id in THEME.site_components:
+			continue  # the site's own component is used as it is
+		name = component_name if theme_id == component_id else component_name.replace("Shop", f"{THEME.title} Store", 1)
+		upsert_component(theme_id, name, THEME.build(builder, default, refs))
 
 
 def theme_css(refs):
@@ -334,11 +403,13 @@ def shell(refs, children):
 				"display": "flex",
 				"flexDirection": "column",
 				"flexShrink": 0,
-				"fontFamily": BODY,
+				"fontFamily": THEME.body,
 				"minHeight": "100vh",
 				"width": "100%",
 			},
-			children + [component_ref("shop-cart-drawer")],
+			([block_component_ref(THEME.header_component)] if THEME.header_component else [])
+			+ children
+			+ [component_ref("shop-cart-drawer")],
 		)
 	]
 
@@ -443,7 +514,7 @@ def brand(refs):
 					"borderRadius": "4px",
 					"color": refs["paper"],
 					"display": "flex",
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "14px",
 					"fontWeight": "700",
 					"height": "24px",
@@ -756,7 +827,7 @@ def heading(refs, text, size="32px", mobile_size="24px", element="h1", serif=Fal
 		"width": "fit-content",
 	}
 	if serif:
-		styles["fontFamily"] = HEAD
+		styles["fontFamily"] = THEME.head
 	return block(element, text=text, styles=styles, mobile={"fontSize": mobile_size})
 
 
@@ -995,7 +1066,7 @@ def hero(refs):
 				text="Engineered for comfort.<br>Designed for builders.",
 				styles={
 					"color": refs["ink"],
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "52px",
 					"fontWeight": "600",
 					"height": "fit-content",
@@ -1167,7 +1238,7 @@ def home_blocks(refs):
 						text="Made for deep work and comfort.",
 						styles={
 							"color": refs["ink"],
-							"fontFamily": HEAD,
+							"fontFamily": THEME.head,
 							"fontSize": "34px",
 							"fontWeight": "600",
 							"height": "fit-content",
@@ -1358,7 +1429,7 @@ def products_blocks(refs):
 							heading(refs, "All Products", size="30px", mobile_size="24px"),
 							block(
 								"p",
-								text="Official merchandise for the builder community.",
+								text=THEME.listing_subtitle or "Official merchandise for the builder community.",
 								styles={"color": refs["muted"], "fontSize": "14px", "height": "fit-content", "width": "fit-content"},
 							),
 							block(
@@ -1961,7 +2032,7 @@ def fabric_band(refs):
 				styles={
 					"alignSelf": "center",
 					"color": refs["ink"],
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "28px",
 					"fontWeight": "600",
 					"height": "fit-content",
@@ -2075,7 +2146,7 @@ def rating_summary(refs):
 				text="",
 				styles={
 					"color": refs["ink"],
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "56px",
 					"fontWeight": "600",
 					"height": "fit-content",
@@ -3719,7 +3790,7 @@ def serif_page_heading(refs, text):
 		text=text,
 		styles={
 			"color": refs["ink"],
-			"fontFamily": HEAD,
+			"fontFamily": THEME.head,
 			"fontSize": "40px",
 			"fontWeight": "600",
 			"height": "fit-content",
@@ -3754,7 +3825,7 @@ def about_blocks(refs):
 				"p",
 				text=value,
 				styles={
-					"fontFamily": HEAD,
+					"fontFamily": THEME.head,
 					"fontSize": "26px",
 					"fontWeight": "600",
 					"height": "fit-content",
@@ -3914,7 +3985,7 @@ def faq_blocks(refs):
 			block(
 				"div",
 				styles={"display": "flex", "flexDirection": "column", "marginTop": "10px", "width": "100%"},
-				children=[entry(question, answer) for question, answer in FAQS],
+				children=[entry(question, answer) for question, answer in (THEME.faqs or FAQS)],
 			),
 		],
 		styles={"gap": "16px", "maxWidth": "760px", "padding": "72px 40px 96px"},
