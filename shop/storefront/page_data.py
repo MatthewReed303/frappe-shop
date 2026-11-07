@@ -338,7 +338,8 @@ def trade_page() -> dict:
 		"prefill": checkout.checkout_prefill(),
 		"trade": accounts.trade_status(),
 		# what the business does: ERPNext's Industry Types, as on a Lead
-		"industries": [{"name": name} for name in frappe.get_all("Industry Type", pluck="name", order_by="name")],
+		"industries": [{"value": "", "label": frappe._("What does your business do?")}]
+		+ [{"value": name, "label": name} for name in frappe.get_all("Industry Type", pluck="name", order_by="name")],
 	}
 
 
@@ -352,7 +353,7 @@ def quote_page() -> dict:
 	except (frappe.PermissionError, frappe.DoesNotExistError):
 		frappe.clear_messages()
 		quote = None
-	return {"store": store_details(), "quote": quote, "terms": checkout.terms_details()}
+	return {"store": store_details(), "quote": quote, "quote_invalid": None if quote else "true", "terms": checkout.terms_details()}
 
 
 @frappe.whitelist(allow_guest=True)

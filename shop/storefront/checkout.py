@@ -25,7 +25,24 @@ def get_checkout_summary() -> dict:
 		"countries": countries(),
 		"default_country": totals.company_country(),
 		"terms": terms_details(),
+		"bank_currency_note": bank_currency_note(),
+		"quotes_enabled": "true" if settings.get("allow_quote_requests") else None,
 	}
+
+
+def bank_currency_note() -> str | None:
+	"""Explains the bank transfer currency choice, with the conversion fee the store charges."""
+	accounts = totals.bank_accounts()
+	if len(accounts) < 2:
+		return None
+	fees = sorted({flt(row.conversion_fee_percent) for row in accounts if flt(row.conversion_fee_percent)})
+	note = _("We give you local bank details for the currency you choose.")
+	if fees:
+		fee = f"{fees[-1]:g}%" if len(fees) == 1 else _("up to {0}%").format(f"{fees[-1]:g}")
+		note += " " + _("Paying in another currency than {0} adds {1} to cover converting the money.").format(
+			totals.company_currency(), fee
+		)
+	return note
 
 
 def countries() -> list[dict]:

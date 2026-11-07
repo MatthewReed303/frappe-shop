@@ -57,6 +57,7 @@
   "business_buyer_label",
   "trade_section",
   "trade_customer_group",
+  "allow_quote_requests",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -389,11 +390,18 @@
    "options": "Customer Group",
    "label": "Trade Customer Group",
    "description": "Approved trade customers join this Customer Group (its Price List, Payment Terms, credit limit and Store Discounts apply). Applications arrive as Leads with UTM Source \"Store Trade Application\"."
+  },
+  {
+   "fieldname": "allow_quote_requests",
+   "fieldtype": "Check",
+   "default": "1",
+   "label": "Allow Quote Requests",
+   "description": "Shoppers can ask for a quote at checkout instead of ordering. It arrives as a draft Quotation for staff to finish and send."
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 15:33:36.180934",
+ "modified": "2026-11-07 15:42:57.244519",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

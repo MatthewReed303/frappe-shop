@@ -46,7 +46,7 @@ def generate():
 		("frappe-product", "Product", "product/:slug", product_blocks(refs), "product_page", ("product",), False),
 		("frappe-collection", "Collection", "collection/:slug", collection_blocks(refs), "collection_page", (), False),
 		("frappe-cart", "Cart", "cart", cart_blocks(refs), "cart_page", ("cart",), False),
-		("frappe-checkout", "Checkout", "checkout", checkout_blocks(refs), "checkout_page", ("cart", "addresses"), False),
+		("frappe-checkout", "Checkout", "checkout", checkout_blocks(refs), "checkout_page", ("cart", "addresses", "prefill", "default_country"), False),
 		(
 			"frappe-order-confirmation",
 			"Order Confirmed",
@@ -57,6 +57,10 @@ def generate():
 			False,
 		),
 		("frappe-account-orders", "Your Orders", "account/orders", account_blocks(refs), "account_orders", (), True),
+		("frappe-register", "Create an account", "account/register", register_blocks(refs), "register_page", (), False),
+		("frappe-trade", "Trade account", "account/trade", trade_blocks(refs), "trade_page", ("prefill", "default_country"), False),
+		("frappe-quote", "Your quote", "quote/:quote_id", quote_blocks(refs), "quote_page", (), False),
+		("frappe-terms", "Terms and Conditions", "terms", terms_blocks(refs), "terms_page", (), False),
 		("frappe-about", "About", "about", about_blocks(refs), "basic", (), False),
 		("frappe-contact", "Contact", "contact", contact_blocks(refs), "basic", (), False),
 		("frappe-faq", "FAQ", "faq", faq_blocks(refs), "basic", (), False),
@@ -316,6 +320,74 @@ input::placeholder {{ color: {refs["muted"]}; }}
 	.pdp-buybar {{ transition: none; }}
 }}
 #reviews {{ scroll-margin-top: 24px; }}
+""" + store_css(refs)
+
+
+def store_css(refs):
+	"""Styles for what the store's script and server render: checkout lines and options, the
+	order's payment box and totals, account rows and forms, quote and terms pages."""
+	ink, muted, line, card, paper, ok = refs["ink"], refs["muted"], refs["line"], refs["card"], refs["paper"], refs["success"]
+	warn = refs["badge"]
+	return f"""
+[hidden] {{ display: none !important; }}
+.visually-hidden {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }}
+.store-currency:empty {{ display:none; }}
+.currency-picker select {{ font: inherit; font-size:13px; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:2px; padding:5px 7px; cursor:pointer; }}
+.checkout-option {{ display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid {line}; border-radius:2px; cursor:pointer; width:100%; font-size:13px; }}
+.checkout-option input {{ accent-color:{ink}; width:15px; height:15px; flex-shrink:0; }}
+.checkout-option-label {{ flex-grow:1; }}
+.checkout-option-label small {{ color:{muted}; margin-left:6px; }}
+.checkout-option-price {{ font-weight:600; white-space:nowrap; }}
+small.checkout-option-price {{ font-weight:400; color:{muted}; font-size:12px; }}
+.checkout-option:has(input:checked) {{ border-color:{ink}; box-shadow:0 0 0 1px {ink}; }}
+.checkout-hint {{ color:{muted}; font-size:12px; line-height:1.5; margin:0; }}
+.checkout-hint a, .account-note a, .checkout-check a {{ color:{ink}; text-decoration:underline; }}
+.checkout-warning {{ border:1px solid {warn}; border-radius:2px; padding:12px 14px; font-size:13px; line-height:1.5; }}
+.checkout-warning p {{ margin:0; }}
+.checkout-error {{ border:1px solid {warn}; color:{warn}; border-radius:2px; padding:12px 14px; font-size:13px; }}
+.checkout-check {{ display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.5; cursor:pointer; }}
+.checkout-check input {{ margin-top:3px; accent-color:{ink}; width:15px; height:15px; flex-shrink:0; }}
+.terms-note::before {{ content:", "; }}
+.checkout-totals[aria-busy="true"] {{ opacity:.55; }}
+.checkout-line, .order-line {{ display:flex; justify-content:space-between; gap:12px; font-size:13px; padding:2px 0; }}
+.checkout-total, .order-line.total {{ border-top:1px solid {line}; margin-top:6px; padding-top:10px; font-size:15px; font-weight:700; }}
+.checkout-note, .order-note {{ color:{muted}; font-size:12px; margin:2px 0 0; }}
+.order-item {{ display:grid; grid-template-columns:1fr auto auto; gap:14px; padding:10px 0; border-bottom:1px solid {line}; font-size:13px; }}
+.order-qty {{ color:{muted}; }}
+.order-qty::before {{ content:"× "; }}
+.order-amount {{ font-weight:600; }}
+.order-totals {{ display:flex; flex-direction:column; gap:6px; }}
+.order-payment {{ border:1px solid {line}; border-radius:2px; padding:16px 18px; font-size:13px; line-height:1.6; }}
+.order-payment h3 {{ margin:0 0 8px; font-size:15px; }}
+.order-payment p {{ margin:0 0 8px; }}
+.order-payment.bank, .order-payment.card {{ border-color:{warn}; }}
+.order-payment.card {{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
+.order-payment.paid {{ border-color:{ok}; }}
+.order-payment.cancelled {{ background:{card}; }}
+.bank-details {{ background:{card}; border-radius:2px; padding:10px 12px; margin:8px 0; font-family: ui-monospace, Menlo, monospace; font-size:13px; }}
+.order-pay-button {{ display:inline-block; background:{ink}; color:{paper}; border-radius:2px; padding:10px 18px; font-weight:600; text-decoration:none; }}
+.account-form {{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; width:100%; }}
+.account-form textarea, .account-form select {{ grid-column: span 2; }}
+.account-form select[name="country"], .account-form select[name="industry"] {{ grid-column: span 1; }}
+.form-submit, .quote-button {{ grid-column: span 2; cursor:pointer; }}
+.quote-button {{ background:{paper}; color:{ink}; border:1px solid {ink}; border-radius:2px; margin-top:8px; padding:12px 20px; font-size:13px; font-weight:600; }}
+.quote-request summary {{ cursor:pointer; font-size:13px; text-decoration:underline; }}
+.quote-request textarea {{ margin-top:8px; }}
+.form-done {{ border:1px solid {ok}; border-radius:2px; padding:14px 16px; font-size:13px; width:100%; }}
+.account-note {{ background:{card}; border-radius:2px; padding:14px 16px; font-size:13px; margin-bottom:12px; }}
+.account-details h2 {{ font-size:18px; font-weight:600; margin:24px 0 8px; }}
+.account-actions {{ display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; margin:6px 0; font-size:13px; color:{muted}; }}
+.account-actions a {{ color:{ink}; font-weight:600; }}
+.account-table {{ display:flex; flex-direction:column; width:100%; }}
+.account-row {{ display:grid; grid-template-columns:1.4fr 1fr 1fr 1.6fr auto; gap:12px; padding:12px 0; border-bottom:1px solid {line}; font-size:13px; color:{ink}; text-decoration:none; align-items:center; }}
+.account-row a {{ color:{ink}; text-decoration:underline; }}
+.terms-text h2 {{ font-size:20px; margin:28px 0 10px; }}
+.terms-text ol {{ padding-left:22px; }}
+@media (max-width: 640px) {{
+	.account-row {{ grid-template-columns:1fr 1fr; }}
+	.account-form {{ grid-template-columns:minmax(0,1fr); }}
+	.account-form > * {{ grid-column: span 1 !important; }}
+}}
 """
 
 
@@ -456,6 +528,12 @@ def brand(refs):
 	)
 
 
+def currency_picker():
+	"""The currencies prices can be shown in (store.currency_picker_html); empty with one currency."""
+	return block("div", text="", name="Currency Picker", classes=["store-currency"],
+				 dynamicValues=[dv("store.currency_picker_html", "innerHTML")])
+
+
 def nav(refs):
 	link_style = {
 		"color": refs["ink"],
@@ -539,11 +617,21 @@ def nav(refs):
 					block(
 						"div",
 						styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "26px"},
-						mobile={"gap": "14px"},
+						mobile={"gap": "14px", "flexWrap": "wrap", "justifyContent": "flex-end", "rowGap": "8px"},
 						children=[
 							block("a", text="Shop all", attrs={"href": "/products"}, styles={**link_style, "whiteSpace": "nowrap"}),
 							block("a", text="About", attrs={"href": "/about"}, styles=dict(link_style), mobile={"display": "none"}),
 							block("a", text="Contact", attrs={"href": "/contact"}, styles=dict(link_style), mobile={"display": "none"}),
+							currency_picker(),
+							block(
+								"a",
+								text="Create account",
+								name="Register",
+								attrs={"href": "/account/register"},
+								visibilityCondition={"key": "store.register_url", "comesFrom": "dataScript"},
+								styles={**link_style, "whiteSpace": "nowrap"},
+								dynamicValues=[dv("store.register_url", "href", "attribute")],
+							),
 							block(
 								"a",
 								text="Account",
@@ -2795,48 +2883,96 @@ def form_section_label(refs, text):
 	)
 
 
+def field_styles(refs, span=2):
+	return {
+		"backgroundColor": refs["paper"],
+		"borderColor": refs["line"],
+		"borderRadius": "2px",
+		"borderStyle": "solid",
+		"borderWidth": "1px",
+		"color": refs["ink"],
+		"fontSize": "13px",
+		"gridColumn": f"span {span}",
+		"padding": "11px 13px",
+		"width": "100%",
+	}
+
+
+def hint(refs, text="", **extra):
+	return block("p", text=text, classes=["checkout-hint"],
+				 styles={"color": refs["muted"], "fontSize": "12px", "gridColumn": "span 2", "lineHeight": "1.5", "width": "100%"}, **extra)
+
+
+def country_select(refs, span=1):
+	"""ERPNext's countries, the store's own country first selected."""
+	return repeater(
+		"countries",
+		block("option", text="Country", dynamicValues=[dv("name", "value", "attribute"), dv("name", "innerHTML"),
+													   dv("selected", "selected", "attribute")]),
+		field_styles(refs, span),
+		element="select",
+		name="Country",
+		attrs={"name": "country", "required": "required", "aria-label": "Country", "autocomplete": "country-name"},
+	)
+
+
+def terms_box(refs, lead="I accept the", span=2):
+	"""The terms checkbox, with the store's Terms and Conditions link and note (terms.*)."""
+	return block(
+		"div",
+		name="Terms",
+		visibilityCondition={"key": "terms", "comesFrom": "dataScript"},
+		styles={"display": "flex", "flexDirection": "column", "gap": "10px", "gridColumn": f"span {span}", "marginTop": "6px", "width": "100%"},
+		children=[
+			block("label", classes=["checkout-check"], children=[
+				block("input", attrs={"type": "checkbox", "name": "accept_terms", "required": "required"}),
+				block("span", children=[
+					block("span", text=f"{lead} "),
+					block("a", text="Terms and Conditions", attrs={"href": "/terms", "target": "_blank", "data-shop": "terms-link"},
+						  dynamicValues=[dv("terms.url", "href", "attribute")]),
+					block("span", text="", classes=["terms-note"], visibilityCondition={"key": "terms.note", "comesFrom": "dataScript"},
+						  dynamicValues=[dv("terms.note", "innerHTML")]),
+				]),
+			]),
+			block("label", classes=["checkout-check"], visibilityCondition={"key": "terms.business_label", "comesFrom": "dataScript"},
+				  children=[block("input", attrs={"type": "checkbox", "name": "business_buyer"}),
+							block("span", text="", dynamicValues=[dv("terms.business_label", "innerHTML")])]),
+		],
+	)
+
+
+def submit_button(refs, text, **extra):
+	return block("button", text=text, attrs={"type": "submit"}, classes=["form-submit"],
+				 styles={"backgroundColor": refs["ink"], "borderRadius": "2px", "borderWidth": "0px", "color": refs["paper"],
+						 "fontSize": "13px", "fontWeight": "600", "gridColumn": "span 2", "marginTop": "8px",
+						 "padding": "14px 32px", "width": "100%"}, **extra)
+
+
+def form_error():
+	return block("div", attrs={"data-shop": "error", "role": "alert"}, classes=["checkout-error"],
+				 styles={"display": "none", "gridColumn": "span 2"})
+
+
 def checkout_blocks(refs):
 	payment_option = block(
 		"label",
 		name="Payment Method",
-		styles={
-			"alignItems": "center",
-			"borderColor": refs["line"],
-			"borderRadius": "2px",
-			"borderStyle": "solid",
-			"borderWidth": "1px",
-			"display": "flex",
-			"flexDirection": "row",
-			"gap": "10px",
-			"padding": "12px 14px",
-			"width": "100%",
-		},
+		classes=["checkout-option"],
 		children=[
-			block(
-				"input",
-				attrs={"type": "radio", "name": "payment_method"},
-				styles={"accentColor": refs["ink"], "height": "15px", "width": "15px"},
-				dynamicValues=[dv("method", "value", "attribute")],
-			),
-			block(
-				"span",
-				text="Payment",
-				styles={"fontSize": "13px", "fontWeight": "500", "height": "fit-content", "width": "fit-content"},
-				dynamicValues=[dv("label", "innerHTML")],
-			),
+			block("input", attrs={"type": "radio", "name": "payment_method"}, dynamicValues=[dv("method", "value", "attribute")]),
+			block("span", text="Payment", classes=["checkout-option-label"], dynamicValues=[dv("label", "innerHTML")]),
+			block("small", text="", attrs={"data-shop": "payment-fee"}, classes=["checkout-option-price"],
+				  dynamicValues=[dv("method", "data-method", "attribute"), dv("fee_note", "innerHTML")]),
 		],
 	)
+	column = {"display": "flex", "flexDirection": "column", "gap": "8px", "gridColumn": "span 2", "width": "100%"}
 	form = block(
 		"form",
 		name="Checkout Form",
 		attrs={"data-shop": "checkout-form"},
 		styles={"display": "grid", "gap": "10px", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "width": "100%"},
 		children=[
-			block(
-				"p",
-				text="Contact",
-				styles={"fontSize": "14px", "fontWeight": "600", "gridColumn": "span 2", "height": "fit-content", "width": "fit-content"},
-			),
+			block("p", text="Contact", styles={"fontSize": "14px", "fontWeight": "600", "gridColumn": "span 2", "height": "fit-content", "width": "fit-content"}),
 			input_block(refs, "email", "Email address", "email", required=True, prefill=True),
 			form_section_label(refs, "Shipping address"),
 			block(
@@ -2844,74 +2980,55 @@ def checkout_blocks(refs):
 				name="Saved Addresses",
 				visibilityCondition={"key": "has_addresses", "comesFrom": "dataScript"},
 				styles={"display": "flex", "gridColumn": "span 2", "width": "100%"},
-				children=[
-					repeater(
-						"addresses",
-						block(
-							"option",
-							text="Address",
-							dynamicValues=[dv("name", "value", "attribute"), dv("line", "innerHTML")],
-						),
-						{
-							"backgroundColor": refs["paper"],
-							"borderColor": refs["line"],
-							"borderRadius": "2px",
-							"borderStyle": "solid",
-							"borderWidth": "1px",
-							"color": refs["ink"],
-							"fontSize": "13px",
-							"padding": "11px 13px",
-							"width": "100%",
-						},
-						element="select",
-						attrs={"data-shop": "address-picker", "aria-label": "Saved addresses"},
-					),
-				],
+				children=[repeater("addresses",
+								   block("option", text="Address", dynamicValues=[dv("name", "value", "attribute"), dv("line", "innerHTML")]),
+								   field_styles(refs), element="select",
+								   attrs={"data-shop": "address-picker", "aria-label": "Saved addresses"})],
 			),
 			input_block(refs, "full_name", "Full name", required=True, prefill=True),
 			input_block(refs, "phone", "Phone", "tel", prefill=True),
 			input_block(refs, "address_line1", "Address", required=True, prefill=True),
 			input_block(refs, "address_line2", "Apartment, suite, etc. (optional)", prefill=True),
 			input_block(refs, "city", "City", required=True, half=True, prefill=True),
-			input_block(refs, "state", "State", half=True, prefill=True),
-			input_block(refs, "pincode", "Pincode", half=True, prefill=True),
-			input_block(refs, "country", "Country", half=True, prefill=True),
+			input_block(refs, "state", "State / region", half=True, prefill=True),
+			input_block(refs, "pincode", "Postcode", half=True, prefill=True),
+			country_select(refs),
+			form_section_label(refs, "Shipping"),
+			block("div", name="Shipping Options", attrs={"data-shop": "shipping-options"}, styles=dict(column),
+				  children=[hint(refs, "Enter your address to see shipping options.")]),
 			form_section_label(refs, "Payment"),
-			repeater(
-				"payment_methods",
-				payment_option,
-				{"display": "flex", "flexDirection": "column", "gap": "8px", "gridColumn": "span 2", "width": "100%"},
-				name="Payment Methods",
-			),
+			repeater("payment_methods", payment_option, dict(column), name="Payment Methods"),
 			block(
-				"p",
-				text="You'll be redirected to a secure payment gateway to complete your purchase.",
-				attrs={"data-shop": "gateway-note", "hidden": "hidden"},
-				styles={
-					"color": refs["muted"],
-					"fontSize": "12px",
-					"gridColumn": "span 2",
-					"height": "fit-content",
-					"lineHeight": "1.5",
-					"width": "100%",
-				},
+				"div",
+				name="Bank Currency",
+				attrs={"data-shop": "bank-currency", "hidden": "hidden"},
+				styles={**column, "gap": "6px"},
+				children=[
+					block("p", text="Currency to pay in", styles={"fontSize": "13px", "fontWeight": "500", "height": "fit-content", "width": "fit-content"}),
+					block("select", attrs={"name": "currency", "aria-label": "Currency to pay in"}, styles=field_styles(refs)),
+					hint(refs, visibilityCondition={"key": "bank_currency_note", "comesFrom": "dataScript"},
+						 dynamicValues=[dv("bank_currency_note", "innerHTML")]),
+				],
 			),
+			hint(refs, "You'll be redirected to a secure payment page to complete your purchase.",
+				 attrs={"data-shop": "gateway-note", "hidden": "hidden"}),
+			terms_box(refs),
+			form_error(),
+			submit_button(refs, "Place order"),
 			block(
-				"button",
-				text="Place order",
-				attrs={"type": "submit"},
-				styles={
-					"backgroundColor": refs["ink"],
-					"borderRadius": "2px",
-					"borderWidth": "0px",
-					"color": refs["paper"],
-					"fontSize": "13px",
-					"fontWeight": "600",
-					"gridColumn": "span 2",
-					"marginTop": "8px",
-					"padding": "14px 32px",
-					"width": "100%",
-				},
+				"details",
+				name="Request Quote",
+				classes=["quote-request"],
+				visibilityCondition={"key": "quotes_enabled", "comesFrom": "dataScript"},
+				styles={"gridColumn": "span 2", "marginTop": "6px", "width": "100%"},
+				children=[
+					block("summary", text="Need a quote instead? (larger quantities, purchase orders)"),
+					block("textarea", attrs={"name": "quote_message", "rows": "3",
+											 "placeholder": "Anything we should know: quantities, delivery dates, your PO number"},
+						  styles=field_styles(refs)),
+					block("button", text="Request a quote", attrs={"type": "button", "data-shop": "request-quote"}, classes=["quote-button"]),
+					block("p", text="", attrs={"data-shop": "quote-done", "hidden": "hidden"}, classes=["form-done"]),
+				],
 			),
 		],
 	)
@@ -2978,6 +3095,9 @@ def checkout_blocks(refs):
 			coupon_box(refs),
 			block(
 				"div",
+				name="Checkout Totals",
+				attrs={"data-shop": "checkout-totals"},
+				classes=["checkout-totals"],
 				styles={
 					"borderTopColor": refs["line"],
 					"borderTopStyle": "solid",
@@ -2990,33 +3110,8 @@ def checkout_blocks(refs):
 				},
 				children=[
 					money_row(refs, "Subtotal", bound_key="cart.formatted_subtotal"),
-					discount_row(refs, "cart.formatted_discount", "cart.coupon.code"),
-					money_row(refs, "Shipping", bound_key="cart.formatted_shipping", static_value="Free"),
+					hint(refs, "Shipping, fees and tax are worked out from your address."),
 				],
-			),
-			block(
-				"div",
-				styles={
-					"borderTopColor": refs["line"],
-					"borderTopStyle": "solid",
-					"borderTopWidth": "1px",
-					"display": "flex",
-					"flexDirection": "column",
-					"paddingTop": "12px",
-					"width": "100%",
-				},
-				children=[money_row(refs, "Total", bound_key="cart.formatted_total", strong=True)],
-			),
-			block(
-				"p",
-				text="Secure checkout · SSL encrypted · 14-day easy returns",
-				styles={
-					"color": refs["muted"],
-					"fontSize": "11px",
-					"height": "fit-content",
-					"textAlign": "center",
-					"width": "100%",
-				},
 			),
 		],
 	)
@@ -3203,6 +3298,14 @@ def confirmation_blocks(refs):
 					),
 				],
 			),
+			block(
+				"p",
+				text="",
+				name="Order Status",
+				attrs={"data-shop": "order-status"},
+				styles={"color": refs["badge"], "fontSize": "13px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
+				dynamicValues=[dv("order.display_status", "innerHTML")],
+			),
 			repeater(
 				"order.items",
 				item_row,
@@ -3211,54 +3314,11 @@ def confirmation_blocks(refs):
 			),
 			block(
 				"div",
-				styles={"display": "flex", "flexDirection": "column", "gap": "7px", "paddingTop": "2px", "width": "100%"},
-				children=[
-					block(
-						"div",
-						styles={"display": "flex", "flexDirection": "row", "justifyContent": "space-between", "width": "100%"},
-						children=[
-							block("p", text="Subtotal", styles={"color": refs["muted"], "fontSize": "13px", "height": "fit-content", "width": "fit-content"}),
-							block(
-								"p",
-								text="",
-								styles={"fontSize": "13px", "fontWeight": "500", "height": "fit-content", "width": "fit-content"},
-								dynamicValues=[dv("order.formatted_total", "innerHTML")],
-							),
-						],
-					),
-					discount_row(refs, "order.formatted_discount", "order.formatted_discount"),
-					block(
-						"div",
-						styles={"display": "flex", "flexDirection": "row", "justifyContent": "space-between", "width": "100%"},
-						children=[
-							block("p", text="Shipping", styles={"color": refs["muted"], "fontSize": "13px", "height": "fit-content", "width": "fit-content"}),
-							block("p", text="Free", styles={"color": refs["success"], "fontSize": "13px", "fontWeight": "500", "height": "fit-content", "width": "fit-content"}, dynamicValues=[dv("order.formatted_shipping", "innerHTML")]),
-						],
-					),
-					block(
-						"div",
-						styles={
-							"borderTopColor": refs["line"],
-							"borderTopStyle": "solid",
-							"borderTopWidth": "1px",
-							"display": "flex",
-							"flexDirection": "row",
-							"justifyContent": "space-between",
-							"marginTop": "3px",
-							"paddingTop": "10px",
-							"width": "100%",
-						},
-						children=[
-							block("p", text="Total", styles={"fontSize": "14px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"}),
-							block(
-								"p",
-								text="",
-								styles={"fontSize": "16px", "fontWeight": "700", "height": "fit-content", "width": "fit-content"},
-								dynamicValues=[dv("order.formatted_grand_total", "innerHTML")],
-							),
-						],
-					),
-				],
+				text="",
+				name="Order Totals",
+				classes=["order-totals"],
+				styles={"width": "100%"},
+				dynamicValues=[dv("order.totals_html", "innerHTML")],
 			),
 		],
 	)
@@ -3295,7 +3355,7 @@ def confirmation_blocks(refs):
 			),
 			block(
 				"p",
-				text="Your order is confirmed. A confirmation with tracking details is on its way to your email.",
+				text="We've emailed you a copy of this order.",
 				styles={
 					"color": refs["muted"],
 					"fontSize": "14px",
@@ -3305,6 +3365,14 @@ def confirmation_blocks(refs):
 					"textAlign": "center",
 					"width": "100%",
 				},
+			),
+			block(
+				"div",
+				text="",
+				name="Order Payment",
+				classes=["order-payment-box"],
+				styles={"width": "100%"},
+				dynamicValues=[dv("order.payment_html", "innerHTML")],
 			),
 			block("div", styles={"height": "8px", "width": "100%"}),
 			progress,
@@ -3547,7 +3615,16 @@ def account_blocks(refs):
 	)
 	content = named_section("Section · Your Orders", 
 		[
-			heading(refs, "Your orders", size="26px", mobile_size="22px"),
+			heading(refs, "Your account", size="26px", mobile_size="22px"),
+			block(
+				"div",
+				text="",
+				name="Account Details",
+				classes=["account-details"],
+				styles={"width": "100%"},
+				dynamicValues=[dv("account_html", "innerHTML")],
+			),
+			block("h2", text="Orders", styles={"fontSize": "18px", "fontWeight": "600", "height": "fit-content", "marginTop": "18px", "width": "fit-content"}),
 			repeater(
 				"orders",
 				order_row,
@@ -3566,6 +3643,125 @@ def account_blocks(refs):
 		styles={"maxWidth": "860px", "padding": "56px 40px 88px"},
 	)
 	return shell(refs, [component_ref("shop-navbar"), content, component_ref("shop-footer")])
+
+
+def page_shell(refs, title, children, width="760px"):
+	content = named_section(
+		f"Section · {title}",
+		[heading(refs, title, size="26px", mobile_size="22px"), *children],
+		styles={"alignItems": "flex-start", "gap": "16px", "maxWidth": width, "padding": "52px 40px 88px"},
+		mobile={"padding": "36px 18px 64px"},
+	)
+	return shell(refs, [component_ref("shop-navbar"), content, component_ref("shop-footer")])
+
+
+def intro(refs, text):
+	return block("p", text=text, styles={"color": refs["muted"], "fontSize": "14px", "height": "fit-content", "lineHeight": "1.6", "width": "100%"})
+
+
+def html_block(key, name, classes=None):
+	return block("div", text="", name=name, classes=classes or [], styles={"width": "100%"}, dynamicValues=[dv(key, "innerHTML")])
+
+
+def register_blocks(refs):
+	"""Store sign-up: a Website User and Customer, with the store's terms accepted."""
+	form = block("form", name="Register Form", attrs={"data-shop": "register-form"}, classes=["account-form"], children=[
+		input_block(refs, "full_name", "Full name", required=True),
+		input_block(refs, "email", "Email address", "email", required=True),
+		terms_box(refs),
+		form_error(),
+		submit_button(refs, "Create account"),
+	])
+	return page_shell(refs, "Create an account", [
+		intro(refs, "Track your orders, see invoices and quotes, and check out faster. We'll email you a link to set your password."),
+		form,
+		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]),
+		hint(refs, 'Already have an account? <a href="/login">Sign in</a>. Buying for a business? '
+				   '<a href="/account/trade">Apply for a trade account</a>.'),
+	], width="560px")
+
+
+def trade_blocks(refs):
+	"""A trade account application, which arrives in ERPNext as a Lead."""
+	industry = repeater(
+		"industries",
+		block("option", text="Industry", dynamicValues=[dv("value", "value", "attribute"), dv("label", "innerHTML")]),
+		field_styles(refs, 1), element="select", name="Industry",
+		attrs={"name": "industry", "aria-label": "What does your business do?"},
+	)
+	form = block("form", name="Trade Form", attrs={"data-shop": "trade-form"}, classes=["account-form"], children=[
+		form_section_label(refs, "Business"),
+		input_block(refs, "company_name", "Business name", required=True),
+		input_block(refs, "company_number", "Company number", half=True),
+		input_block(refs, "tax_id", "Tax ID (e.g. GST or VAT number)", half=True),
+		industry,
+		input_block(refs, "website", "Website (optional)", half=True),
+		block("textarea", attrs={"name": "message", "rows": "3", "placeholder": "What will you use our products for? Rough yearly quantities help."},
+			  styles=field_styles(refs)),
+		form_section_label(refs, "Contact and address"),
+		input_block(refs, "contact_name", "Your name", required=True, prefill=True),
+		input_block(refs, "email", "Email address", "email", required=True, prefill=True),
+		input_block(refs, "phone", "Phone", "tel", prefill=True),
+		input_block(refs, "address_line1", "Address", prefill=True),
+		input_block(refs, "city", "City", half=True, prefill=True),
+		input_block(refs, "pincode", "Postcode", half=True, prefill=True),
+		input_block(refs, "state", "State / region", half=True, prefill=True),
+		country_select(refs),
+		terms_box(refs, "On behalf of the business, I accept the"),
+		form_error(),
+		submit_button(refs, "Apply for a trade account"),
+	])
+	return page_shell(refs, "Trade account", [
+		intro(refs, "For businesses buying regularly: trade prices, quotes, and paying on account by invoice once approved."),
+		form,
+		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]),
+	])
+
+
+def quote_blocks(refs):
+	"""A quotation sent to the customer, accepted and paid online."""
+	method = block("label", classes=["checkout-option"], children=[
+		block("input", attrs={"type": "radio", "name": "payment_method", "required": "required"}, dynamicValues=[dv("method", "value", "attribute")]),
+		block("span", text="Payment", classes=["checkout-option-label"], dynamicValues=[dv("label", "innerHTML")]),
+		block("small", text="", classes=["checkout-option-price"], dynamicValues=[dv("fee_note", "innerHTML")]),
+	])
+	form = block("form", name="Quote Form", attrs={"data-shop": "quote-form"}, classes=["account-form"],
+				 visibilityCondition={"key": "quote.can_accept", "comesFrom": "dataScript"},
+				 dynamicValues=[dv("quote.name", "data-quote", "attribute"), dv("quote.token", "data-token", "attribute")],
+				 children=[
+					 form_section_label(refs, "Pay by"),
+					 repeater("quote.payment_methods", method, {"display": "flex", "flexDirection": "column", "gap": "8px", "gridColumn": "span 2", "width": "100%"}),
+					 terms_box(refs),
+					 form_error(),
+					 submit_button(refs, "Accept quote and place order"),
+				 ])
+	card = block("div", name="Quote Card", visibilityCondition={"key": "quote", "comesFrom": "dataScript"}, styles={"width": "100%"}, children=[summary_card(refs, [
+		block("div", styles={"display": "flex", "justifyContent": "space-between", "width": "100%"}, children=[
+			block("h2", text="Quote", styles={"fontSize": "15px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
+				  dynamicValues=[dv("quote.name", "innerHTML")]),
+			block("p", text="", styles={"color": refs["badge"], "fontSize": "13px", "fontWeight": "600", "height": "fit-content", "width": "fit-content"},
+				  dynamicValues=[dv("quote.status", "innerHTML")]),
+		]),
+		hint(refs, dynamicValues=[dv("quote.valid_till", "innerHTML")]),
+		html_block("quote.lines_html", "Quote Lines", ["order-totals"]),
+	])])
+	return page_shell(refs, "Your quote", [
+		block("p", text="This quote link isn't valid. Check the link in your email, or contact us.",
+			  visibilityCondition={"key": "quote_invalid", "comesFrom": "dataScript"}, classes=["checkout-hint"]),
+		card,
+		form,
+		block("a", text="View the order", attrs={"href": "/account/orders"}, classes=["order-pay-button"],
+			  visibilityCondition={"key": "quote.order_url", "comesFrom": "dataScript"},
+			  dynamicValues=[dv("quote.order_url", "href", "attribute")]),
+	])
+
+
+def terms_blocks(refs):
+	"""The store's ERPNext Terms and Conditions."""
+	return page_shell(refs, "Terms and Conditions", [
+		hint(refs, dynamicValues=[dv("terms_version", "innerHTML")]),
+		html_block("terms_html", "Terms", ["terms-text"]),
+	])
 
 
 def kicker(refs, text):
