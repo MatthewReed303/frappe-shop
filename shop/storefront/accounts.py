@@ -144,23 +144,27 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 			# already approved: nothing to do, and the reply doesn't say whose account it is
 			return {"message": _("Thanks. We'll review your application and email you.")}
 		lead = lead or frappe.new_doc("Lead")
+		given = {
+			"lead_name": values["contact_name"],
+			"company_name": values["company_name"],
+			"email_id": values["email"],
+			"phone": values["phone"],
+			"website": values["website"],
+			"country": values["country"],
+			"city": values["city"],
+			"state": values["state"],
+			"industry": values["industry"],
+			"shop_tax_id": values["tax_id"],
+			"shop_company_number": values["company_number"],
+		}
+		# applying again adds to the application; what was left blank keeps what was given before
+		lead.update({field: value for field, value in given.items() if value})
 		lead.update(
 			{
-				"lead_name": values["contact_name"],
-				"company_name": values["company_name"],
-				"email_id": values["email"],
-				"phone": values["phone"],
-				"website": values["website"],
-				"country": values["country"],
-				"city": values["city"],
-				"state": values["state"],
-				"industry": values["industry"] or None,
 				"company": frappe.get_cached_doc("Shop Settings").company,
 				"utm_source": trade_source(),
 				"status": "Open",
 				"qualification_status": "In Process",
-				"shop_tax_id": values["tax_id"],
-				"shop_company_number": values["company_number"],
 			}
 		)
 		note = values["message"] or (_("Applied again.") if not lead.is_new() else "")
@@ -345,6 +349,17 @@ def approve_trade(
 
 
 def add_address(link_doctype: str, link_name: str, values: dict) -> None:
+	"""The applicant's address, unless it is on the application already."""
+	known = frappe.get_all(
+		"Dynamic Link",
+		filters={"parenttype": "Address", "link_doctype": link_doctype, "link_name": link_name},
+		pluck="parent",
+	)
+	if known and frappe.db.exists(
+		"Address",
+		{"name": ["in", known], "address_line1": values.get("address_line1"), "city": values.get("city")},
+	):
+		return
 	frappe.get_doc(
 		{
 			"doctype": "Address",

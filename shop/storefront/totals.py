@@ -364,8 +364,12 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 			"selling_price_list": pricing.customer_price_list(customer) if customer else s.price_list,
 		}
 	)
-	if not customer:
-		order.customer_group = frappe.db.get_single_value("Selling Settings", "customer_group")
+	# the group decides which Pricing Rules apply, so it is set before ERPNext prices the order
+	order.customer_group = (
+		frappe.get_cached_value("Customer", customer, "customer_group")
+		if customer
+		else frappe.db.get_single_value("Selling Settings", "customer_group")
+	)
 	# ERPNext applies the coupon's Pricing Rule, which says who and what it is for
 	order.coupon_code = cart.get("coupon_code")
 	for row in cart.items:

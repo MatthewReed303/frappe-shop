@@ -528,7 +528,9 @@ def create_sales_order(
 		order_quote = totals.compute(cart)
 	sales_order = order_quote.order
 	sales_order.customer = party
-	sales_order.customer_address = shipping_address.name
+	sales_order.customer_group = frappe.get_cached_value("Customer", party, "customer_group")
+	# billed to the customer's own address when they have one, sent where the shopper asked
+	sales_order.customer_address = billing_address(party) or shipping_address.name
 	sales_order.shipping_address_name = shipping_address.name
 	if email:
 		sales_order.contact_person = frappe.db.get_value("Contact Email", {"email_id": email}, "parent")
@@ -540,6 +542,16 @@ def create_sales_order(
 	check_credit_limit(sales_order)
 	sales_order.submit()
 	return sales_order
+
+
+def billing_address(party: str) -> str | None:
+	"""The customer's billing address: ERPNext's default address for them, when it is a billing one."""
+	from frappe.contacts.doctype.address.address import get_default_address
+
+	address = get_default_address("Customer", party, sort_key="is_primary_address")
+	if address and frappe.db.get_value("Address", address, "address_type") == "Billing":
+		return address
+	return None
 
 
 def check_credit_limit(sales_order) -> None:

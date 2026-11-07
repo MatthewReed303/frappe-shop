@@ -193,6 +193,9 @@ class TestTradeAccounts(IntegrationTestCase):
 				"contact_name": "Trade Tester",
 				"email": email,
 				"country": self.address["country"],
+				"tax_id": "123-456-789",
+				"address_line1": "4 Mill Lane",
+				"city": "Town",
 				"message": "We buy about 50 a year",
 			},
 			accept_terms=1,
@@ -204,11 +207,22 @@ class TestTradeAccounts(IntegrationTestCase):
 				"contact_name": "T",
 				"email": email,
 				"country": self.address["country"],
+				"address_line1": "4 Mill Lane",
+				"city": "Town",
 			},
 			accept_terms=1,
 		)
 		self.assertEqual(again, result)
 		self.assertEqual(frappe.db.count("Lead", {"email_id": email}), 1)
+		# what was left blank the second time is kept, and the address isn't added twice
+		self.assertEqual(frappe.db.get_value("Lead", lead_for(email), "shop_tax_id"), "123-456-789")
+		self.assertEqual(
+			frappe.db.count(
+				"Dynamic Link",
+				{"parenttype": "Address", "link_doctype": "Lead", "link_name": lead_for(email)},
+			),
+			1,
+		)
 		self.assertEqual(accounts.trade_status()["status"], "Pending")
 		frappe.set_user("Administrator")
 		accounts.decline_trade(lead_for(email), reason="Not a business")
@@ -309,7 +323,7 @@ class TestTradeAccounts(IntegrationTestCase):
 		cart.add_item(ITEM)
 		result = checkout.place_order(
 			customer={"email": "trade.account@example.com", "full_name": "Trade Tester"},
-			address=self.address,
+			address=dict(self.address, address_line1="7 Site Road"),
 			payment_method=totals.ACCOUNT,
 			accept_terms=1,
 		)
@@ -317,6 +331,14 @@ class TestTradeAccounts(IntegrationTestCase):
 		order = frappe.get_doc("Sales Order", result["sales_order"])
 		self.assertEqual(order.customer, customer)
 		self.assertEqual(order.items[0].rate, flt(self.retail * 0.8, 2))
+		self.assertEqual(order.customer_group, "_Test Trade Group")
+		# billed to the business's own address, sent to the address given at checkout
+		self.assertEqual(
+			frappe.db.get_value("Address", order.customer_address, "address_line1"), "12 Industrial Way"
+		)
+		self.assertEqual(
+			frappe.db.get_value("Address", order.shipping_address_name, "address_line1"), "7 Site Road"
+		)
 		invoice = frappe.db.get_value(
 			"Sales Invoice Item", {"sales_order": order.name, "docstatus": 1}, "parent"
 		)
