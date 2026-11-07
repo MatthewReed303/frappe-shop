@@ -40,6 +40,7 @@ declare module 'vue' {
     FulfillmentPanel: typeof import('./src/components/FulfillmentPanel.vue')['default']
     FulfillmentShipDialog: typeof import('./src/components/FulfillmentShipDialog.vue')['default']
     FulfillmentStatusBadge: typeof import('./src/components/FulfillmentStatusBadge.vue')['default']
+    NewServiceItem: typeof import('./src/components/NewServiceItem.vue')['default']
     OrderStatusBadge: typeof import('./src/components/OrderStatusBadge.vue')['default']
     ReturnRequestActions: typeof import('./src/components/ReturnRequestActions.vue')['default']
     ReturnsPanel: typeof import('./src/components/ReturnsPanel.vue')['default']
