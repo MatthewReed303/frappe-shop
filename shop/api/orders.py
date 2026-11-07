@@ -235,9 +235,7 @@ def fulfill(name: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel_order(name: str) -> dict:
+def cancel_order(name: str, note: str | None = None) -> dict:
 	only_managers()
-	order = frappe.get_doc("Sales Order", name)
-	order.flags.ignore_permissions = True
-	order.cancel()
+	payment.cancel_by_store(name, note)
 	return get_order(name)

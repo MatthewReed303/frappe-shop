@@ -196,7 +196,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 	from shop.storefront import payment, totals
 
 	esc = frappe.utils.escape_html
-	if order.docstatus == 2:
+	if is_cancelled(order):
 		return f'<div class="order-payment cancelled"><p>{esc(_("This order has been cancelled."))}</p></div>'
 	if paid:
 		invoice = payment.order_invoice(order.name)
@@ -207,7 +207,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 		)
 		return f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p>{button}</div>'
 	if method == totals.ACCOUNT:
-		invoice = frappe.db.get_value("Sales Invoice Item", {"sales_order": order.name, "docstatus": 1}, "parent")
+		invoice = payment.order_invoice(order.name)
 		if not invoice:
 			return ""
 		due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
@@ -240,7 +240,7 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 def display_status(order, paid: bool) -> str:
 	from shop.storefront import totals
 
-	if order.docstatus == 2:
+	if is_cancelled(order):
 		return _("Cancelled")
 	if not paid and order.get("shop_payment_method") in (*totals.BANK_METHODS, totals.GATEWAY):
 		return _("Awaiting payment")
@@ -265,8 +265,23 @@ def pay_url(order) -> str | None:
 	)
 
 
+def is_cancelled(order) -> bool:
+	"""Cancelled, or closed by the store when it cancelled an order already paid or invoiced."""
+	from shop.storefront.payment import CANCELLED_BY_STORE
+
+	return order.docstatus == 2 or (
+		order.status == "Closed"
+		and bool(
+			frappe.db.exists(
+				"Comment",
+				{"reference_doctype": "Sales Order", "reference_name": order.name, "content": ["like", f"{CANCELLED_BY_STORE}%"]},
+			)
+		)
+	)
+
+
 def order_progress(order, shipment: dict | None) -> list[dict]:
-	if order.docstatus == 2:
+	if is_cancelled(order):
 		return [{"label": _("Cancelled"), "done": "true"}]
 	from shop.storefront import payment, totals
 

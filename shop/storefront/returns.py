@@ -211,38 +211,14 @@ def credit(request) -> None:
 
 
 def refund(request) -> bool:
-	"""Refund an order paid online through its gateway, when the gateway can, and record it as a
-	Payment Entry against the credit note. Returns whether the money went back."""
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+	"""Refund an order paid online for the credit note. Returns whether the money went back."""
+	from shop.storefront import payment
 
 	if request.refund:
 		return True
 	if not request.credit_note:
 		return False
-	request_name = frappe.db.get_value(
-		"Payment Request",
-		{
-			"reference_doctype": "Sales Order",
-			"reference_name": request.sales_order,
-			"status": "Paid",
-			"docstatus": 1,
-		},
-		"name",
-	)
-	if not request_name:
-		return False
-	payment_request = frappe.get_doc("Payment Request", request_name)
-	gateway = frappe.get_doc("Payment Gateway", payment_request.payment_gateway)
-	controller = frappe.get_doc(gateway.gateway_settings, gateway.gateway_controller)
-	if not hasattr(controller, "refund"):
-		return False
-	credit_note = frappe.get_doc("Sales Invoice", request.credit_note)
-	amount = abs(flt(credit_note.grand_total))
-	reference = controller.refund("Payment Request", payment_request.name, amount, credit_note.name)
-	entry = get_payment_entry("Sales Invoice", credit_note.name, bank_account=payment_request.payment_account)
-	entry.reference_no, entry.reference_date = reference, frappe.utils.nowdate()
-	entry.flags.ignore_permissions = True
-	entry.insert(ignore_permissions=True)
-	entry.submit()
-	request.db_set("refund", entry.name)
-	return True
+	entry = payment.refund_online(request.sales_order, request.credit_note)
+	if entry:
+		request.db_set("refund", entry)
+	return bool(entry)

@@ -322,9 +322,7 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 	tax_note = "".join(f"<p style='color:#666;font-size:13px'>{esc(note)}</p>" for note in notes)
 	pay = ""
 	if sales_order.get("shop_payment_method") == totals.ACCOUNT:
-		invoice = frappe.db.get_value(
-			"Sales Invoice Item", {"sales_order": sales_order.name, "docstatus": 1}, "parent"
-		)
+		invoice = payment.order_invoice(sales_order.name)
 		if invoice:
 			due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
 			pay = f"<p>{esc(_('Invoice {0} is attached, due {1}.').format(invoice, frappe.utils.formatdate(due)))}</p>"

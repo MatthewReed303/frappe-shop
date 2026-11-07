@@ -96,6 +96,17 @@ TEMPLATES = {
 		"{% elif credit_note %}<p>We'll refund {{ amount }} to you and let you know when it's paid.</p>{% endif %}"
 		"{% if note %}<p>{{ note }}</p>{% endif %}",
 	),
+	"order_cancelled_by_store": (
+		"Shop: Order Cancelled By Store",
+		ORDER,
+		"Your order {{ doc.name }} has been cancelled",
+		"<p>We've cancelled your order {{ doc.name }} at {{ store_name }}.</p>"
+		"{% if note %}<p>{{ note }}</p>{% endif %}"
+		"{% if refunded %}<p>We've refunded {{ amount }} to your card; it can take a few days to show.</p>"
+		"{% elif credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll refund any "
+		"payment you made and let you know when it's paid.</p>{% endif %}"
+		"<p>Reply to this email if you have any questions.</p>",
+	),
 	"order_cancelled": (
 		"Shop: Order Cancelled",
 		ORDER,

@@ -300,8 +300,16 @@ def notify_paid(order) -> None:
 
 
 def order_invoice(order_name: str) -> str | None:
-	"""The submitted Sales Invoice made from this order, if there is one."""
-	return frappe.db.get_value("Sales Invoice Item", {"sales_order": order_name, "docstatus": 1}, "parent")
+	"""The submitted Sales Invoice made from this order, if there is one (not a credit note)."""
+	invoices = frappe.get_all(
+		"Sales Invoice Item",
+		filters={"sales_order": order_name, "docstatus": 1},
+		pluck="parent",
+		distinct=True,
+	)
+	if not invoices:
+		return None
+	return frappe.db.get_value("Sales Invoice", {"name": ["in", invoices], "is_return": 0}, "name")
 
 
 def invoice_paid_order(order) -> str | None:
@@ -413,6 +421,113 @@ def cancel_if_unpaid(name: str) -> bool:
 	order.add_comment("Info", _("Cancelled automatically: not paid by {0}.").format(order.shop_payment_due))
 	notify_cancelled(order)
 	return True
+
+
+def refund_online(order_name: str, credit_note: str) -> str | None:
+	"""Refund a credit note's amount through the gateway that took the order's online payment, when
+	the gateway can, and record it as ERPNext's Payment Entry against the credit note."""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	request_name = frappe.db.get_value(
+		"Payment Request",
+		{"reference_doctype": "Sales Order", "reference_name": order_name, "status": "Paid", "docstatus": 1},
+		"name",
+	)
+	if not request_name:
+		return None
+	payment_request = frappe.get_doc("Payment Request", request_name)
+	gateway = frappe.get_doc("Payment Gateway", payment_request.payment_gateway)
+	controller = frappe.get_doc(gateway.gateway_settings, gateway.gateway_controller)
+	if not hasattr(controller, "refund"):
+		return None
+	amount = abs(flt(frappe.db.get_value("Sales Invoice", credit_note, "grand_total")))
+	reference = controller.refund("Payment Request", payment_request.name, amount, credit_note)
+	entry = get_payment_entry("Sales Invoice", credit_note, bank_account=payment_request.payment_account)
+	entry.reference_no, entry.reference_date = reference, nowdate()
+	entry.flags.ignore_permissions = True
+	entry.insert(ignore_permissions=True)
+	entry.submit()
+	return entry.name
+
+
+CANCELLED_BY_STORE = "Cancelled by the store."
+
+
+def cancel_by_store(name: str, note: str | None = None) -> dict:
+	"""Cancel an order that hasn't shipped. An unpaid order is cancelled; an invoiced or paid one is
+	credited in full, refunded online when it was paid online, and closed. The customer is told."""
+	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
+	from erpnext.selling.doctype.sales_order.sales_order import update_status
+
+	from shop.fulfillment import service
+	from shop.storefront import emails
+	from shop.storefront.orders import shipment_summary
+
+	order = frappe.get_doc("Sales Order", name)
+	if order.docstatus != 1 or order.status == "Closed":
+		frappe.throw(_("This order can't be cancelled"))
+	shipment = shipment_summary(name)
+	if (shipment and shipment.status in ("Shipped", "Delivered")) or (
+		not shipment and flt(order.per_delivered)
+	):
+		frappe.throw(_("This order has shipped. Use a return instead."))
+	for fulfillment in frappe.get_all(
+		"Shop Fulfillment",
+		filters={"sales_order": name, "status": ["in", ("Pending", "Accepted")]},
+		pluck="name",
+	):
+		service.cancel(fulfillment)
+	order.reload()
+	invoice = order_invoice(name)
+	if not invoice and payment_status(order) == "Paid":
+		invoice = invoice_paid_order(order)
+	result = {"credit_note": None, "refund": None}
+	if not invoice:
+		if flt(order.advance_paid):
+			frappe.throw(_("This order is part paid. Refund the payment in ERPNext before cancelling it."))
+		for request in frappe.get_all(
+			"Payment Request",
+			filters={
+				"reference_doctype": "Sales Order",
+				"reference_name": name,
+				"docstatus": 1,
+				"status": ["!=", "Paid"],
+			},
+			pluck="name",
+		):
+			frappe.get_doc("Payment Request", request).cancel()
+		order.reload()
+		order.flags.ignore_permissions = True
+		order.cancel()
+	else:
+		credit_note = make_sales_return(invoice)
+		credit_note.flags.ignore_permissions = True
+		credit_note.insert(ignore_permissions=True)
+		credit_note.submit()
+		result["credit_note"] = credit_note.name
+		frappe.db.commit()
+		result["refund"] = refund_online(name, credit_note.name)
+		update_status("Closed", name)
+	order.add_comment("Info", CANCELLED_BY_STORE + (f" {note}" if note else ""))
+	amount = (
+		frappe.utils.fmt_money(
+			abs(flt(frappe.db.get_value("Sales Invoice", result["credit_note"], "grand_total"))),
+			currency=order.currency,
+		)
+		if result["credit_note"]
+		else ""
+	)
+	emails.send(
+		"order_cancelled_by_store",
+		order.contact_email,
+		order,
+		attachments=invoice_attachments(result["credit_note"]) if result["credit_note"] else None,
+		note=note,
+		credit_note=result["credit_note"],
+		refunded=bool(result["refund"]),
+		amount=amount,
+	)
+	return result
 
 
 def unmatched_payments(order) -> list[str]:

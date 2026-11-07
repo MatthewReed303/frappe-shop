@@ -185,7 +185,7 @@ const actions = {
 	},
 	cancel: {
 		title: 'Cancel order',
-		message: `This will cancel ${props.name}. This action cannot be undone.`,
+		message: `Cancel ${props.name} and email the customer. An unpaid order is cancelled; a paid or invoiced one gets a credit note, a card payment is refunded, and the order is closed. This can't be undone.`,
 		buttonLabel: 'Cancel order',
 		theme: 'red',
 		method: 'shop.api.orders.cancel_order',

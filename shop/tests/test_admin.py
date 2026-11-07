@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests import IntegrationTestCase
 
@@ -57,6 +59,38 @@ class TestAdminApi(IntegrationTestCase):
 		order.reload()
 		payment.invoice_paid_order(order)
 		self.assertEqual(orders.get_order(name)["payment_status"], "Paid")
+
+	def test_store_cancels_an_unpaid_order_and_tells_the_customer(self):
+		name = self.place_order()
+		with patch("frappe.sendmail") as sendmail:
+			detail = orders.cancel_order(name, note="Out of stock at the supplier")
+		self.assertEqual(detail["docstatus"], 2)
+		mail = next(c.kwargs for c in sendmail.call_args_list if c.kwargs.get("reference_name") == name)
+		self.assertEqual(mail["subject"], f"Your order {name} has been cancelled")
+		self.assertIn("Out of stock at the supplier", mail["message"])
+
+	def test_store_cancels_a_paid_order_with_a_credit_note(self):
+		name = self.place_order()
+		orders.mark_paid(name)
+		with patch("frappe.sendmail"):
+			orders.cancel_order(name)
+		order = frappe.get_doc("Sales Order", name)
+		self.assertEqual(order.status, "Closed")
+		from shop.storefront import payment
+
+		invoice = payment.order_invoice(name)
+		credit_note = frappe.db.get_value("Sales Invoice", {"return_against": invoice, "docstatus": 1})
+		self.assertTrue(credit_note)
+		self.assertEqual(
+			frappe.db.get_value("Sales Invoice", credit_note, "grand_total"),
+			-frappe.db.get_value("Sales Invoice", invoice, "grand_total"),
+		)
+
+	def test_a_shipped_order_is_returned_not_cancelled(self):
+		name = self.place_order()
+		orders.fulfill(name)
+		with self.assertRaisesRegex(frappe.ValidationError, "Use a return"):
+			orders.cancel_order(name)
 
 	def test_fulfillment(self):
 		name = self.place_order()
