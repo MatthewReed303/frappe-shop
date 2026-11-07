@@ -2800,6 +2800,26 @@ def checkout_blocks(refs):
 		refs,
 		[
 			block("p", text="Your cart is empty.", styles=mono(size="12px", color=refs["ink"], spacing="0.12em")),
+			block(
+				"div",
+				name="Waiting Order",
+				visibilityCondition={"key": "waiting_order", "comesFrom": "dataScript"},
+				styles={"alignItems": "center", "display": "flex", "flexDirection": "column", "gap": "12px", "width": "100%"},
+				children=[
+					{**prose(refs, "Your order is waiting for payment."), "dynamicValues": [dv("waiting_order.note", "innerHTML")]},
+					block(
+						"div",
+						styles={"display": "flex", "flexWrap": "wrap", "gap": "10px", "justifyContent": "center"},
+						children=[
+							{**pill(refs, "Pay now", href="#"), "dynamicValues": [dv("waiting_order.pay_url", "href", "attribute")]},
+							{
+								**pill(refs, "View order", href="#", variant="outline"),
+								"dynamicValues": [dv("waiting_order.order_url", "href", "attribute")],
+							},
+						],
+					),
+				],
+			),
 			pill(refs, "Continue shopping", href="/products", variant="outline"),
 		],
 		styles={"alignItems": "center", "gap": "16px", "padding": "60px 40px"},

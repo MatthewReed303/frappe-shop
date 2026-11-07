@@ -46,3 +46,22 @@ class TestPayments(IntegrationTestCase):
 				{"reference_name": result["sales_order"], "docstatus": 1},
 			)
 		)
+
+	def test_an_empty_checkout_leads_back_to_the_order_waiting_for_payment(self):
+		from unittest.mock import patch
+
+		if not self.gateway_account:
+			self.skipTest("no payment gateway account configured")
+		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
+		cart.add_item("SHOP-DEMO-003")
+		token = cart.find_cart().token
+		result = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="gateway")
+		with patch.object(cart, "request_token", return_value=token):
+			waiting = checkout.get_checkout_summary()["waiting_order"]
+			self.assertEqual(waiting["pay_url"], result["payment_url"])
+			self.assertIn(result["sales_order"], waiting["note"])
+			payment_request = frappe.get_doc(
+				"Payment Request", {"reference_name": result["sales_order"], "docstatus": 1}
+			)
+			payment_request.run_method("on_payment_authorized", "Completed")
+			self.assertIsNone(checkout.get_checkout_summary()["waiting_order"])

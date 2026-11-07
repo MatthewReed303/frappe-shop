@@ -27,6 +27,27 @@ def get_checkout_summary() -> dict:
 		"terms": terms_details(),
 		"bank_currency_note": bank_currency_note(),
 		"quotes_enabled": "true" if settings.get("allow_quote_requests") else None,
+		"waiting_order": None if cart and cart.items else waiting_order(),
+	}
+
+
+def waiting_order() -> dict | None:
+	"""The order this browser placed last when it is still waiting for its online payment, so a
+	shopper who came back from the payment page can find it."""
+	from shop.storefront import orders
+
+	token = cart_module.request_token()
+	name = token and frappe.db.get_value("Shop Cart", {"token": token, "status": "Converted"}, "sales_order")
+	if not name:
+		return None
+	order = frappe.get_doc("Sales Order", name)
+	url = order.docstatus == 1 and not orders.is_cancelled(order) and orders.pay_url(order)
+	if not url:
+		return None
+	return {
+		"note": _("Your order {0} is waiting for payment.").format(name),
+		"pay_url": url,
+		"order_url": orders.order_url(name),
 	}
 
 

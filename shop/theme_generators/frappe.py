@@ -3072,6 +3072,34 @@ def checkout_blocks(refs):
 						styles={"fontSize": "15px", "fontWeight": "500", "height": "fit-content", "width": "fit-content"},
 					),
 					block(
+						"div",
+						name="Waiting Order",
+						visibilityCondition={"key": "waiting_order", "comesFrom": "dataScript"},
+						styles={"alignItems": "center", "display": "flex", "flexDirection": "column", "gap": "10px", "width": "100%"},
+						children=[
+							block(
+								"p",
+								text="Your order is waiting for payment.",
+								styles={"color": refs["muted"], "fontSize": "14px", "height": "fit-content", "width": "fit-content"},
+								dynamicValues=[dv("waiting_order.note", "innerHTML")],
+							),
+							block(
+								"a",
+								text="Pay now",
+								attrs={"href": "#"},
+								styles=black_button_styles(refs),
+								dynamicValues=[dv("waiting_order.pay_url", "href", "attribute")],
+							),
+							block(
+								"a",
+								text="View order",
+								attrs={"href": "#"},
+								styles={"color": refs["ink"], "fontSize": "13px", "height": "fit-content", "textDecoration": "underline", "width": "fit-content"},
+								dynamicValues=[dv("waiting_order.order_url", "href", "attribute")],
+							),
+						],
+					),
+					block(
 						"a",
 						text="Continue shopping",
 						attrs={"href": "/products"},
