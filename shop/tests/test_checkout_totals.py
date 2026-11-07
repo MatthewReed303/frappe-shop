@@ -33,6 +33,11 @@ def test_rates(context):
 	return [{"id": "test:courier", "label": "Test Courier", "amount": 12.0, "tax_included": False}]
 
 
+def rates_with_tax(context):
+	"""A shipping app whose prices include the store's tax: 13.80 is 12.00 plus 15%."""
+	return [{"id": "test:taxed", "label": "Taxed Courier", "amount": 13.80, "tax_included": True}]
+
+
 def inactive_rates(context):
 	return None
 
@@ -178,6 +183,79 @@ class TestCheckoutTotals(IntegrationTestCase):
 			shipping_line = [row for row in order.items if row.item_code == "TEST-SHIPPING"]
 			self.assertEqual(shipping_line[0].rate, 13.80)
 			self.assertIn("test:courier", order.shop_shipping_option)
+
+	# --- prices without tax ------------------------------------------------------------
+
+	def without_tax(self):
+		self.set(prices_include_tax=0, tax_template=template(self.company, "Test VAT 15 added", 15, 0))
+
+	def test_prices_without_tax_get_tax_added_on_every_line_and_the_invoice_matches(self):
+		self.without_tax()
+		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):
+			quote = totals.compute(self.basket(1), self.home_address, "test:courier", "card")
+			self.assertEqual(quote.subtotal, flt(self.price, 2))
+			self.assertEqual(quote.shipping.customer_amount, 12.0)  # the carrier's price, tax added below
+			fee = quote.fees[0].amount
+			lines = flt(self.price + 12.0 + fee, 2)
+			self.assertEqual(quote.tax_added, flt(lines * 0.15, 2))
+			self.assertEqual(quote.total, flt(lines + quote.tax_added, 2))
+			# the fee (its tax is passed on) pays the provider's charge on the whole total
+			self.assertAlmostEqual(fee, 0.0265 * quote.total + 0.30, delta=0.01)
+			# the buyer sees every line with tax, adding up to the total, and the tax it includes
+			shown = totals.payload(quote)
+			self.assertNotIn("tax", [line["kind"] for line in shown["lines"]])
+			self.assertEqual(flt(sum(line["amount"] for line in shown["lines"]), 2), quote.total)
+			self.assertEqual([l["amount"] for l in shown["lines"] if l["kind"] == "shipping"], [13.80])
+			self.assertIn(f"{totals.money(quote.tax_added, quote.currency)}", " ".join(shown["notes"]))
+			self.assertEqual([o["formatted"] for o in shown["shipping_options"]], [totals.money(13.80, quote.currency)])
+
+			bank = totals.compute(cart.resolve_cart(), self.home_address, "test:courier", "bank")
+			name = checkout.place_order(customer=BUYER, address=self.home_address, payment_method="bank",
+										shipping_option="test:courier")["sales_order"]
+		order = frappe.get_doc("Sales Order", name)
+		rows = {row.item_code: row for row in order.items}
+		self.assertEqual(rows[ITEM].rate, flt(self.price, 2))
+		self.assertEqual(rows["TEST-SHIPPING"].rate, 12.0)
+		self.assertEqual(rows["TEST-SHIPPING"].description, "Test Courier")
+		self.assertEqual(flt(order.total_taxes_and_charges, 2), bank.tax_added)
+		self.assertEqual(flt(order.grand_total, 2), bank.total)
+		with patch("frappe.sendmail"):
+			self.pay(name)
+		invoice = frappe.get_doc("Sales Invoice", payment.order_invoice(name))
+		self.assertEqual({row.item_code: row.rate for row in invoice.items}, {ITEM: flt(self.price, 2), "TEST-SHIPPING": 12.0})
+		self.assertEqual(flt(invoice.total_taxes_and_charges, 2), bank.tax_added)
+		self.assertEqual(flt(invoice.grand_total, 2), bank.total)
+		self.assertEqual(flt(invoice.outstanding_amount), 0)
+
+	def test_store_currency_shows_price_with_tax_and_without_abroad_shows_it_without(self):
+		from frappe.utils import fmt_money
+
+		from shop.storefront import pricing
+
+		self.without_tax()
+		home = self.company_currency
+		# as a guest: the store's pages are public
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+		self.assertEqual(pricing.display_price(100), f"{fmt_money(115, currency=home)} {home} incl. VAT")
+		self.assertEqual(pricing.display_price_without_tax(100), f"{fmt_money(100, currency=home)} {home} excl. VAT")
+		self.with_currency_cookie(self.foreign)
+		rate = pricing.display_rate(self.foreign)
+		self.assertEqual(pricing.display_price(100), f"≈ {fmt_money(100 * rate, currency=self.foreign)} {self.foreign}")
+		self.assertIsNone(pricing.display_price_without_tax(100))
+
+	def test_carrier_price_with_tax_goes_on_the_order_without_it(self):
+		self.without_tax()
+		with patch("frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.rates_with_tax"])):
+			quote = totals.compute(self.basket(1), self.home_address, None, "bank")
+			self.assertEqual(quote.shipping.customer_amount, 12.0)
+			self.assertEqual(quote.total, flt((self.price + 12.0) * 1.15, 2))
+			export = totals.compute(cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency)
+			self.assertEqual(export.shipping.customer_amount, 12.0)
+			self.assertEqual(export.order_items[0].rate, flt(self.price, 2))  # nothing to take off
+			self.assertEqual(export.tax_added, 0)
+			# an export is shown without tax, as it is charged
+			self.assertEqual([l["amount"] for l in totals.payload(export)["lines"] if l["kind"] == "shipping"], [12.0])
 
 	def test_no_rates_means_no_order_and_says_why(self):
 		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):

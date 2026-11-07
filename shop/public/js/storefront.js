@@ -238,6 +238,9 @@
 			document.querySelectorAll('[data-shop="pdp-price"]').forEach((price) => {
 				price.textContent = variant.formatted_price;
 			});
+			document.querySelectorAll('[data-shop="pdp-price-note"]').forEach((note) => {
+				note.textContent = variant.price_note || "";
+			});
 		}
 		syncSavings(variant);
 		if (variant.image) showImage(variant.image);

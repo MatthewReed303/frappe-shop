@@ -138,6 +138,7 @@ def decorate(products: list) -> None:
 		price = prices.get(product.item, {})
 		product.price = price.get("rate")
 		product.formatted_price = price.get("display")
+		product.formatted_price_excl = price.get("display_excl")
 		if price.get("retail"):
 			product.compare_at_price = max(flt(product.get("compare_at_price")), flt(price["retail"]))
 		product.in_stock = availability.get(product.item, False)
@@ -185,7 +186,7 @@ def display_prices(products: list) -> dict:
 	for template, codes in variants_by_template(templates).items():
 		rates = [p["rate"] for code, p in pricing.get_prices(codes).items()]
 		if rates:
-			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), "display": pricing.display_amount(min(rates))}
+			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), **pricing.display_fields(min(rates))}
 	return prices
 
 

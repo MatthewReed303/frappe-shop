@@ -91,7 +91,7 @@ class TestTradeAccounts(IntegrationTestCase):
 		self.assertEqual(price["rate"], flt(self.retail * 0.8, 2))
 		self.assertEqual(price["retail"], self.retail)
 		# what the storefront shows: the customer's own price, with the currency
-		self.assertEqual(price["display"], pricing.display_amount(price["rate"]))
+		self.assertEqual(price["display"], pricing.display_price(price["rate"]))
 		self.assertIn(pricing.store_currency(), price["display"])
 		frappe.set_user("Guest")
 		self.assertEqual(pricing.get_price(ITEM)["rate"], self.retail)

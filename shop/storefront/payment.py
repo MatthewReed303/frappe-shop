@@ -134,9 +134,9 @@ def invoice_paid_order(order) -> str | None:
 	frappe.db.savepoint("shop_invoice")
 	try:
 		invoice = make_sales_invoice(order.name)
+		# as in the desk: ERPNext allocates the order's payment itself, after working out the totals
 		invoice.allocate_advances_automatically = 1
 		invoice.only_include_allocated_payments = 1
-		invoice.set_advances()
 		invoice.flags.ignore_permissions = True
 		invoice.insert(ignore_permissions=True)
 		invoice.submit()

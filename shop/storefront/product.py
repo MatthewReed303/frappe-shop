@@ -27,7 +27,6 @@ def get_product(slug: str) -> dict:
 		"images": [{"image": row.image, "alt_text": row.alt_text} for row in doc.images],
 		"collections": product_collections(doc),
 		"rating": reviews.summary(doc.name),
-		"price_note": pricing.price_note(),
 	}
 	if doc.has_variants:
 		payload.update(variant_details(doc.item, doc.compare_at_price))
@@ -39,6 +38,7 @@ def get_product(slug: str) -> dict:
 			{
 				"price": price.get("rate"),
 				"formatted_price": price.get("display"),
+				"price_note": price.get("display_excl"),
 				"in_stock": stock.is_in_stock(doc.item),
 			}
 		)
@@ -69,7 +69,8 @@ def variant_details(template: str, compare_at: float | None = None) -> dict:
 		"attributes": attribute_options(template, variants),
 		"variants": variants,
 		"price": min(rates) if rates else None,
-		"formatted_price": pricing.display_amount(min(rates)) if rates else None,
+		"formatted_price": pricing.display_price(min(rates)) if rates else None,
+		"price_note": pricing.display_price_without_tax(min(rates)) if rates else None,
 		"in_stock": any(v["in_stock"] for v in variants),
 		"default_item_code": default["item_code"] if default else None,
 	}
@@ -98,6 +99,7 @@ def load_variants(template: str, compare_at: float | None = None) -> list[dict]:
 				},
 				"price": price.get("rate"),
 				"formatted_price": price.get("display"),
+				"price_note": price.get("display_excl"),
 				"in_stock": stock.is_in_stock(item_code),
 				"image": images.get(item_code),
 				**variant_savings(price.get("rate"), compare_at),

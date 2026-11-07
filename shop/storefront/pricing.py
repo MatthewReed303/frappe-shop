@@ -35,7 +35,7 @@ def get_prices(item_codes: list[str], qtys: dict | None = None, customer: str | 
 			if code in retail:
 				prices[code] = retail[code]
 			continue
-		entry = {"rate": rate, "formatted": format_amount(rate), "display": display_amount(rate)}
+		entry = {"rate": rate, "formatted": format_amount(rate), **display_fields(rate)}
 		base = retail.get(code, {}).get("rate")
 		if base and rate < flt(base) - 0.004:
 			entry.update(retail=base, formatted_retail=format_amount(base))
@@ -54,10 +54,14 @@ def store_prices(item_codes: list[str]) -> dict:
 		row.item_code: {
 			"rate": row.price_list_rate,
 			"formatted": format_amount(row.price_list_rate),
-			"display": display_amount(row.price_list_rate),
+			**display_fields(row.price_list_rate),
 		}
 		for row in rates
 	}
+
+
+def display_fields(rate: float) -> dict:
+	return {"display": display_price(rate), "display_excl": display_price_without_tax(rate)}
 
 
 def get_price(item_code: str) -> dict | None:
@@ -122,25 +126,74 @@ def display_rate(currency: str) -> float | None:
 	return cache[currency]
 
 
+def domestic_taxes() -> list:
+	"""The rows of the store's own tax template (e.g. NZ GST 15%), read once per request.
+
+	Read directly: ERPNext's template lookup is for staff, and these pages are public."""
+	cache = request_cache("shop_domestic_taxes")
+	template = frappe.get_cached_doc("Shop Settings").tax_template or ""
+	if template not in cache:
+		cache[template] = frappe.get_all(
+			"Sales Taxes and Charges",
+			filters={"parent": template, "parenttype": "Sales Taxes and Charges Template", "charge_type": "On Net Total"},
+			fields=["rate", "description"],
+			order_by="idx",
+		) if template else []
+	return cache[template]
+
+
+def domestic_tax_rate() -> float:
+	"""Percent of the store's own tax, whether its prices include it or not."""
+	return sum(flt(row.rate) for row in domestic_taxes())
+
+
+def tax_name() -> str:
+	"""The tax's short name from the store's tax template, e.g. "GST" from "GST @ 15.0"."""
+	rows = domestic_taxes()
+	words = (rows[0].description or "").split() if rows else []
+	return words[0] if words else _("tax")
+
+
+def with_and_without_tax(amount: float) -> tuple[float, float]:
+	"""A price-list amount as (including tax, excluding tax) at the store's own tax rate."""
+	factor = 1 + domestic_tax_rate() / 100
+	if frappe.get_cached_doc("Shop Settings").prices_include_tax:
+		return flt(amount), flt(amount) / factor
+	return flt(amount) * factor, flt(amount)
+
+
+def shows_store_currency() -> bool:
+	currency = display_currency()
+	return currency == store_currency() or not display_rate(currency)
+
+
 def display_amount(amount: float) -> str:
-	"""A store price as the shopper sees it: in the store currency with its code, or converted
-	into the currency they picked and marked as approximate."""
-	base, currency = store_currency(), display_currency()
-	rate = display_rate(currency) if currency != base else None
-	if not rate:
-		return f"{fmt_money(amount, currency=base)} {base}"
-	return f"≈ {fmt_money(flt(amount) * rate, currency=currency)} {currency}"
+	"""A price-list amount as the shopper sees it.
+
+	In the store currency the price includes the store's tax (as home buyers pay it). In another
+	currency the buyer is overseas and pays no local tax: the price without tax, converted at
+	ERPNext's rate and marked approximate."""
+	including, excluding = with_and_without_tax(amount)
+	if shows_store_currency():
+		return f"{fmt_money(flt(including, 2), currency=store_currency())} {store_currency()}"
+	currency = display_currency()
+	return f"≈ {fmt_money(excluding * display_rate(currency), currency=currency)} {currency}"
 
 
-def price_note() -> str:
-	"""The line under a product's price."""
-	base, currency = store_currency(), display_currency()
-	if currency == base or not display_rate(currency):
-		return _("Includes GST. Overseas orders are GST-free.")
-	return _(
-		"Approximate, including NZ GST, which comes off for overseas delivery. Cards are charged in {0}; "
-		"bank transfers can be paid in {1}. The exact total is shown at checkout."
-	).format(base, currency)
+def display_price(amount: float) -> str:
+	"""A product's headline price: display_amount, saying it includes tax when it does."""
+	shown = display_amount(amount)
+	if shows_store_currency() and domestic_tax_rate():
+		return _("{0} incl. {1}").format(shown, tax_name())
+	return shown
+
+
+def display_price_without_tax(amount: float) -> str | None:
+	"""The line under a headline price in the store currency: the price without tax."""
+	if not shows_store_currency() or not domestic_tax_rate():
+		return None
+	excluding = with_and_without_tax(amount)[1]
+	return _("{0} excl. {1}").format(f"{fmt_money(flt(excluding, 2), currency=store_currency())} {store_currency()}", tax_name())
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])

@@ -892,6 +892,14 @@ def card_price_row(refs):
 				dynamicValues=[dv("formatted_compare_at", "innerHTML")],
 			),
 			discount_tag,
+			block(
+				"span",
+				text="",
+				name="Card Price Without Tax",
+				visibilityCondition={"key": "formatted_price_excl", "comesFrom": "dataScript"},
+				styles={"color": refs["muted"], "flexBasis": "100%", "fontSize": "12px", "height": "fit-content"},
+				dynamicValues=[dv("formatted_price_excl", "innerHTML")],
+			),
 		],
 	)
 
