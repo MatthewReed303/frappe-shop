@@ -34,6 +34,15 @@ class TestTrade(IntegrationTestCase):
 		)
 		self.assertNotIn(rule.name, [row.name for row in trade.remove_discount(rule.name)])
 
+	def test_a_discount_on_an_inner_item_group_wins(self):
+		inner = frappe.db.get_value("Item Group", {"is_group": 0, "parent_item_group": "All Item Groups"})
+		rules = trade.set_discount("All Item Groups", 5)
+		rules = trade.set_discount(inner, 20)
+		priority = {
+			row.item_group: int(frappe.db.get_value("Pricing Rule", row.name, "priority")) for row in rules
+		}
+		self.assertGreater(priority[inner], priority["All Item Groups"])
+
 	def test_staff_make_and_end_a_trade_customer(self):
 		terms = (
 			frappe.db.get_value("Payment Terms Template", {})

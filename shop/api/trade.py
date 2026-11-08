@@ -68,7 +68,19 @@ def set_discount(item_group: str, percent: float) -> list[dict]:
 		from shop.setup_store import group_discount
 
 		group_discount(group, item_group, flt(percent))
+	prioritise(group)
 	return discounts(group)
+
+
+def prioritise(group: str) -> None:
+	"""A discount on an Item Group inside another (Products in All Item Groups) wins over the outer
+	one: ERPNext picks the Pricing Rule with the higher priority instead of refusing both."""
+	for rule in discounts(group):
+		lft, rgt = frappe.db.get_value("Item Group", rule.item_group, ["lft", "rgt"]) or (0, 0)
+		depth = frappe.db.count("Item Group", {"lft": ["<", lft], "rgt": [">", rgt]})
+		priority = str(min(depth + 1, 20))
+		if frappe.db.get_value("Pricing Rule", rule.name, "priority") != priority:
+			frappe.db.set_value("Pricing Rule", rule.name, {"has_priority": 1, "priority": priority})
 
 
 @frappe.whitelist(methods=["POST"])

@@ -197,6 +197,27 @@ class TestAdminApi(IntegrationTestCase):
 		self.assertFalse(result["round_order_totals"])
 		self.assertEqual(frappe.db.get_single_value("Global Defaults", "disable_rounded_total"), 1)
 
+	def test_an_invoice_priced_differently_from_the_paid_order_is_not_made(self):
+		from shop.storefront import payment
+
+		name = self.place_order()
+		orders.mark_paid(name)
+		order = frappe.get_doc("Sales Order", name)
+		with patch.object(payment.totals, "order_total", side_effect=[1.0, 2.0, 1.0, 2.0]):
+			self.assertIsNone(payment.invoice_paid_order(order))
+		self.assertFalse(payment.order_invoice(name))
+		self.assertTrue(
+			frappe.db.exists(
+				"Comment", {"reference_name": name, "content": ["like", "%could not be invoiced%"]}
+			)
+		)
+		with (
+			self.assertRaisesRegex(frappe.ValidationError, "couldn't be invoiced"),
+			patch.object(payment, "invoice_paid_order", return_value=None),
+		):
+			orders.cancel_order(name)
+		self.assertEqual(frappe.db.get_value("Sales Order", name, "status") != "Closed", True)
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

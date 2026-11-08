@@ -374,13 +374,23 @@ def invoice_paid_order(order) -> str | None:
 		invoice.only_include_allocated_payments = 1
 		invoice.flags.ignore_permissions = True
 		invoice.insert(ignore_permissions=True)
+		if flt(totals.order_total(invoice), 2) != flt(totals.order_total(order), 2):
+			# ERPNext priced the invoice differently (e.g. the customer's pricing changed since)
+			frappe.throw(
+				_("The invoice would be {0}, the order is {1}").format(
+					totals.order_total(invoice), totals.order_total(order)
+				)
+			)
 		invoice.submit()
-	except Exception:
+	except Exception as error:
 		frappe.db.rollback(save_point="shop_invoice")
 		frappe.log_error(title=f"Could not invoice paid order {order.name}")
+		frappe.clear_messages()
 		order.add_comment(
 			"Info",
-			_("The order is paid but could not be invoiced automatically. Make the invoice from the order."),
+			_(
+				"The order is paid but could not be invoiced automatically ({0}). Make the invoice from the order."
+			).format(frappe.utils.strip_html(str(error))),
 		)
 		return None
 	order.add_comment("Info", _("Paid and invoiced: {0}.").format(invoice.name))
@@ -587,6 +597,18 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 		not shipment and flt(order.per_delivered)
 	):
 		frappe.throw(_("This order has shipped. Use a return instead."))
+	# everything that can stop the cancel is checked before the carrier is told
+	invoice = order_invoice(name)
+	if not invoice and payment_status(order) == "Paid":
+		invoice = invoice_paid_order(order)
+		if not invoice:
+			frappe.throw(
+				_(
+					"This order is paid but couldn't be invoiced automatically (see the note on the order). Make its invoice in Desk, then cancel it."
+				)
+			)
+	if not invoice and flt(order.advance_paid):
+		frappe.throw(_("This order is part paid. Refund the payment in ERPNext before cancelling it."))
 	for fulfillment in frappe.get_all(
 		"Shop Fulfillment",
 		filters={"sales_order": name, "status": ["in", ("Pending", "Accepted")]},
@@ -594,13 +616,8 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 	):
 		service.cancel(fulfillment)
 	order.reload()
-	invoice = order_invoice(name)
-	if not invoice and payment_status(order) == "Paid":
-		invoice = invoice_paid_order(order)
 	result = {"credit_note": None}
 	if not invoice:
-		if flt(order.advance_paid):
-			frappe.throw(_("This order is part paid. Refund the payment in ERPNext before cancelling it."))
 		for request in frappe.get_all(
 			"Payment Request",
 			filters={
