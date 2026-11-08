@@ -337,7 +337,7 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 
 	lines, notes, factor = totals.shown_lines(sales_order)
 	rows = "".join(
-		row(f"{line.item_name} × {cart_module.display_qty(line.qty)}", fmt(flt(line.amount) * factor(line)))
+		row(f"{line.item_name} \u00d7 {cart_module.display_qty(line.qty)}", fmt(flt(line.amount) * factor(line)))
 		for line in sales_order.items
 		if not totals.is_charge_item(line.item_code)
 	)
