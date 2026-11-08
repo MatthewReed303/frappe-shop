@@ -216,7 +216,15 @@ def timeline(order) -> list[dict]:
 			events.append({"label": _("Fulfilled"), "on": str(note.creation)[:16]})
 	if order.docstatus == 2:
 		events.append({"label": "Order cancelled", "on": str(order.modified)[:16]})
-	return events
+	# what the store and the payment gateway noted on the order, such as a disputed payment
+	for note in frappe.get_all(
+		"Comment",
+		filters={"reference_doctype": "Sales Order", "reference_name": order.name, "comment_type": "Info"},
+		fields=["content", "creation"],
+		order_by="creation",
+	):
+		events.append({"label": frappe.utils.strip_html(note.content), "on": str(note.creation)[:16]})
+	return sorted(events, key=lambda event: event["on"])
 
 
 def delivery_notes(order_name: str) -> list[str]:

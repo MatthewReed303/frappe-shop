@@ -204,6 +204,10 @@ class TestAdminApi(IntegrationTestCase):
 		fulfillment.db_set({"status": "Shipped", "shipped_on": frappe.utils.now_datetime()})
 		self.assertIn("Shipped", [event["label"] for event in orders.get_order(name)["timeline"]])
 
+		# notes on the order, such as a disputed card payment, are in the timeline too
+		frappe.get_doc("Sales Order", name).add_comment("Info", "The customer disputed $ 10.00")
+		self.assertEqual(orders.get_order(name)["timeline"][-1]["label"], "The customer disputed $ 10.00")
+
 	def test_an_order_entered_in_desk_doesnt_claim_the_store_emailed_it(self):
 		store_order = frappe.get_doc("Sales Order", self.place_order())
 		self.assertEqual(order_summary(store_order)["emailed"], "true")
