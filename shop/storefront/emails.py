@@ -132,7 +132,8 @@ TEMPLATES = {
 		"Shop: Order Shipped",
 		ORDER,
 		"Your order {{ doc.name }} is on its way",
-		"<p>Good news: your order {{ doc.name }} has shipped.</p>"
+		"<p>{% if partly %}Part of your order {{ doc.name }} has shipped. The rest follows in its own parcel."
+		"{% else %}Good news: your order {{ doc.name }} has shipped.{% endif %}</p>"
 		"{% if carrier_line %}<p>{{ carrier_line }}</p>{% endif %}"
 		'{% if tracking_url %}<p><a href="{{ tracking_url }}">Track your parcel</a></p>{% endif %}'
 		'<p><a href="{{ order_url }}">View your order</a></p>',

@@ -167,9 +167,13 @@ def notify_customer(fulfillment, status: str) -> None:
 		order_url(order.name) if access_token(order.name) else store_url("account/orders")
 	)
 	if status == "Shipped":
+		from shop.storefront.orders import shipment_summary
+
+		shipment = shipment_summary(order.name)
 		emails.send(
 			"order_shipped", order.contact_email, order, order_url=link, tracking_url=fulfillment.tracking_url,
 			carrier_line=" · ".join(filter(None, [fulfillment.carrier, fulfillment.tracking_number])),
+			partly=bool(shipment and shipment.partly_shipped),
 		)
 	else:
 		emails.send("order_delivered", order.contact_email, order, order_url=link)

@@ -196,3 +196,13 @@ class TestLocations(IntegrationTestCase):
 		self.assertFalse(
 			frappe.db.exists("Singles", {"doctype": "Shop Settings", "field": "default_warehouse"})
 		)
+
+	def test_the_customer_is_told_when_part_of_the_order_has_shipped(self):
+		from shop.storefront import emails
+
+		emails.ensure_templates()
+		order = frappe._dict(doctype="Sales Order", name="SO-PARCELS")
+		_subject, partly = emails.render("order_shipped", order, partly=True, order_url="/x")
+		_subject, whole = emails.render("order_shipped", order, partly=False, order_url="/x")
+		self.assertIn("Part of your order SO-PARCELS has shipped", partly)
+		self.assertIn("your order SO-PARCELS has shipped", whole)
