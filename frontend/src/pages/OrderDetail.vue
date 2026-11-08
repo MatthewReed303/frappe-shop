@@ -65,6 +65,7 @@
 					</div>
 
 					<FulfillmentPanel
+						:key="panelVersion"
 						:order="doc.name"
 						:docstatus="doc.docstatus"
 						@changed="order.reload()"
@@ -242,6 +243,8 @@ const actions = {
 type ActionKey = keyof typeof actions
 
 const showConfirm = ref(false)
+// cancelling or refunding changes the shipment too, so the panel loads it again
+const panelVersion = ref(0)
 const pending = ref<(typeof actions)[ActionKey] | null>(null)
 
 const payment = reactive({ bank_account: '', amount: 0 })
@@ -282,6 +285,7 @@ async function runRefund() {
 		})
 		toast.success('Refund recorded')
 		order.reload()
+		panelVersion.value++
 	} catch (error) {
 		const messages = (error as { messages?: string[] }).messages
 		toast.error(messages?.[0] || 'Could not refund')
@@ -318,6 +322,7 @@ async function runPending() {
 		await call(pending.value.method, { name: props.name, ...extra })
 		toast.success(pending.value.success)
 		order.reload()
+		panelVersion.value++
 	} catch (error) {
 		const messages = (error as { messages?: string[] }).messages
 		toast.error(messages?.[0] || pending.value.failure)

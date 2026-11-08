@@ -622,6 +622,9 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 	invoice = order_invoice(name)
 	if not invoice and payment_status(order) == "Paid":
 		invoice = invoice_paid_order(order)
+		if not invoice and not order.get("shop_payment_method"):
+			# entered in Desk: the store doesn't invoice it
+			frappe.throw(_("This order is paid. Make its invoice in Desk, then cancel it here."))
 		if not invoice:
 			frappe.throw(
 				_(
