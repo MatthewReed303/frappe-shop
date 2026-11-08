@@ -34,6 +34,7 @@ doc_events = {
 	"Bank Transaction": {"on_submit": "shop.storefront.payment.on_bank_transaction"},
 	# statement runs follow the Customer Group
 	"Customer": {"on_update": "shop.storefront.statements.sync_customer"},
+	"Sales Order": {"before_insert": "shop.storefront.payment.forget_checkout_on_amend"},
 }
 
 override_doctype_class = {

@@ -1130,6 +1130,49 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 2)
 		self.assertIn([BUYER["email"]], [call.kwargs["recipients"] for call in sendmail.call_args_list])
 
+	def test_orders_the_daily_cancel_leaves_alone(self):
+		from erpnext.selling.doctype.sales_order.sales_order import update_status
+
+		self.set(cancel_unpaid_orders=1)
+		self.basket(1)
+		no_date = self.place()
+		frappe.db.set_value("Sales Order", no_date, "shop_payment_due", None)
+		self.basket(1)
+		on_hold = self.place()
+		frappe.db.set_value("Sales Order", on_hold, "shop_payment_due", add_days(nowdate(), -1))
+		update_status("On Hold", on_hold)
+		self.basket(1)
+		sent = self.place()
+		frappe.db.set_value("Sales Order", sent, "shop_payment_due", add_days(nowdate(), -1))
+		frappe.get_doc(
+			{"doctype": "Shop Fulfillment", "sales_order": sent, "provider": "manual", "status": "Accepted"}
+		).insert(ignore_permissions=True)
+		self.basket(1)
+		deposited = self.place()
+		frappe.db.set_value("Sales Order", deposited, "shop_payment_due", add_days(nowdate(), -1))
+		order = frappe.get_doc("Sales Order", deposited)
+		# the deposit is in the bank, not matched yet (here: in another currency than the order)
+		transaction = self.bank_deposit(order, payment.amount_due(order), 0, deposited)
+		self.assertGreater(flt(frappe.db.get_value("Bank Transaction", transaction.name, "unallocated_amount")), 0)
+
+		with patch("frappe.sendmail"), patch("frappe.db.commit"):
+			payment.cancel_overdue_orders()
+		for name in (no_date, on_hold, sent, deposited):
+			self.assertEqual(frappe.db.get_value("Sales Order", name, "docstatus"), 1, name)
+
+	def test_a_copied_or_amended_order_doesnt_keep_the_checkout(self):
+		self.basket(1)
+		order = frappe.get_doc("Sales Order", self.place())
+		# as Desk's Duplicate copies it
+		copy = frappe.copy_doc(order, ignore_no_copy=False)
+		self.assertFalse(copy.get("shop_payment_due"))
+		self.assertFalse(copy.get("shop_payment_method"))
+		amended = frappe.copy_doc(order)
+		amended.shop_payment_due = order.shop_payment_due
+		amended.amended_from = order.name
+		payment.forget_checkout_on_amend(amended)
+		self.assertFalse(amended.shop_payment_due)
+
 	def test_unpaid_bank_order_is_not_cancelled_before_its_due_date(self):
 		self.basket(1)
 		name = self.place()

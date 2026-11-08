@@ -455,11 +455,14 @@ def cancel_overdue_orders() -> None:
 		filters={
 			"docstatus": 1,
 			"shop_payment_method": ["in", [*totals.BANK_METHODS, totals.GATEWAY]],
-			"shop_payment_due": ["<", nowdate()],
-			"status": ["not in", ["Closed", "Completed"]],
+			# an order without a pay-by date (Frappe would read it as long past) is never cancelled
+			"shop_payment_due": ["is", "set"],
+			"status": ["not in", ["Closed", "Completed", "On Hold"]],
 		},
 		pluck="name",
 	):
+		if getdate(frappe.db.get_value("Sales Order", name, "shop_payment_due")) >= getdate(nowdate()):
+			continue
 		try:
 			cancel_if_unpaid(name)
 			frappe.db.commit()
@@ -470,25 +473,28 @@ def cancel_overdue_orders() -> None:
 
 def cancel_if_unpaid(name: str) -> bool:
 	order = frappe.get_doc("Sales Order", name)
-	if order.docstatus != 1 or is_paid(order):
+	if order.docstatus != 1 or order.status in ("On Hold", "Closed", "Completed") or is_paid(order):
 		return False
-	if order.get("shop_payment_due") and getdate(order.shop_payment_due) >= getdate(nowdate()):
+	if not order.get("shop_payment_due") or getdate(order.shop_payment_due) >= getdate(nowdate()):
 		return False
 	if flt(order.advance_paid) > 0:
 		chase_part_paid(order)
 		return False
 	if flt(order.per_delivered) > 0 or flt(order.per_billed) > 0:
 		return False
-	unmatched = unmatched_payments(order)
+	if frappe.db.exists(
+		"Shop Fulfillment", {"sales_order": order.name, "status": ["in", ("Pending", "Accepted", "Shipped")]}
+	):
+		# staff sent it before it was paid: they decide
+		note_once(order, _("Not cancelled: it has been sent for fulfilment, though it isn't paid."))
+		return False
+	unmatched = unmatched_payments(order) + unmatched_deposits(order)
 	if unmatched:
 		# the customer may have paid without the payment being matched to the order; said once
 		note = _(
 			"Not cancelled: {0} has payments not matched to an order yet ({1}). Match them in ERPNext's Payment Reconciliation."
 		).format(order.customer, ", ".join(unmatched))
-		if not frappe.db.exists(
-			"Comment", {"reference_doctype": "Sales Order", "reference_name": order.name, "content": note}
-		):
-			order.add_comment("Info", note)
+		note_once(order, note)
 		return False
 	for request in frappe.get_all(
 		"Payment Request",
@@ -756,6 +762,46 @@ def chase_part_paid(order) -> None:
 		owed=owed,
 		payment_html=bank_instructions_html(order),
 	)
+
+
+def forget_checkout_on_amend(doc, method=None) -> None:
+	"""Sales Order before_insert: an amended store order doesn't keep the cancelled one's pay-by
+	date (ERPNext's amend copies it), so it isn't cancelled again for it."""
+	if doc.get("amended_from") and doc.meta.has_field("shop_payment_due"):
+		doc.shop_payment_due = None
+
+
+def note_once(order, note: str) -> None:
+	"""Add an Info comment to the order unless it is there already (Frappe stores it escaped)."""
+	if not frappe.db.exists(
+		"Comment",
+		{
+			"reference_doctype": "Sales Order",
+			"reference_name": order.name,
+			"content": ["in", [note, frappe.utils.escape_html(note)]],
+		},
+	):
+		order.add_comment("Info", note)
+
+
+def unmatched_deposits(order) -> list[str]:
+	"""Bank Transactions not reconciled yet that name the order: its payment may be one of them."""
+	deposits = frappe.get_all(
+		"Bank Transaction",
+		filters={
+			"docstatus": 1,
+			"company": order.company,
+			"deposit": [">", 0],
+			"unallocated_amount": [">", 0],
+			"date": [">=", order.transaction_date],
+		},
+		fields=["name", "reference_number", "description"],
+	)
+	return [
+		row.name
+		for row in deposits
+		if re.search(rf"{compact(order.name)}(?!\d)", compact(f"{row.reference_number or ''} {row.description or ''}"))
+	]
 
 
 def unmatched_payments(order) -> list[str]:

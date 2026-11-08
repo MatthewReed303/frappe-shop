@@ -74,6 +74,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_payment_method",
+				"no_copy": 1,
 				"fieldtype": "Data",
 				"label": "Payment Method",
 				"read_only": 1,
@@ -82,6 +83,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_payment_due",
+				"no_copy": 1,
 				"fieldtype": "Date",
 				"label": "Payment Due",
 				"insert_after": "shop_payment_method",
@@ -98,6 +100,7 @@ def custom_fields() -> dict:
 			{"fieldname": "shop_column", "fieldtype": "Column Break", "insert_after": "shop_shipping_option"},
 			{
 				"fieldname": "shop_terms_version",
+				"no_copy": 1,
 				"fieldtype": "Data",
 				"label": "Terms Accepted",
 				"read_only": 1,
@@ -105,6 +108,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_terms_accepted_on",
+				"no_copy": 1,
 				"fieldtype": "Datetime",
 				"label": "Terms Accepted On",
 				"read_only": 1,
@@ -112,6 +116,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_business_buyer",
+				"no_copy": 1,
 				"fieldtype": "Check",
 				"label": "Business Buyer",
 				"read_only": 1,
@@ -204,6 +209,7 @@ def custom_fields() -> dict:
 			{"fieldname": "shop_trade_column", "fieldtype": "Column Break", "insert_after": "shop_user"},
 			{
 				"fieldname": "shop_terms_version",
+				"no_copy": 1,
 				"fieldtype": "Data",
 				"label": "Terms Accepted",
 				"read_only": 1,
@@ -211,6 +217,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_terms_accepted_on",
+				"no_copy": 1,
 				"fieldtype": "Datetime",
 				"label": "Terms Accepted On",
 				"read_only": 1,
@@ -220,6 +227,7 @@ def custom_fields() -> dict:
 		"User": [
 			{
 				"fieldname": "shop_terms_version",
+				"no_copy": 1,
 				"fieldtype": "Data",
 				"label": "Store Terms Accepted",
 				"read_only": 1,
@@ -227,6 +235,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_terms_accepted_on",
+				"no_copy": 1,
 				"fieldtype": "Datetime",
 				"label": "Store Terms Accepted On",
 				"read_only": 1,
