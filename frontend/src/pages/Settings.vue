@@ -412,6 +412,18 @@
 						label="Terms page URL"
 						description="Leave empty to use the store's terms page."
 					/>
+					<a
+						:href="
+							accounts.terms_and_conditions
+								? `/app/terms-and-conditions/${encodeURIComponent(accounts.terms_and_conditions)}`
+								: '/app/terms-and-conditions/new'
+						"
+						target="_blank"
+						class="col-span-2 inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
+					>
+						{{ accounts.terms_and_conditions ? 'Edit these terms in Desk' : 'Write your terms in Desk (Terms and Conditions)' }}
+						<LucideExternalLink class="size-3.5" />
+					</a>
 				</div>
 				<FormControl
 					v-model="accounts.new_customer_group"
