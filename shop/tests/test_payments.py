@@ -90,3 +90,27 @@ class TestPayments(IntegrationTestCase):
 			self.assertIsNone(payment_request.run_method("on_payment_authorized", "Completed"))
 		auto_send.assert_not_called()
 		self.assertEqual(frappe.db.get_value("Payment Request", payment_request.name, "status"), "Paid")
+
+	def test_an_online_order_paid_another_way_is_confirmed_and_reminders_say_what_happens(self):
+		from unittest.mock import patch
+
+		from shop.api.orders import mark_paid
+		from shop.storefront import payment
+
+		if not self.gateway_account:
+			self.skipTest("no payment gateway account configured")
+		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
+		cart.add_item("SHOP-DEMO-004")
+		name = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="gateway")["sales_order"]
+		order = frappe.get_doc("Sales Order", name)
+
+		# the reminder only warns of cancelling when the store cancels unpaid orders
+		frappe.db.set_single_value("Shop Settings", "cancel_unpaid_orders", 0)
+		with patch("shop.storefront.emails.send") as send:
+			payment.remind(order)
+		self.assertEqual(send.call_args.kwargs["due_date"], "")
+
+		# staff record a bank payment for it: the customer is told it was received
+		with patch.object(payment, "notify_paid") as notify_paid:
+			mark_paid(name)
+		notify_paid.assert_called_once()

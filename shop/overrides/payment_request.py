@@ -22,12 +22,10 @@ class ShopPaymentRequest(PaymentRequest):
 			# a request staff made in Desk for their own order is left to ERPNext
 			return None
 		if newly_paid:
-			from shop.fulfillment.service import auto_send
 			from shop.storefront.checkout import send_confirmation
 
+			# the order is handed on by its Payment Entry (payment.on_payment_entry), once
 			send_confirmation(self.reference_name)
-			# a payer opening the paid link again doesn't send the order again
-			auto_send(self.reference_name)
 		return self.confirmation_url()
 
 	def for_store_order(self) -> bool:

@@ -173,7 +173,7 @@ def status_changed(request) -> None:
 			if request.credit_note
 			else ""
 		)
-		from shop.storefront.payment import invoice_attachments
+		from shop.storefront.payment import invoice_attachments, refunds_due
 
 		notify(
 			request,
@@ -182,6 +182,7 @@ def status_changed(request) -> None:
 			attachments=invoice_attachments(request.credit_note) if request.credit_note else None,
 			credit_note=request.credit_note,
 			amount=amount,
+			refund_due=bool(request.credit_note and refunds_due(request.sales_order)),
 		)
 
 

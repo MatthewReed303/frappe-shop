@@ -512,7 +512,9 @@ def set_primary_contact(party: str, contact) -> None:
 def plain_text(values: dict | None) -> dict:
 	"""What a customer typed, without markup, as staff see it in the admin, Desk and emails."""
 	return {
-		key: frappe.utils.strip_html(value).strip() if isinstance(value, str) else value
+		key: frappe.utils.strip_html(value).replace("<", "").replace(">", "").strip()
+		if isinstance(value, str)
+		else value
 		for key, value in (values or {}).items()
 	}
 

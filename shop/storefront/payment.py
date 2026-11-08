@@ -27,6 +27,10 @@ def amount_due(order) -> float:
 def is_paid(order) -> bool:
 	if amount_due(order) <= 0:
 		return True
+	# paid against its invoice instead of the order
+	invoice = order_invoice(order.name)
+	if invoice and flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) <= 0:
+		return True
 	return bool(
 		frappe.db.exists(
 			"Payment Request",
@@ -140,6 +144,12 @@ def on_payment_entry(doc, method=None) -> None:
 		order_paid(order)
 		if order.shop_payment_method in totals.BANK_METHODS:
 			order.add_comment("Info", _("Bank transfer received ({0}).").format(doc.name))
+			notify_paid(order)
+		elif doc.reference_no not in frappe.get_all(
+			"Payment Request", {"reference_doctype": "Sales Order", "reference_name": order.name}, pluck="name"
+		):
+			# an online order paid another way (recorded by staff), not through its Payment Request
+			# (whose own confirmation goes out): the customer still hears
 			notify_paid(order)
 
 
@@ -369,6 +379,7 @@ def notify_paid(order) -> None:
 		order,
 		attachments=invoice_attachments(invoice),
 		invoice=invoice,
+		shipping_emails=frappe.get_cached_doc("Shop Settings").get("send_shipping_emails"),
 	)
 
 
@@ -836,6 +847,7 @@ def remind_unpaid_online_orders() -> None:
 		filters={
 			"docstatus": 1,
 			"shop_payment_method": totals.GATEWAY,
+			"status": ["not in", ["Closed", "Completed", "On Hold"]],
 			"advance_payment_status": ["!=", "Fully Paid"],
 			"creation": ["<", add_to_date(now_datetime(), hours=-hours)],
 			"shop_payment_due": [">=", nowdate()],
@@ -865,7 +877,10 @@ def remind(order) -> None:
 		order.contact_email,
 		order,
 		pay_url=url,
-		due_date=frappe.utils.formatdate(order.shop_payment_due) if order.get("shop_payment_due") else "",
+		# said only when the store does cancel unpaid orders
+		due_date=frappe.utils.formatdate(order.shop_payment_due)
+		if order.get("shop_payment_due") and frappe.get_cached_doc("Shop Settings").get("cancel_unpaid_orders")
+		else "",
 		**{key: parts[key] for key in ("lines_html", "order_url") if key in parts},
 	)
 	order.add_comment("Info", REMINDER)

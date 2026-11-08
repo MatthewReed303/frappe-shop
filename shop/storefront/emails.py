@@ -44,7 +44,8 @@ TEMPLATES = {
 		"Shop: Payment Received",
 		ORDER,
 		"Payment received for order {{ doc.name }}",
-		"<p>Thank you, we've received your payment for order {{ doc.name }}. We'll let you know when it ships.</p>"
+		"<p>Thank you, we've received your payment for order {{ doc.name }}."
+		"{% if shipping_emails %} We'll let you know when it ships.{% endif %}</p>"
 		"{% if invoice %}<p>Your invoice {{ invoice }} is attached.</p>{% endif %}",
 	),
 	"payment_short": (
@@ -67,8 +68,8 @@ TEMPLATES = {
 		"Shop: Return Requested (Staff)",
 		ORDER,
 		"{{ request_type }} requested for order {{ doc.name }}",
-		"<p>{{ doc.customer_name }} asked for a {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name }} from order "
-		"{{ doc.name }}.</p><p>Reason: {{ reason }}</p><p>Review it in the store admin under Returns.</p>",
+		"<p>{{ doc.customer_name | e }} asked for a {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name | e }} "
+		"from order {{ doc.name }}.</p><p>Reason: {{ reason | e }}</p><p>Review it in the store admin under Returns.</p>",
 	),
 	"return_approved": (
 		"Shop: Return Approved",
@@ -91,8 +92,9 @@ TEMPLATES = {
 		ORDER,
 		"Your {{ request_type|lower }} for order {{ doc.name }} is complete",
 		"<p>We've received {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
-		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll let you "
-		"know when the refund is on its way.</p>{% endif %}"
+		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached."
+		"{% if refund_due %} We'll let you know when the refund is on its way."
+		"{% else %} It is taken off what you owe.{% endif %}</p>{% endif %}"
 		"{% if note %}<p>{{ note }}</p>{% endif %}",
 	),
 	"order_cancelled_by_store": (
@@ -147,7 +149,7 @@ TEMPLATES = {
 	"quote_request_staff": (
 		"Shop: New Quote Request",
 		QUOTATION,
-		"Quote request {{ doc.name }} from {{ customer_name | e }}",
+		"Quote request {{ doc.name }} from {{ customer_name }}",
 		"<p>{{ customer_name | e }} ({{ email | e }}) asked for a quote.</p><p>{{ message | e }}</p>"
 		'<p><a href="{{ desk_url }}">Open the quotation</a></p>',
 	),
@@ -174,7 +176,7 @@ TEMPLATES = {
 	"trade_application_staff": (
 		"Shop: New Trade Application",
 		LEAD,
-		"Trade account application: {{ doc.company_name | e }}",
+		"Trade account application: {{ doc.company_name }}",
 		"<p>{{ doc.company_name | e }} ({{ (doc.country or '') | e }}) applied for a trade account.</p>"
 		'<p><a href="{{ desk_url }}">Review the application</a></p>',
 	),
