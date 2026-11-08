@@ -148,9 +148,21 @@ def on_bank_transaction(doc, method=None) -> None:
 	once the Bank Transaction is saved."""
 	if flt(doc.deposit) > 0:
 		frappe.enqueue(
-			"shop.storefront.payment.pay_from_bank_transaction",
+			"shop.storefront.payment.match_bank_transaction",
 			bank_transaction=doc.name,
 			enqueue_after_commit=True,
+		)
+
+
+def match_bank_transaction(bank_transaction: str) -> None:
+	try:
+		pay_from_bank_transaction(bank_transaction)
+	except Exception:
+		frappe.db.rollback()
+		frappe.log_error(
+			title=_("Bank deposit not matched to an order"),
+			reference_doctype="Bank Transaction",
+			reference_name=bank_transaction,
 		)
 
 
@@ -261,7 +273,8 @@ def make_payment_entry(order, transaction):
 		)
 	payment_entry.bank_account = transaction.bank_account
 	payment_entry.reference_no = transaction.transaction_id or transaction.name
-	payment_entry.reference_date = transaction.date
+	# a transaction entered by hand may have no date
+	payment_entry.reference_date = transaction.date or getdate(transaction.creation)
 	payment_entry.insert()
 	payment_entry.submit()
 	return payment_entry

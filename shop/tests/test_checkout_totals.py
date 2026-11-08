@@ -530,6 +530,15 @@ class TestCheckoutTotals(IntegrationTestCase):
 			frappe.db.exists("Comment", {"reference_name": name, "content": ["like", "%more than owed%"]})
 		)
 
+	def test_a_deposit_entered_without_a_date_pays_the_order(self):
+		self.basket(1)
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		transaction = self.bank_deposit(order, payment.amount_due(order), 0, name)
+		transaction.db_set("date", None)
+		payment.match_bank_transaction(transaction.name)
+		self.assertTrue(payment.is_paid(frappe.get_doc("Sales Order", name)))
+
 	def test_reference_typed_the_bank_way_still_pays_the_order(self):
 		self.basket(1)
 		name = self.place(currency=self.company_currency)
