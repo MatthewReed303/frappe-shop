@@ -130,9 +130,12 @@ def auto_send(order_name: str) -> None:
 def send_paid_order(order_name: str) -> None:
 	if not frappe.get_cached_doc("Shop Settings").get("auto_send_to_fulfillment"):
 		return
-	if frappe.db.exists("Shop Fulfillment", {"sales_order": order_name, "status": ["in", OPEN_STATUSES]}):
+	# only the first hand-over is automatic: an order sent before (even if that was cancelled),
+	# delivered, closed or cancelled is left to staff
+	if frappe.db.exists("Shop Fulfillment", {"sales_order": order_name, "status": ["!=", "Failed"]}):
 		return
-	if frappe.db.get_value("Sales Order", order_name, "docstatus") != 1:
+	order = frappe.db.get_value("Sales Order", order_name, ["docstatus", "status", "per_delivered"], as_dict=True)
+	if not order or order.docstatus != 1 or order.status in ("Closed", "Completed") or flt(order.per_delivered):
 		return
 	try:
 		send(order_name)

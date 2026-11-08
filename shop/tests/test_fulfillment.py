@@ -220,6 +220,11 @@ class TestFulfillment(IntegrationTestCase):
 	def test_orders_are_not_sent_twice_by_the_automatic_route(self):
 		self.enable_auto_send()
 		order = self.place_order()
-		service.send(order, "manual")
+		name = service.send(order, "manual")
+		service.send_paid_order(order)
+		self.assertEqual(frappe.db.count("Shop Fulfillment", {"sales_order": order}), 1)
+
+		# nor again once that shipment is cancelled, delivered or the order closed: staff decide
+		frappe.db.set_value("Shop Fulfillment", name, "status", "Cancelled")
 		service.send_paid_order(order)
 		self.assertEqual(frappe.db.count("Shop Fulfillment", {"sales_order": order}), 1)
