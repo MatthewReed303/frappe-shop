@@ -92,14 +92,53 @@ class ShopSettings(Document):
 			seen.add(row.warehouse)
 			company, is_group = frappe.db.get_value("Warehouse", row.warehouse, ["company", "is_group"])
 			if is_group:
-				frappe.throw(_("{0} is a group warehouse: pick the warehouse stock is kept in").format(row.warehouse))
+				frappe.throw(
+					_("{0} is a group warehouse: pick the warehouse stock is kept in").format(row.warehouse)
+				)
 			if self.company and company != self.company:
 				frappe.throw(_("Warehouse {0} belongs to another company").format(frappe.bold(row.warehouse)))
 			row.fulfillment_provider = row.fulfillment_provider or "manual"
 			if row.fulfillment_provider not in providers:
 				frappe.throw(
-					_("Fulfillment provider {0} is not installed").format(frappe.bold(row.fulfillment_provider))
+					_("Fulfillment provider {0} is not installed").format(
+						frappe.bold(row.fulfillment_provider)
+					)
 				)
+			self.check_ship_from(row)
+
+	def check_ship_from(self, row) -> None:
+		"""A provider that sends from the location needs an address the company ships from, as
+		ERPNext's Shipment does: one linked to the company."""
+		from shop.fulfillment.provider import get_provider
+		from shop.storefront.stock import warehouse_address
+
+		if not getattr(get_provider(row.fulfillment_provider), "needs_ship_from", False):
+			return
+		address = row.ship_from_address or warehouse_address(row.warehouse)
+		if not address:
+			frappe.msgprint(
+				_(
+					"{0} has no address to send parcels from. Add one to the warehouse, or pick a Ship From Address."
+				).format(frappe.bold(row.warehouse)),
+				indicator="orange",
+				alert=True,
+			)
+		elif self.company and not frappe.db.exists(
+			"Dynamic Link",
+			{
+				"parenttype": "Address",
+				"parent": address,
+				"link_doctype": "Company",
+				"link_name": self.company,
+			},
+		):
+			frappe.msgprint(
+				_(
+					"Address {0} isn't linked to {1}: ERPNext ships only from the company's addresses. Link it in Desk."
+				).format(frappe.bold(address), frappe.bold(self.company)),
+				indicator="orange",
+				alert=True,
+			)
 
 	def validate_order_naming_series(self):
 		if not self.order_naming_series:

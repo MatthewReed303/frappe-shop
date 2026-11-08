@@ -13,6 +13,9 @@ STATUSES = ("Pending", "Accepted", "Shipped", "Delivered", "Cancelled", "Failed"
 class FulfillmentProvider:
 	key = ""
 	label = ""
+	# sends parcels from the location's address (a courier app does; a fulfilment service ships
+	# from its own warehouses)
+	needs_ship_from = False
 
 	def is_configured(self) -> bool:
 		"""Whether credentials are present, so the panel can explain what is missing."""

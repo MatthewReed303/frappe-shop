@@ -206,3 +206,16 @@ class TestLocations(IntegrationTestCase):
 		_subject, whole = emails.render("order_shipped", order, partly=False, order_url="/x")
 		self.assertIn("Part of your order SO-PARCELS has shipped", partly)
 		self.assertIn("your order SO-PARCELS has shipped", whole)
+
+	def test_staff_are_warned_when_a_location_cant_send_from_its_address(self):
+		from shop.fulfillment.providers.manual import ManualProvider
+
+		with (
+			patch.object(ManualProvider, "needs_ship_from", True, create=True),
+			patch("frappe.msgprint") as warned,
+		):
+			settings = frappe.get_doc("Shop Settings")
+			settings.fulfillment_locations[1].ship_from_address = None
+			settings.validate_fulfillment_locations()
+		self.assertTrue(warned.called)
+		self.assertIn(self.second, warned.call_args.args[0])
