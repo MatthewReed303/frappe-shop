@@ -33,54 +33,90 @@
 					label="Cash on Delivery"
 					description="Let customers pay in cash when their order arrives."
 				/>
-				<FormControl
-					v-model="payments.payment_gateway_account"
-					type="select"
-					label="Online payment gateway"
-					:options="gatewayOptions"
-					class="max-w-sm"
-				/>
-				<a
-					href="/app/payment-gateway"
-					target="_blank"
-					class="inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
-				>
-					Set up Stripe, PayPal and other gateways in Desk (Payment Gateways)
-					<LucideExternalLink class="size-3.5" />
-				</a>
-				<FormControl
-					v-model="payments.online_payment_label"
-					label="Online payment label"
-					description="What checkout calls paying through the gateway."
-					class="max-w-sm"
-				/>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div class="text-base font-medium text-ink-gray-8">Online payment gateways</div>
+					<div
+						v-for="(row, index) in payments.payment_gateways"
+						:key="index"
+						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+					>
+						<FormControl
+							v-model="row.payment_gateway"
+							type="select"
+							label="Payment gateway"
+							:options="gatewayOptions"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model="row.label"
+							label="Label at checkout"
+							placeholder="e.g. Card or PayPal"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model="row.fee_label"
+							label="Fee name"
+							placeholder="Card fee"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.fee_percent"
+							type="number"
+							label="Fee %"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.fee_fixed"
+							type="number"
+							:label="`Fixed fee (${data.currency})`"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.fee_percent_international"
+							type="number"
+							label="Fee % (international)"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.fee_fixed_international"
+							type="number"
+							:label="`Fixed fee, international (${data.currency})`"
+							class="col-span-2"
+						/>
+						<Button
+							variant="ghost"
+							class="col-span-2 self-end"
+							@click="payments.payment_gateways.splice(index, 1)"
+						>
+							Remove
+						</Button>
+					</div>
+					<div class="flex items-center gap-3">
+						<Button :disabled="!gatewayOptions.length" @click="addGateway">Add payment gateway</Button>
+						<a
+							href="/app/payment-gateway"
+							target="_blank"
+							class="inline-flex items-center gap-1 text-sm text-ink-gray-6 underline hover:text-ink-gray-8"
+						>
+							Set up Stripe, PayPal and other gateways in Desk (Payment Gateways)
+							<LucideExternalLink class="size-3.5" />
+						</a>
+					</div>
+					<p class="text-p-sm text-ink-gray-5">
+						Each gateway is a choice at checkout. An order is charged in the shopper's currency when the
+						gateway has a Payment Gateway Account in it, otherwise in {{ data.currency }}. International
+						fees are used for orders shipped abroad.
+					</p>
+				</div>
 				<FormControl
 					v-model="payments.card_fee_item"
 					type="select"
-					label="Card fee item"
-					description="The fee is added to online payments as a line with this item."
-					:options="feeItemOptions('No card fee')"
+					label="Payment fee item"
+					description="A gateway's fee is added to the order as a line with this item."
+					:options="feeItemOptions('No payment fee')"
 					class="max-w-sm"
 				/>
-				<NewServiceItem suggestion="Card fee" @created="(name) => useItem('card_fee_item', name)" />
-				<div v-if="payments.card_fee_item" class="grid max-w-lg grid-cols-2 gap-4">
-					<FormControl v-model.number="payments.card_fee_percent" type="number" label="Card fee %" />
-					<FormControl
-						v-model.number="payments.card_fee_fixed"
-						type="number"
-						:label="`Card fee fixed (${data.currency})`"
-					/>
-					<FormControl
-						v-model.number="payments.card_fee_percent_international"
-						type="number"
-						label="Card fee % (international)"
-					/>
-					<FormControl
-						v-model.number="payments.card_fee_fixed_international"
-						type="number"
-						:label="`Card fee fixed, international (${data.currency})`"
-					/>
-				</div>
+				<NewServiceItem suggestion="Payment fee" @created="(name) => useItem('card_fee_item', name)" />
 				<Switch
 					v-model="payments.enable_bank_transfer"
 					label="Bank transfer"
@@ -503,13 +539,8 @@ const saving = ref('')
 const store = reactive({ store_name: '', store_logo: '' })
 const payments = reactive({
 	enable_cod: true,
-	payment_gateway_account: '',
-	online_payment_label: '',
+	payment_gateways: [] as GatewayRow[],
 	card_fee_item: '',
-	card_fee_percent: 0,
-	card_fee_fixed: 0,
-	card_fee_percent_international: 0,
-	card_fee_fixed_international: 0,
 	enable_bank_transfer: false,
 	bank_transfer_days: 7,
 	bank_accounts: [] as BankAccountRow[],
@@ -575,13 +606,8 @@ function hydrate(doc: Record<string, any>) {
 	Object.assign(store, { store_name: doc.store_name || '', store_logo: doc.store_logo || '' })
 	Object.assign(payments, {
 		enable_cod: !!doc.enable_cod,
-		payment_gateway_account: doc.payment_gateway_account || '',
-		online_payment_label: doc.online_payment_label || '',
+		payment_gateways: (doc.payment_gateways || []).map((row: GatewayRow) => ({ ...row })),
 		card_fee_item: doc.card_fee_item || '',
-		card_fee_percent: doc.card_fee_percent || 0,
-		card_fee_fixed: doc.card_fee_fixed || 0,
-		card_fee_percent_international: doc.card_fee_percent_international || 0,
-		card_fee_fixed_international: doc.card_fee_fixed_international || 0,
 		enable_bank_transfer: !!doc.enable_bank_transfer,
 		bank_transfer_days: doc.bank_transfer_days || 7,
 		bank_accounts: (doc.bank_accounts || []).map((row: BankAccountRow) => ({ ...row })),
@@ -632,15 +658,40 @@ function hydrate(doc: Record<string, any>) {
 	})
 }
 
-const gatewayOptions = computed(() => [
-	{ label: 'No online gateway', value: '' },
-	...(data.value.gateway_accounts || []).map(
-		(a: { name: string; payment_gateway: string; currency: string }) => ({
-			label: `${a.payment_gateway} (${a.currency})`,
-			value: a.name,
-		}),
-	),
-])
+type GatewayRow = {
+	payment_gateway: string
+	label: string
+	fee_label: string
+	fee_percent: number
+	fee_fixed: number
+	fee_percent_international: number
+	fee_fixed_international: number
+}
+
+const gatewayOptions = computed(() => {
+	const currencies: Record<string, string[]> = {}
+	for (const a of (data.value.gateway_accounts || []) as { payment_gateway: string; currency: string }[]) {
+		;(currencies[a.payment_gateway] ||= []).push(a.currency)
+	}
+	return Object.entries(currencies).map(([gateway, list]) => ({
+		label: `${gateway} (${list.join(', ')})`,
+		value: gateway,
+	}))
+})
+
+function addGateway() {
+	const used = payments.payment_gateways.map((row) => row.payment_gateway)
+	const next = gatewayOptions.value.find((option) => !used.includes(option.value))
+	payments.payment_gateways.push({
+		payment_gateway: next?.value || '',
+		label: '',
+		fee_label: '',
+		fee_percent: 0,
+		fee_fixed: 0,
+		fee_percent_international: 0,
+		fee_fixed_international: 0,
+	})
+}
 
 const accountOptions = computed(() => [
 	{ label: 'No shipping account', value: '' },

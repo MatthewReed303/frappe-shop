@@ -83,12 +83,14 @@
 						description="Let customers pay in cash when their order arrives."
 					/>
 				</div>
-				<div v-if="gatewayOptions.length > 1" class="mt-4">
-					<FormControl
-						v-model="gatewayAccount"
-						type="select"
-						label="Online payment gateway"
-						:options="gatewayOptions"
+				<div v-if="gatewayNames.length" class="mt-4 flex flex-col gap-3">
+					<Switch
+						v-for="gateway in gatewayNames"
+						:key="gateway"
+						:model-value="chosenGateways.includes(gateway)"
+						:label="gateway"
+						description="Customers can pay online through this gateway. Set its label and fee in Settings."
+						@update:model-value="(on: boolean) => toggleGateway(gateway, on)"
 					/>
 				</div>
 				<div v-else class="mt-4 rounded-lg border border-outline-gray-1 bg-surface-gray-1 p-4">
@@ -132,7 +134,7 @@ const step = ref(1)
 const storeName = ref('')
 const loadSamples = ref(false)
 const enableCod = ref(true)
-const gatewayAccount = ref('')
+const chosenGateways = ref<string[]>([])
 const gatewayAccounts = ref<GatewayAccount[]>([])
 const savingStore = ref(false)
 const loadingSamples = ref(false)
@@ -142,19 +144,18 @@ fetchOnboardingState().then((state) => {
 	storeName.value = state.store_name || ''
 	enableCod.value = state.enable_cod !== 0
 	gatewayAccounts.value = state.gateway_accounts
-	gatewayAccount.value =
-		state.payment_gateway_account ||
-		state.gateway_accounts.find((a) => a.is_default)?.name ||
-		''
+	chosenGateways.value = state.payment_gateways.length
+		? [...state.payment_gateways]
+		: state.gateway_accounts.filter((a) => a.is_default).map((a) => a.payment_gateway)
 })
 
-const gatewayOptions = computed(() => [
-	{ label: 'No online gateway', value: '' },
-	...gatewayAccounts.value.map((a) => ({
-		label: `${a.payment_gateway} (${a.currency})`,
-		value: a.name,
-	})),
-])
+const gatewayNames = computed(() => [...new Set(gatewayAccounts.value.map((a) => a.payment_gateway))])
+
+function toggleGateway(gateway: string, on: boolean) {
+	chosenGateways.value = on
+		? [...new Set([...chosenGateways.value, gateway])]
+		: chosenGateways.value.filter((name) => name !== gateway)
+}
 
 async function saveStore() {
 	if (!storeName.value.trim()) return
@@ -188,7 +189,7 @@ async function finish() {
 	try {
 		await call('shop.api.onboarding.update_payments', {
 			enable_cod: enableCod.value,
-			payment_gateway_account: gatewayAccount.value || null,
+			payment_gateways: chosenGateways.value,
 		})
 		await call('shop.api.onboarding.complete')
 		await fetchOnboardingState(true)

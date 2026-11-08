@@ -842,7 +842,7 @@
 	function syncPaymentUI() {
 		const chosen = document.querySelector('input[name="payment_method"]:checked');
 		const submit = document.querySelector('[data-shop="checkout-form"] [type="submit"]');
-		const online = chosen && (chosen.value === "gateway" || chosen.value === "card");
+		const online = chosen && (chosen.value === "gateway" || chosen.value.startsWith("gateway:") || chosen.value === "card");
 		if (submit && chosen) submit.textContent = online ? "Continue to payment" : "Place order";
 		const note = document.querySelector('[data-shop="gateway-note"]');
 		if (note) note.hidden = !online;

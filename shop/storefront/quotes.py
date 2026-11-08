@@ -251,11 +251,6 @@ def lines_html(doc) -> str:
 	return rows + "".join(f'<p class="order-note">{esc(note)}</p>' for note in notes)
 
 
-def gateway_currency() -> str | None:
-	account = frappe.get_cached_doc("Shop Settings").get("payment_gateway_account")
-	return frappe.db.get_value("Payment Gateway Account", account, "currency") if account else None
-
-
 def quote_payment_methods(quotation) -> list[dict]:
 	"""How the quote's customer can pay for it: online, by bank transfer to an account in the
 	quote's currency, or on account when the signed-in shopper is that customer and may."""
@@ -267,17 +262,21 @@ def quote_payment_methods(quotation) -> list[dict]:
 			quotation.currency, method["method"]
 		):
 			continue
-		if method["method"] == totals.GATEWAY and quotation.currency != gateway_currency():
-			# the store's online payments are taken, and recorded, in its gateway account's currency
-			continue
-		if method["method"] in (totals.GATEWAY, *totals.BANK_METHODS):
+		gateway = totals.gateway_row(method["method"]) if totals.is_gateway(method["method"]) else None
+		if gateway:
+			account = totals.gateway_account(gateway.payment_gateway, quotation.currency)
+			if not account or account.currency != quotation.currency:
+				# online payments are taken, and recorded, in the gateway account's currency
+				continue
+		if gateway or method["method"] in totals.BANK_METHODS:
 			fee = payment_fee(quotation, method["method"])
+			amount = totals.money(fee, quotation.currency)
 			note = (
-				_("Card fee {0} added") if method["method"] == totals.GATEWAY else _("Transfer fee {0} added")
+				_("{0} {1} added").format(totals.fee_label(gateway), amount)
+				if gateway
+				else _("Transfer fee {0} added").format(amount)
 			)
-			methods.append(
-				dict(method, fee_note=note.format(totals.money(fee, quotation.currency)) if fee else "")
-			)
+			methods.append(dict(method, fee_note=note if fee else ""))
 	if quotation.party_name in session_customers():
 		terms = totals.on_account_terms(quotation.party_name)
 		if terms:
@@ -296,8 +295,8 @@ def payment_fee(quotation, method: str) -> float:
 
 
 def add_payment_fee(order, quotation, method: str) -> None:
-	if method == totals.GATEWAY:
-		totals.add_card_fee(order, is_export(quotation))
+	if totals.is_gateway(method):
+		totals.add_card_fee(order, is_export(quotation), totals.gateway_row(method))
 	elif method in totals.BANK_METHODS:
 		totals.add_transfer_fee(order, totals.bank_account(quotation.currency, method), method)
 
@@ -365,6 +364,7 @@ def accept_quote(
 
 	if terms.required() and not cint(accept_terms):
 		frappe.throw(_("Please accept the terms and conditions"))
+	payment_method = totals.resolve_method(payment_method)
 	with elevated():
 		frappe.db.get_value("Quotation", name, "name", for_update=True)
 		quotation = load_quote(name, token)
@@ -411,7 +411,7 @@ def accept_quote(
 		order.submit()
 		response = {"sales_order": order.name}
 		confirmation = store_url(f"order-confirmation/{order.name}?token={order.shop_access_token}")
-		if payment_method == totals.GATEWAY and totals.order_total(order) > 0:
+		if totals.is_gateway(payment_method) and totals.order_total(order) > 0:
 			response["redirect"] = create_payment_request(order, {"email": order.contact_email})
 		else:
 			response["redirect"] = confirmation

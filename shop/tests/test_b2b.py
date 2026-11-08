@@ -7,7 +7,9 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import flt
 
+from shop.api.settings import GATEWAY_FIELDS
 from shop.storefront import accounts, cart, checkout, pricing, quotes, totals
+from shop.tests.utils import gateway
 
 ITEM = "SHOP-DEMO-003"
 ADDRESS = {"address_line1": "12 Industrial Way", "city": "Town", "pincode": "3204"}
@@ -40,10 +42,11 @@ class TestTradeAccounts(IntegrationTestCase):
 				"require_terms",
 				"terms_and_conditions",
 				"card_fee_item",
-				"card_fee_percent",
-				"card_fee_fixed",
 			)
 		}
+		self.original_gateways = [
+			{f: row.get(f) for f in GATEWAY_FIELDS} for row in self.settings.payment_gateways
+		]
 		frappe.db.set_single_value(
 			"Shop Settings", {"require_terms": 1, "terms_and_conditions": terms_record()}
 		)
@@ -101,6 +104,14 @@ class TestTradeAccounts(IntegrationTestCase):
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		frappe.db.set_single_value("Shop Settings", self.original)
+		self.set_gateways(*self.original_gateways)
+
+	def set_gateways(self, *rows):
+		settings = frappe.get_doc("Shop Settings")
+		settings.payment_gateways = []
+		for row in rows:
+			settings.append("payment_gateways", row)
+		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 
 	def register(self, email, name="Trade Tester"):
@@ -271,7 +282,12 @@ class TestTradeAccounts(IntegrationTestCase):
 
 	def test_an_application_doesnt_change_someone_elses_lead(self):
 		lead = frappe.get_doc(
-			{"doctype": "Lead", "lead_name": "Crm Person", "email_id": "crm.person@example.com", "phone": "021"}
+			{
+				"doctype": "Lead",
+				"lead_name": "Crm Person",
+				"email_id": "crm.person@example.com",
+				"phone": "021",
+			}
 		).insert(ignore_permissions=True)
 		frappe.set_user("Guest")
 		try:
@@ -488,36 +504,44 @@ class TestTradeAccounts(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			quotes.accept_quote(quotation.name, quotation.shop_access_token, totals.BANK, accept_terms=1)
 
-	def test_a_quote_is_paid_online_only_in_the_gateways_currency(self):
+	def test_a_quote_is_paid_online_only_through_a_gateway_in_its_currency(self):
 		from unittest.mock import patch
 
-		quotation = frappe._dict(currency="USD", party_name="Someone Else")
-		card = {"method": totals.GATEWAY, "label": "Card"}
+		company = self.settings.company
+		home = frappe.get_cached_value("Company", company, "default_currency")
+		other = "USD" if home != "USD" else "EUR"
+		local = gateway(company, "_Test Shop Local Gateway")
+		both = gateway(company, "_Test Shop Both Gateway", (home, other))
+		self.set_gateways(
+			{"payment_gateway": local, "label": "Local"}, {"payment_gateway": both, "label": "Both"}
+		)
 		with (
-			patch.object(totals, "payment_methods", return_value=[card]),
 			patch.object(quotes, "is_export", return_value=True),
 			patch.object(quotes, "payment_fee", return_value=0),
 		):
-			with patch.object(quotes, "gateway_currency", return_value="NZD"):
-				self.assertEqual(quotes.quote_payment_methods(quotation), [])
-			with patch.object(quotes, "gateway_currency", return_value="USD"):
+			for currency, offered in ((other, [both]), (home, [local, both])):
+				quotation = frappe._dict(currency=currency, party_name="Someone Else")
 				self.assertEqual(
-					[m["method"] for m in quotes.quote_payment_methods(quotation)], [totals.GATEWAY]
+					[
+						m["method"]
+						for m in quotes.quote_payment_methods(quotation)
+						if totals.is_gateway(m["method"])
+					],
+					[totals.gateway_method(name) for name in offered],
 				)
 
 	def test_card_fee_is_added_to_quotes_paid_by_card(self):
-		frappe.db.set_single_value(
-			"Shop Settings",
-			{"card_fee_item": "SHOP-DEMO-003", "card_fee_percent": 2.65, "card_fee_fixed": 0.3},
+		frappe.db.set_single_value("Shop Settings", "card_fee_item", "SHOP-DEMO-003")
+		self.set_gateways(
+			{"payment_gateway": gateway(self.settings.company), "fee_percent": 2.65, "fee_fixed": 0.3}
 		)
-		frappe.clear_cache(doctype="Shop Settings")
 		cart.add_item(ITEM, qty=1)
 		result = quotes.request_quote(
 			customer={"email": "fee.buyer@example.com", "full_name": "Fee Buyer"}, address=self.address
 		)
 		quotation = frappe.get_doc("Quotation", result["quote"])
 		quotation.submit()
-		fee = quotes.payment_fee(quotation, totals.GATEWAY)
+		fee = quotes.payment_fee(quotation, totals.gateway_method(gateway(self.settings.company)))
 		self.assertGreater(fee, 0)
 		total = flt(quotation.grand_total)
 		self.assertAlmostEqual(fee, 0.0265 * (total + fee) + 0.3, delta=0.02)

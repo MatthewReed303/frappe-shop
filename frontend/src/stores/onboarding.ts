@@ -13,7 +13,7 @@ export interface OnboardingState {
 	store_logo: string | null
 	has_demo_data: boolean
 	enable_cod: 0 | 1
-	payment_gateway_account: string | null
+	payment_gateways: string[]
 	gateway_accounts: GatewayAccount[]
 }
 

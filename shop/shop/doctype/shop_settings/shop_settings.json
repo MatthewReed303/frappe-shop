@@ -34,17 +34,11 @@
   "payments_section",
   "enable_cod",
   "column_break_payments",
-  "payment_gateway_account",
-  "online_payment_label",
   "tax_template",
   "export_tax_template",
   "card_fee_section",
+  "payment_gateways",
   "card_fee_item",
-  "card_fee_percent",
-  "card_fee_fixed",
-  "column_break_card_fee",
-  "card_fee_percent_international",
-  "card_fee_fixed_international",
   "bank_transfer_section",
   "enable_bank_transfer",
   "bank_transfer_days",
@@ -233,10 +227,11 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "payment_gateway_account",
-   "fieldtype": "Link",
-   "label": "Payment Gateway Account",
-   "options": "Payment Gateway Account"
+   "description": "How customers can pay online at checkout, each with its own fee. Set up gateways such as Stripe or PayPal in Desk under Payment Gateway.",
+   "fieldname": "payment_gateways",
+   "fieldtype": "Table",
+   "label": "Online Payment Gateways",
+   "options": "Shop Payment Gateway"
   },
   {
    "description": "The store's own taxes, used when no Tax Rule marked \"Use for Shopping Cart\" matches an order. Set Tax Rules (e.g. by shipping country) for other taxes, such as zero-rated exports.",
@@ -266,44 +261,16 @@
    "options": "Item"
   },
   {
-   "collapsible": 1,
    "fieldname": "card_fee_section",
    "fieldtype": "Section Break",
-   "label": "Card Fee"
+   "label": "Online Payments"
   },
   {
-   "description": "Adds the payment provider's fee to card orders as a line with this item. Leave empty for no card fee",
+   "description": "Adds an online payment gateway's fee to the order as a line with this item. Leave empty for no fee",
    "fieldname": "card_fee_item",
    "fieldtype": "Link",
-   "label": "Card Fee Item",
+   "label": "Payment Fee Item",
    "options": "Item"
-  },
-  {
-   "fieldname": "card_fee_percent",
-   "fieldtype": "Percent",
-   "label": "Fee % (domestic)"
-  },
-  {
-   "fieldname": "card_fee_fixed",
-   "fieldtype": "Currency",
-   "label": "Fixed Fee (domestic)",
-   "options": "currency"
-  },
-  {
-   "fieldname": "column_break_card_fee",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "Used when the order ships outside the company's country",
-   "fieldname": "card_fee_percent_international",
-   "fieldtype": "Percent",
-   "label": "Fee % (international)"
-  },
-  {
-   "fieldname": "card_fee_fixed_international",
-   "fieldtype": "Currency",
-   "label": "Fixed Fee (international)",
-   "options": "currency"
   },
   {
    "collapsible": 1,
@@ -446,13 +413,6 @@
    "label": "Show Other Currencies With Tax"
   },
   {
-   "default": "Pay Online",
-   "description": "What checkout calls paying through the payment gateway.",
-   "fieldname": "online_payment_label",
-   "fieldtype": "Data",
-   "label": "Online Payment Label"
-  },
-  {
    "description": "Taxes for orders shipped outside the company's country, when no Tax Rule for the shopping cart matches them.",
    "fieldname": "export_tax_template",
    "fieldtype": "Link",
@@ -529,7 +489,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-09 10:00:00.000000",
+ "modified": "2026-11-09 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

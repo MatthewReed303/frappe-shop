@@ -1,6 +1,7 @@
 import frappe
 
 from shop import themes
+from shop.api.settings import GATEWAY_FIELDS
 
 
 @frappe.whitelist()
@@ -16,7 +17,7 @@ def get_state() -> dict:
 		"has_demo_data": bool(frappe.db.count("Shop Product")),
 		"has_sample_products": has_sample_products(),
 		"enable_cod": settings.enable_cod,
-		"payment_gateway_account": settings.payment_gateway_account,
+		"payment_gateways": [row.payment_gateway for row in settings.payment_gateways],
 		"gateway_accounts": gateway_accounts(),
 	}
 
@@ -29,11 +30,20 @@ def gateway_accounts() -> list[dict]:
 
 
 @frappe.whitelist(methods=["POST"])
-def update_payments(enable_cod: bool = True, payment_gateway_account: str | None = None) -> None:
+def update_payments(enable_cod: bool = True, payment_gateways: list | None = None) -> None:
+	"""Turn the store's online gateways on and off; one kept on keeps its label and fees."""
 	frappe.only_for(("Shop Manager", "System Manager"))
+	wanted = list(dict.fromkeys(frappe.parse_json(payment_gateways) or []))
 	settings = frappe.get_doc("Shop Settings")
 	settings.enable_cod = 1 if enable_cod else 0
-	settings.payment_gateway_account = payment_gateway_account
+	kept = {row.payment_gateway: row for row in settings.payment_gateways}
+	settings.set("payment_gateways", [])
+	for gateway in wanted:
+		row = kept.get(gateway)
+		settings.append(
+			"payment_gateways",
+			{field: row.get(field) for field in GATEWAY_FIELDS} if row else {"payment_gateway": gateway},
+		)
 	settings.save(ignore_permissions=True)
 
 

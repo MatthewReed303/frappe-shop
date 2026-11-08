@@ -39,7 +39,7 @@ def get_setup_guide() -> list[dict]:
 		{
 			"key": "payments",
 			"label": "Set up payments",
-			"done": bool(settings.enable_cod or settings.payment_gateway_account),
+			"done": bool(settings.enable_cod or settings.payment_gateways),
 			"route": "/settings",
 		},
 		{

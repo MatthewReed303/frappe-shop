@@ -50,8 +50,15 @@ def set_up(
 		settings.set(field, charge_item(company_doc, code, name, income))
 
 	gateway = stripe_gateway_account(company_doc, numbers.get("Stripe Clearing"))
-	if gateway and not settings.payment_gateway_account:
-		settings.payment_gateway_account = gateway
+	if gateway and not settings.payment_gateways:
+		settings.append(
+			"payment_gateways",
+			{
+				"payment_gateway": frappe.db.get_value("Payment Gateway Account", gateway, "payment_gateway"),
+				"label": _("Pay by card"),
+				"fee_label": _("Card fee"),
+			},
+		)
 
 	settings.tax_template = settings.tax_template or default_sales_taxes(company_doc.name)
 	if export_zero_rated and settings.tax_template and not settings.get("export_tax_template"):

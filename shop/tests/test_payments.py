@@ -14,12 +14,28 @@ class TestPayments(IntegrationTestCase):
 			del frappe.local.request
 		self.settings = frappe.get_doc("Shop Settings")
 		self.gateway_account = frappe.db.get_value("Payment Gateway Account", {}, "name")
+		self.original_gateways = [row.payment_gateway for row in self.settings.payment_gateways]
+
+	def tearDown(self):
+		self.use_gateway(*self.original_gateways)
+
+	def use_gateway(self, *gateways):
+		"""Checkout offers these Payment Gateways, or the one of the test site's gateway account."""
+		if not gateways:
+			gateways = (
+				frappe.db.get_value("Payment Gateway Account", self.gateway_account, "payment_gateway"),
+			)
+		settings = frappe.get_doc("Shop Settings")
+		settings.payment_gateways = []
+		for gateway in gateways:
+			settings.append("payment_gateways", {"payment_gateway": gateway})
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
 
 	def test_gateway_order_creates_payment_request(self):
 		if not self.gateway_account:
 			self.skipTest("no payment gateway account configured")
-		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
-		frappe.get_cached_doc("Shop Settings")
+		self.use_gateway()
 		cart.add_item("SHOP-DEMO-003")
 		result = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="gateway")
 		self.assertTrue(result.get("payment_url"))
@@ -31,8 +47,7 @@ class TestPayments(IntegrationTestCase):
 	def test_on_payment_authorized_marks_paid_and_redirects(self):
 		if not self.gateway_account:
 			self.skipTest("no payment gateway account configured")
-		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
-		frappe.get_cached_doc("Shop Settings")
+		self.use_gateway()
 		cart.add_item("SHOP-DEMO-004")
 		result = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="gateway")
 		payment_request = frappe.get_doc(
@@ -52,7 +67,7 @@ class TestPayments(IntegrationTestCase):
 
 		if not self.gateway_account:
 			self.skipTest("no payment gateway account configured")
-		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
+		self.use_gateway()
 		cart.add_item("SHOP-DEMO-003")
 		token = cart.find_cart().token
 		result = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="gateway")
@@ -73,7 +88,7 @@ class TestPayments(IntegrationTestCase):
 
 		if not self.gateway_account:
 			self.skipTest("no payment gateway account configured")
-		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
+		self.use_gateway()
 		cart.add_item("SHOP-DEMO-004")
 		store_order = frappe.get_doc(
 			"Sales Order", checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
@@ -99,7 +114,7 @@ class TestPayments(IntegrationTestCase):
 
 		if not self.gateway_account:
 			self.skipTest("no payment gateway account configured")
-		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
+		self.use_gateway()
 		cart.add_item("SHOP-DEMO-004")
 		name = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="gateway")["sales_order"]
 		order = frappe.get_doc("Sales Order", name)

@@ -90,6 +90,26 @@ def company_bank_account(company: str, currency: str) -> str:
 	)
 
 
+def gateway(company: str, name: str = "_Test Shop Gateway", currencies: tuple = ()) -> str:
+	"""A Payment Gateway with a Payment Gateway Account in each currency (the company's by default),
+	as a gateway app sets up."""
+	if not frappe.db.exists("Payment Gateway", name):
+		frappe.get_doc({"doctype": "Payment Gateway", "gateway": name}).insert(ignore_permissions=True)
+	for currency in currencies or (frappe.get_cached_value("Company", company, "default_currency"),):
+		if frappe.db.exists("Payment Gateway Account", {"payment_gateway": name, "currency": currency}):
+			continue
+		account = frappe.db.get_value("Bank Account", company_bank_account(company, currency), "account")
+		frappe.get_doc(
+			{
+				"doctype": "Payment Gateway Account",
+				"payment_gateway": name,
+				"payment_account": account,
+				"currency": currency,
+			}
+		).insert(ignore_permissions=True)
+	return name
+
+
 def terms_record() -> str:
 	"""An ERPNext Terms and Conditions record for the store, using Jinja as ERPNext allows."""
 	if not frappe.db.exists("Terms and Conditions", "_Test Store Terms"):

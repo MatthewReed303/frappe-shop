@@ -7,7 +7,6 @@ EDITABLE = (
 	"store_name",
 	"store_logo",
 	"enable_cod",
-	"payment_gateway_account",
 	"allow_out_of_stock",
 	"prices_include_tax",
 	"tax_template",
@@ -23,12 +22,7 @@ EDITABLE = (
 	"other_currencies_with_tax",
 	"export_tax_template",
 	"shipping_item",
-	"online_payment_label",
 	"card_fee_item",
-	"card_fee_percent",
-	"card_fee_fixed",
-	"card_fee_percent_international",
-	"card_fee_fixed_international",
 	"enable_bank_transfer",
 	"bank_transfer_days",
 	"conversion_fee_item",
@@ -67,10 +61,6 @@ CHECKS = {
 AMOUNTS = {
 	"flat_shipping_rate",
 	"free_shipping_above",
-	"card_fee_percent",
-	"card_fee_fixed",
-	"card_fee_percent_international",
-	"card_fee_fixed_international",
 }
 COUNTS = {
 	"low_stock_threshold",
@@ -80,6 +70,15 @@ COUNTS = {
 	"return_window_days",
 	"quote_valid_days",
 }
+GATEWAY_FIELDS = (
+	"payment_gateway",
+	"label",
+	"fee_label",
+	"fee_percent",
+	"fee_fixed",
+	"fee_percent_international",
+	"fee_fixed_international",
+)
 BANK_ACCOUNT_FIELDS = (
 	"bank_account",
 	"label",
@@ -106,6 +105,9 @@ def get_settings() -> dict:
 			"gateway_accounts": frappe.get_all(
 				"Payment Gateway Account", fields=["name", "payment_gateway", "currency"]
 			),
+			"payment_gateways": [
+				{field: row.get(field) for field in GATEWAY_FIELDS} for row in settings.payment_gateways
+			],
 			"tax_templates": frappe.get_all("Sales Taxes and Charges Template", pluck="name"),
 			"income_accounts": frappe.get_all(
 				"Account",
@@ -185,6 +187,15 @@ def save_settings(payload: dict) -> dict:
 		elif field in COUNTS:
 			value = cint(value)
 		settings.set(field, value)
+	if "payment_gateways" in payload:
+		settings.set(
+			"payment_gateways",
+			[
+				{field: row.get(field) for field in GATEWAY_FIELDS}
+				for row in payload["payment_gateways"] or []
+				if row.get("payment_gateway")
+			],
+		)
 	if "bank_accounts" in payload:
 		settings.set(
 			"bank_accounts",

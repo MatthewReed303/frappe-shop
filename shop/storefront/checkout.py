@@ -214,6 +214,7 @@ def place_order(
 	expected_total: float | None = None,
 ) -> dict:
 	customer, address = plain_text(customer), plain_text(address)
+	payment_method = totals.resolve_method(payment_method)
 	cart = cart_module.resolve_cart()
 	validate_order(cart, customer, payment_method, accept_terms)
 	with elevated():
@@ -237,7 +238,7 @@ def place_order(
 			"sales_order": sales_order.name,
 			"confirmation_url": confirmation_url,
 		}
-		if payment_method == totals.GATEWAY and totals.order_total(sales_order) > 0:
+		if totals.is_gateway(payment_method) and totals.order_total(sales_order) > 0:
 			# the confirmation goes out once the payment succeeds (ShopPaymentRequest)
 			response["payment_url"] = create_payment_request(sales_order, customer)
 		else:
@@ -657,6 +658,10 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 	if not frappe.get_meta("Sales Order").has_field("shop_payment_method"):
 		return
 	method = order_quote.payment_method
+	if totals.is_gateway(method):
+		gateway = totals.gateway_row(method)
+		sales_order.shop_payment_gateway = gateway.payment_gateway if gateway else None
+		method = totals.GATEWAY
 	sales_order.shop_payment_method = method
 	if settings.get("order_naming_series"):
 		sales_order.naming_series = settings.order_naming_series
@@ -702,12 +707,15 @@ def convert_cart(cart, sales_order):
 def create_payment_request(sales_order, customer: dict) -> str | None:
 	from erpnext.accounts.doctype.payment_request.payment_request import make_payment_request
 
-	settings = frappe.get_cached_doc("Shop Settings")
+	gateway = sales_order.get("shop_payment_gateway") or totals.gateway_row(totals.GATEWAY).payment_gateway
+	account = totals.gateway_account(gateway, sales_order.currency)
+	if not account or account.currency != sales_order.currency:
+		frappe.throw(_("This order can't be paid online in {0}.").format(sales_order.currency))
 	payment_request = make_payment_request(
 		dt="Sales Order",
 		dn=sales_order.name,
 		recipient_id=customer.get("email"),
-		payment_gateway_account=settings.payment_gateway_account,
+		payment_gateway_account=account.name,
 		submit_doc=1,
 		mute_email=1,
 		return_doc=1,

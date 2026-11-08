@@ -14,6 +14,7 @@ class ShopSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 		from shop.shop.doctype.shop_bank_account.shop_bank_account import ShopBankAccount
+		from shop.shop.doctype.shop_payment_gateway.shop_payment_gateway import ShopPaymentGateway
 		from shop.shop.doctype.shop_theme_page.shop_theme_page import ShopThemePage
 
 		active_theme: DF.Data | None
@@ -26,11 +27,7 @@ class ShopSettings(Document):
 		bank_transfer_days: DF.Int
 		business_buyer_label: DF.SmallText | None
 		cancel_unpaid_orders: DF.Check
-		card_fee_fixed: DF.Currency
-		card_fee_fixed_international: DF.Currency
 		card_fee_item: DF.Link | None
-		card_fee_percent: DF.Percent
-		card_fee_percent_international: DF.Percent
 		company: DF.Link | None
 		conversion_fee_item: DF.Link | None
 		currency: DF.Link | None
@@ -46,10 +43,9 @@ class ShopSettings(Document):
 		low_stock_threshold: DF.Int
 		onboarding_complete: DF.Check
 		online_payment_days: DF.Int
-		online_payment_label: DF.Data | None
 		order_naming_series: DF.Data | None
 		other_currencies_with_tax: DF.Check
-		payment_gateway_account: DF.Link | None
+		payment_gateways: DF.Table[ShopPaymentGateway]
 		payment_reminder_hours: DF.Int
 		price_list: DF.Link | None
 		prices_include_tax: DF.Check

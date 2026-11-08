@@ -8,8 +8,9 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, nowdate
 
+from shop.api.settings import GATEWAY_FIELDS
 from shop.storefront import cart, checkout, payment, totals
-from shop.tests.utils import company_bank_account, sellable, service, template, terms_record
+from shop.tests.utils import company_bank_account, gateway, sellable, service, template, terms_record
 
 BUYER = {"email": "totals.buyer@example.com", "full_name": "Totals Buyer", "phone": "021000000"}
 ITEM = "SHOP-DEMO-003"
@@ -21,10 +22,6 @@ SETTINGS_FIELDS = (
 	"shipping_item",
 	"shipping_account",
 	"card_fee_item",
-	"card_fee_percent",
-	"card_fee_fixed",
-	"card_fee_percent_international",
-	"card_fee_fixed_international",
 	"enable_bank_transfer",
 	"conversion_fee_item",
 	"transfer_fee_item",
@@ -39,7 +36,6 @@ SETTINGS_FIELDS = (
 	"flat_shipping_rate",
 	"free_shipping_above",
 	"enable_cod",
-	"payment_gateway_account",
 	"invoice_paid_orders",
 	"cancel_unpaid_orders",
 	"other_currencies_with_tax",
@@ -99,6 +95,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		settings = frappe.get_doc("Shop Settings")
 		self.original = {field: settings.get(field) for field in SETTINGS_FIELDS}
 		self.original_banks = [row.as_dict() for row in settings.bank_accounts]
+		self.original_gateways = [
+			{f: row.get(f) for f in GATEWAY_FIELDS} for row in settings.payment_gateways
+		]
 		self.company = settings.company
 		sellable(ITEM, 20)
 		self.company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
@@ -119,10 +118,6 @@ class TestCheckoutTotals(IntegrationTestCase):
 			bank_charges_account=frappe.db.get_value(
 				"Account", {"company": self.company, "root_type": "Expense", "is_group": 0}
 			),
-			card_fee_percent=2.65,
-			card_fee_fixed=0.30,
-			card_fee_percent_international=3.5,
-			card_fee_fixed_international=0.30,
 			enable_bank_transfer=1,
 			bank_transfer_days=7,
 			enable_cod=1,
@@ -146,6 +141,18 @@ class TestCheckoutTotals(IntegrationTestCase):
 				"conversion_fee_percent": 1,
 				"swift_transfer_fee": 6.11,
 				"instructions": "Pay by ACH",
+			},
+		)
+		settings.payment_gateways = []
+		settings.append(
+			"payment_gateways",
+			{
+				"payment_gateway": gateway(self.company),
+				"label": "Card",
+				"fee_percent": 2.65,
+				"fee_fixed": 0.30,
+				"fee_percent_international": 3.5,
+				"fee_fixed_international": 0.30,
 			},
 		)
 		settings.save(ignore_permissions=True)
@@ -202,6 +209,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 					)
 				},
 			)
+		settings.payment_gateways = []
+		for row in self.original_gateways:
+			settings.append("payment_gateways", row)
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 
@@ -258,6 +268,108 @@ class TestCheckoutTotals(IntegrationTestCase):
 		entry.insert(ignore_permissions=True)
 		entry.submit()
 		return entry
+
+	def two_gateways(self):
+		"""The store's card gateway plus a second one, in the store's and a foreign currency, with its
+		own fee."""
+		other = gateway(self.company, "_Test Shop Wallet", (self.company_currency, self.foreign))
+		settings = frappe.get_doc("Shop Settings")
+		settings.append(
+			"payment_gateways",
+			{"payment_gateway": other, "label": "Wallet", "fee_label": "Wallet fee", "fee_percent": 4},
+		)
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+		return totals.gateway_method(other)
+
+	# --- online payment gateways ---------------------------------------------
+
+	def test_each_online_gateway_is_offered_with_its_own_fee(self):
+		wallet = self.two_gateways()
+		card = totals.gateway_method(gateway(self.company))
+		methods = {m["method"]: m for m in totals.payment_methods()}
+		self.assertEqual(methods[card]["label"], "Card")
+		self.assertEqual(methods[wallet]["label"], "Wallet")
+		self.assertTrue(methods[card]["fee_note"].startswith("Card fee 2.65%"), methods[card]["fee_note"])
+		self.assertEqual(methods[wallet]["fee_note"], "Wallet fee 4%, added to the total")
+
+		by_card = totals.compute(self.basket(), self.home_address, None, card)
+		by_wallet = totals.compute(cart.resolve_cart(), self.home_address, None, wallet)
+		self.assertAlmostEqual(
+			fee_row(by_wallet, "TEST-CARD-FEE").net_amount, 0.04 * grand(by_wallet), delta=0.01
+		)
+		self.assertNotEqual(
+			fee_row(by_card, "TEST-CARD-FEE").amount, fee_row(by_wallet, "TEST-CARD-FEE").amount
+		)
+		self.assertIn("Wallet fee", [line["label"] for line in totals.payload(by_wallet)["lines"]])
+		# a plain "gateway" is the first one
+		self.assertEqual(totals.resolve_method(totals.GATEWAY), card)
+
+	def test_a_gateway_without_an_account_for_the_company_is_not_offered(self):
+		if not frappe.db.exists("Payment Gateway", "_Test Shop No Account"):
+			frappe.get_doc({"doctype": "Payment Gateway", "gateway": "_Test Shop No Account"}).insert()
+		settings = frappe.get_doc("Shop Settings")
+		settings.append("payment_gateways", {"payment_gateway": "_Test Shop No Account"})
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+		self.assertNotIn(
+			totals.gateway_method("_Test Shop No Account"), [m["method"] for m in totals.payment_methods()]
+		)
+
+	def test_an_online_order_is_paid_through_the_chosen_gateway_in_its_currency(self):
+		from erpnext.accounts.doctype.payment_request.payment_request import PaymentRequest
+
+		wallet = self.two_gateways()
+		card = totals.gateway_method(gateway(self.company))
+		with patch.object(PaymentRequest, "get_payment_url", return_value="https://pay.example.com/x"):
+			self.basket(1)
+			by_wallet = frappe.get_doc(
+				"Sales Order", self.place(payment_method=wallet, currency=self.foreign)
+			)
+			self.basket(1)
+			by_card = frappe.get_doc("Sales Order", self.place(payment_method=card, currency=self.foreign))
+		# the wallet has an account in the shopper's currency; the card gateway only in the store's
+		self.assertEqual(
+			(by_wallet.shop_payment_method, by_wallet.shop_payment_gateway, by_wallet.currency),
+			(totals.GATEWAY, "_Test Shop Wallet", self.foreign),
+		)
+		self.assertEqual(
+			(by_card.shop_payment_gateway, by_card.currency), (gateway(self.company), self.company_currency)
+		)
+		for order in (by_wallet, by_card):
+			request = frappe.get_doc("Payment Request", {"reference_name": order.name, "docstatus": 1})
+			self.assertEqual(request.payment_gateway, order.shop_payment_gateway)
+			self.assertEqual(
+				frappe.db.get_value("Payment Gateway Account", request.payment_gateway_account, "currency"),
+				order.currency,
+			)
+
+	def test_the_stores_one_gateway_and_card_fee_become_its_first_gateway(self):
+		from shop.patches import move_payment_gateway_to_table
+
+		account = totals.gateway_account(gateway(self.company)).name
+		settings = frappe.get_doc("Shop Settings")
+		settings.payment_gateways = []
+		settings.save(ignore_permissions=True)
+		for field, value in (
+			("payment_gateway_account", account),
+			("online_payment_label", "Pay by card"),
+			("card_fee_percent", 2.5),
+			("card_fee_fixed_international", 0.5),
+		):
+			frappe.db.sql(
+				"insert into `tabSingles` (doctype, field, value) values ('Shop Settings', %s, %s)",
+				(field, value),
+			)
+		move_payment_gateway_to_table.execute()
+		row = frappe.get_doc("Shop Settings").payment_gateways[0]
+		self.assertEqual(
+			(row.payment_gateway, row.label, row.fee_label, row.fee_percent, row.fee_fixed_international),
+			(gateway(self.company), "Pay by card", "Card fee", 2.5, 0.5),
+		)
+		self.assertFalse(
+			frappe.db.exists("Singles", {"doctype": "Shop Settings", "field": "payment_gateway_account"})
+		)
 
 	# --- totals ---------------------------------------------------------------
 

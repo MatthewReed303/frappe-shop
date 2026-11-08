@@ -64,23 +64,90 @@ def is_export(address: frappe._dict | None) -> bool:
 	return bool(address and address.get("country") and address.country != company_country())
 
 
+def gateway_rows() -> list:
+	"""The store's online payment gateways with a Payment Gateway Account for its company."""
+	return [row for row in settings().get("payment_gateways") or [] if gateway_accounts(row.payment_gateway)]
+
+
 def gateway_available() -> bool:
-	return bool(settings().payment_gateway_account)
+	return bool(gateway_rows())
+
+
+def gateway_accounts(gateway: str) -> list[frappe._dict]:
+	"""The gateway's Payment Gateway Accounts paying into the store company's accounts."""
+	company = settings().company
+	return [
+		account
+		for account in frappe.get_all(
+			"Payment Gateway Account",
+			filters={"payment_gateway": gateway},
+			fields=["name", "currency", "payment_account"],
+			order_by="is_default desc, creation",
+		)
+		if not account.payment_account
+		or frappe.get_cached_value("Account", account.payment_account, "company") == company
+	]
+
+
+def gateway_account(gateway: str, currency: str | None = None) -> frappe._dict | None:
+	"""The Payment Gateway Account an order is paid through: the gateway's account in the order's
+	currency, or else in the store's currency."""
+	accounts = gateway_accounts(gateway)
+	for wanted in (currency, company_currency()):
+		for account in accounts:
+			if wanted and account.currency == wanted:
+				return account
+	return None
+
+
+def gateway_method(gateway: str) -> str:
+	return f"{GATEWAY}:{gateway}"
+
+
+def is_gateway(method: str | None) -> bool:
+	return bool(method) and (method == GATEWAY or method.startswith(f"{GATEWAY}:"))
+
+
+def gateway_row(method_or_gateway: str | None):
+	"""The store's online gateway for a checkout payment method (or a Payment Gateway's name). A
+	plain "gateway" is the first one."""
+	rows = gateway_rows()
+	if not method_or_gateway or not rows:
+		return None
+	if method_or_gateway == GATEWAY:
+		return rows[0]
+	name = method_or_gateway.removeprefix(f"{GATEWAY}:")
+	return next((row for row in rows if row.payment_gateway == name), None)
+
+
+def resolve_method(method: str | None) -> str | None:
+	"""A plain "gateway" is the store's first online gateway."""
+	if method == GATEWAY:
+		row = gateway_row(GATEWAY)
+		return gateway_method(row.payment_gateway) if row else method
+	return method
+
+
+def gateway_label(row) -> str:
+	return row.label or row.payment_gateway
+
+
+def fee_label(row) -> str:
+	return (row.fee_label if row else None) or _("Card fee")
 
 
 def payment_methods(export: bool = False, swift: bool = False) -> list[dict]:
 	"""How a shopper can pay. At checkout an international (Swift) transfer is chosen under bank
 	transfer, so it is listed on its own only when `swift` is asked for."""
 	s = settings()
-	methods = []
-	if gateway_available():
-		methods.append(
-			{
-				"method": GATEWAY,
-				"label": s.get("online_payment_label") or _("Pay Online"),
-				"fee_note": card_fee_note(export),
-			}
-		)
+	methods = [
+		{
+			"method": gateway_method(row.payment_gateway),
+			"label": gateway_label(row),
+			"fee_note": card_fee_note(export, row),
+		}
+		for row in gateway_rows()
+	]
 	if s.get("enable_bank_transfer") and bank_accounts():
 		methods.append({"method": BANK, "label": _("Bank transfer"), "fee_note": ""})
 		if swift and bank_accounts(SWIFT):
@@ -107,17 +174,17 @@ def on_account_terms(customer: str | None = None) -> str | None:
 	return terms if allowed and terms else None
 
 
-def card_fee_rates(export: bool) -> tuple[float, float]:
-	s = settings()
-	if not s.get("card_fee_item"):
+def card_fee_rates(export: bool, row=None) -> tuple[float, float]:
+	"""An online gateway's fee: percent of the total and a fixed amount in the store's currency."""
+	if not settings().get("card_fee_item") or not row:
 		return 0.0, 0.0
-	if export and (s.get("card_fee_percent_international") or s.get("card_fee_fixed_international")):
-		return flt(s.card_fee_percent_international) / 100, flt(s.card_fee_fixed_international)
-	return flt(s.get("card_fee_percent")) / 100, flt(s.get("card_fee_fixed"))
+	if export and (row.fee_percent_international or row.fee_fixed_international):
+		return flt(row.fee_percent_international) / 100, flt(row.fee_fixed_international)
+	return flt(row.fee_percent) / 100, flt(row.fee_fixed)
 
 
-def card_fee_note(export: bool) -> str:
-	percent, fixed = card_fee_rates(export)
+def card_fee_note(export: bool, row=None) -> str:
+	percent, fixed = card_fee_rates(export, row)
 	if not percent and not fixed:
 		return ""
 	parts = []
@@ -125,7 +192,7 @@ def card_fee_note(export: bool) -> str:
 		parts.append(f"{flt(percent * 100, 2):g}%")
 	if fixed:
 		parts.append(fmt_money(fixed, currency=company_currency()))
-	return _("Card fee {0}, added to the total").format(" + ".join(parts))
+	return _("{0} {1}, added to the total").format(fee_label(row), " + ".join(parts))
 
 
 def branch_code_label(currency: str) -> str:
@@ -292,7 +359,7 @@ def compute(
 	address = shipping_module.normalize_address(address)
 	export = is_export(address)
 	template = tax_template_for(address)
-	method = payment_method
+	method = resolve_method(payment_method)
 	if method == SWIFT and currency in bank_currencies() and not bank_account(currency, SWIFT):
 		method = BANK
 	currency = order_currency(method, currency, address)
@@ -312,8 +379,8 @@ def compute(
 		add_shipping(order, chosen)
 
 	fees = []
-	if method == GATEWAY:
-		fees += add_card_fee(order, export)
+	if is_gateway(method):
+		fees += add_card_fee(order, export, gateway_row(method))
 	elif method in BANK_METHODS:
 		account = bank_account(currency, method)
 		if currency != order.company_currency:
@@ -343,8 +410,15 @@ def compute(
 
 
 def order_currency(method: str | None, currency: str | None, address: frappe._dict | None) -> str:
-	"""Orders are in the company currency, except bank transfers to an account in another currency."""
+	"""Orders are in the company currency, except bank transfers to an account in another currency
+	and online payments through a gateway account in the currency the shopper picked."""
 	base = company_currency()
+	if is_gateway(method):
+		from shop.storefront.pricing import display_currency
+
+		row = gateway_row(method)
+		account = row and gateway_account(row.payment_gateway, currency or display_currency())
+		return account.currency if account else base
 	options = bank_currencies(method) if method in BANK_METHODS else []
 	if not options:
 		return base
@@ -552,19 +626,21 @@ def set_charge(row, rate: float) -> None:
 	row.update({"price_list_rate": rate, "rate": rate, "discount_percentage": 0, "discount_amount": 0})
 
 
-def add_card_fee(order, export: bool) -> list[frappe._dict]:
-	"""The card fee as a line on the order. What the store keeps of it, after any tax on the fee,
-	pays the provider's charge on the final total: percent of the total plus the fixed amount."""
+def add_card_fee(order, export: bool, gateway=None) -> list[frappe._dict]:
+	"""The online gateway's fee as a line on the order. What the store keeps of it, after any tax on
+	the fee, pays the provider's charge on the final total: percent of the total plus the fixed
+	amount."""
 	s = settings()
-	percent, fixed = card_fee_rates(export)
+	percent, fixed = card_fee_rates(export, gateway)
 	calculate(order)
 	if not (percent or fixed) or order_total(order) <= 0:
 		return []
 	before = flt(order.grand_total)
-	row, gross, net = probe_line(order, s.card_fee_item, _("Card fee"))
+	label = fee_label(gateway)
+	row, gross, net = probe_line(order, s.card_fee_item, label)
 	kept = (percent * before + fixed / flt(order.conversion_rate)) / (1 - percent * gross / net)
 	set_charge(row, round_up(kept / net, row.precision("rate")))
-	return [frappe._dict(kind="card_fee", label=_("Card fee"), item=s.card_fee_item)]
+	return [frappe._dict(kind="card_fee", label=label, item=s.card_fee_item)]
 
 
 def add_conversion_fee(order, account: frappe._dict | None) -> list[frappe._dict]:
@@ -760,18 +836,16 @@ def payload(quote: frappe._dict) -> dict:
 	lines, notes, factor = shown_lines(order, quote.export)
 	for line in lines:
 		line["formatted"] = money(line["amount"], currency) if line["amount"] else _("Free")
-	if quote.payment_method == GATEWAY:
+	if is_gateway(quote.payment_method):
 		picked = pricing.display_currency()
-		if picked != quote.company_currency:
+		if picked != currency:
 			notes.append(
 				_(
 					"Online payments are charged in {0}. Your card provider converts it to {1}, usually at a small cost. "
 					"To pay in {1}, choose bank transfer."
-				).format(quote.company_currency, picked)
+				).format(currency, picked)
 				if picked in bank_currencies()
-				else _("Online payments are charged in {0}. Your card provider converts it.").format(
-					quote.company_currency
-				)
+				else _("Online payments are charged in {0}. Your card provider converts it.").format(currency)
 			)
 	if quote.currency != quote.company_currency:
 		notes.append(
