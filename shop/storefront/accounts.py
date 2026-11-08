@@ -143,6 +143,13 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 		if lead and lead.status == "Converted":
 			# already approved: nothing to do, and the reply doesn't say whose account it is
 			return {"message": _("Thanks. We'll review your application and email you.")}
+		user = pricing.shopper()
+		owner = user not in ("Guest", None) and user == values["email"]
+		if lead and not (owner and lead.get("utm_source") == trade_source()):
+			# anyone can type an email: an existing Lead is only noted, for staff to check, unless
+			# its own signed-in customer is applying again to the store
+			note_application(lead, values)
+			return {"message": _("Thanks. We'll review your application and email you.")}
 		lead = lead or frappe.new_doc("Lead")
 		given = {
 			"lead_name": values["contact_name"],
@@ -175,8 +182,7 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 		if terms.required():
 			lead.shop_terms_version = terms.version()
 			lead.shop_terms_accepted_on = now_datetime()
-		user = pricing.shopper()
-		if user not in ("Guest", None) and user == values["email"]:
+		if owner:
 			lead.shop_user = user
 		lead.flags.ignore_permissions = True
 		lead.save(ignore_permissions=True)
@@ -192,6 +198,25 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 		)
 		emails.send("trade_application_received", values["email"], lead)
 	return {"message": _("Thanks. We'll review your application and email you.")}
+
+
+def note_application(lead, values: dict) -> None:
+	"""Add an application for an existing Lead as a note, without changing the Lead, and tell staff."""
+	from shop.storefront import emails
+
+	details = ", ".join(f"{field}: {value}" for field, value in values.items() if value and field != "message")
+	note = _("Applied for a trade account again ({0}). Check these details before approving.").format(details)
+	if values.get("message"):
+		note += " " + values["message"]
+	lead.append("notes", {"note": frappe.utils.escape_html(note), "added_on": now_datetime()})
+	lead.flags.ignore_permissions = True
+	lead.save(ignore_permissions=True)
+	emails.send(
+		"trade_application_staff",
+		staff_emails(),
+		lead,
+		desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"),
+	)
 
 
 def application_lead(email: str):
@@ -247,7 +272,6 @@ def trade_defaults(lead: str) -> dict:
 	}
 
 
-@frappe.whitelist(methods=["POST"])
 def set_trade_terms(
 	customer,
 	customer_group: str | None = None,
@@ -281,6 +305,7 @@ def set_trade_terms(
 		)
 
 
+@frappe.whitelist(methods=["POST"])
 def approve_trade(
 	lead: str,
 	customer_group: str | None = None,

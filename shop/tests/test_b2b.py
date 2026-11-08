@@ -269,6 +269,54 @@ class TestTradeAccounts(IntegrationTestCase):
 			("Someone Else", "_Test 20th"),
 		)
 
+	def test_an_application_doesnt_change_someone_elses_lead(self):
+		lead = frappe.get_doc(
+			{"doctype": "Lead", "lead_name": "Crm Person", "email_id": "crm.person@example.com", "phone": "021"}
+		).insert(ignore_permissions=True)
+		frappe.set_user("Guest")
+		try:
+			with patch("frappe.sendmail"):
+				accounts.apply_trade(
+					{
+						"company_name": "Mallory Corp",
+						"contact_name": "M",
+						"email": "crm.person@example.com",
+						"phone": "0999",
+						"country": self.address["country"],
+					},
+					accept_terms=1,
+				)
+		finally:
+			frappe.set_user("Administrator")
+		lead.reload()
+		self.assertEqual((lead.phone, lead.company_name, lead.utm_source), ("021", None, None))
+		self.assertTrue(any("Mallory Corp" in row.note for row in lead.notes))
+
+	def test_a_guest_order_isnt_put_on_a_customer_made_in_desk(self):
+		desk = frappe.get_doc(
+			{
+				"doctype": "Customer",
+				"customer_name": "Desk Trade Co (test)",
+				"customer_group": "_Test Trade Group",
+				"payment_terms": "_Test 20th",
+			}
+		).insert(ignore_permissions=True)
+		from shop.storefront.checkout import create_contact
+
+		create_contact(desk.name, {"full_name": "Desk Buyer"}, "desk.buyer@example.com")
+		# a shopper who isn't signed in types that customer's email
+		cart.add_item(ITEM)
+		order = checkout.place_order(
+			customer={"email": "desk.buyer@example.com", "full_name": "Someone"},
+			address=self.address,
+			accept_terms=1,
+		)["sales_order"]
+		self.assertNotEqual(frappe.db.get_value("Sales Order", order, "customer"), desk.name)
+
+	def test_approving_from_the_lead_form_is_allowed(self):
+		self.assertIn(accounts.approve_trade, frappe.whitelisted)
+		self.assertNotIn(accounts.set_trade_terms, frappe.whitelisted)
+
 	def test_sign_up_needs_the_terms_and_records_them(self):
 		with self.assertRaises(frappe.ValidationError):
 			accounts.register(full_name="No Terms", email="no.terms@example.com", accept_terms=0)

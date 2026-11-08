@@ -431,7 +431,10 @@ def get_or_create_customer(customer: dict) -> str:
 		# a guest can't place orders on someone's account, or see its prices and addresses
 		if pricing.shopper() == "Guest" and frappe.db.exists("User", {"name": email, "enabled": 1}):
 			frappe.throw(_("There is an account for {0}. Please sign in to order with it.").format(email), title=_("Sign in"))
-		return existing
+		# anyone can type an email: a guest's earlier orders are kept together, but an order is
+		# never put on a customer the store didn't make for a guest (made in Desk, or with terms)
+		if earlier_guest(existing):
+			return existing
 	party = frappe.get_doc(
 		{
 			"doctype": "Customer",
@@ -441,6 +444,19 @@ def get_or_create_customer(customer: dict) -> str:
 	).insert(ignore_permissions=True)
 	create_contact(party.name, customer, email)
 	return party.name
+
+
+def earlier_guest(customer: str) -> bool:
+	"""A customer the store made for a guest's order: in the store's customer group, without a
+	login, payment terms, price list or credit limit of its own."""
+	doc = frappe.get_cached_doc("Customer", customer)
+	return (
+		(doc.customer_group or "") == (frappe.db.get_single_value("Selling Settings", "customer_group") or "")
+		and not doc.get("portal_users")
+		and not doc.payment_terms
+		and not doc.default_price_list
+		and not doc.get("credit_limits")
+	)
 
 
 def find_customer_by_email(email: str) -> str | None:
@@ -561,11 +577,23 @@ def create_sales_order(
 	sales_order = order_quote.order
 	sales_order.customer = party
 	sales_order.customer_group = frappe.get_cached_value("Customer", party, "customer_group")
-	# billed to the customer's own address when they have one, sent where the shopper asked
-	sales_order.customer_address = billing_address(party) or shipping_address.name
+	# a signed-in customer is billed to their own address when they have one; a guest to the
+	# address they gave, never one already on the customer
+	signed_in = bool(pricing.session_customer())
+	sales_order.customer_address = (billing_address(party) if signed_in else None) or shipping_address.name
 	sales_order.shipping_address_name = shipping_address.name
 	if email:
-		sales_order.contact_person = frappe.db.get_value("Contact Email", {"email_id": email}, "parent")
+		# the customer's own contact with that email
+		sales_order.contact_person = frappe.db.get_value(
+			"Dynamic Link",
+			{
+				"parenttype": "Contact",
+				"link_doctype": "Customer",
+				"link_name": party,
+				"parent": ["in", frappe.get_all("Contact Email", {"email_id": email}, pluck="parent") or [""]],
+			},
+			"parent",
+		)
 		sales_order.contact_email = email
 	set_shop_details(sales_order, order_quote, terms_accepted, business_buyer)
 	sales_order.flags.ignore_permissions = True
