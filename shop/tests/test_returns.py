@@ -195,6 +195,24 @@ class TestReturns(IntegrationTestCase):
 		entry.set_amounts.assert_called_once()
 		gateway.refund.assert_called_once_with("Payment Request", "PR-1", 20.0, "CN-1")
 
+	def test_a_gateways_settings_are_found_for_its_refunds(self):
+		from shop.storefront import payment
+
+		if not frappe.db.exists("DocType", "PayPal Settings"):
+			self.skipTest("the payments app isn't installed")
+		# one settings record per gateway (Stripe), or one settings page named after it (PayPal)
+		stripe = frappe.db.get_value("Payment Gateway", {"gateway_settings": "Stripe Settings"})
+		if stripe:
+			self.assertEqual(payment.gateway_controller(stripe).doctype, "Stripe Settings")
+		if not frappe.db.exists("Payment Gateway", "PayPal"):
+			frappe.get_doc({"doctype": "Payment Gateway", "gateway": "PayPal"}).insert(ignore_permissions=True)
+		self.assertEqual(payment.gateway_controller("PayPal").doctype, "PayPal Settings")
+		if not frappe.db.exists("Payment Gateway", "_Test No Settings"):
+			frappe.get_doc({"doctype": "Payment Gateway", "gateway": "_Test No Settings"}).insert(
+				ignore_permissions=True
+			)
+		self.assertIsNone(payment.gateway_controller("_Test No Settings"))
+
 	def test_a_refund_is_in_the_currency_the_customer_paid_in(self):
 		from shop.storefront import payment
 

@@ -594,9 +594,18 @@ def online_refund_controller(order_name: str):
 	if not request_name:
 		return None
 	payment_request = frappe.get_doc("Payment Request", request_name)
-	gateway = frappe.get_doc("Payment Gateway", payment_request.payment_gateway)
-	controller = frappe.get_doc(gateway.gateway_settings, gateway.gateway_controller)
-	return (payment_request, controller) if hasattr(controller, "refund") else None
+	controller = gateway_controller(payment_request.payment_gateway)
+	return (payment_request, controller) if controller and hasattr(controller, "refund") else None
+
+
+def gateway_controller(name: str):
+	"""A Payment Gateway's settings: one of several records (Stripe), or a single settings
+	DocType named after the gateway (PayPal)."""
+	gateway = frappe.get_doc("Payment Gateway", name)
+	if gateway.gateway_settings and gateway.gateway_controller:
+		return frappe.get_doc(gateway.gateway_settings, gateway.gateway_controller)
+	settings = gateway.gateway_settings or f"{name} Settings"
+	return frappe.get_single(settings) if frappe.db.exists("DocType", settings) else None
 
 
 def refund(order_name: str, credit_note: str, bank_account: str | None = None) -> str:
