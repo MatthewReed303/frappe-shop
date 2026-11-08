@@ -145,8 +145,9 @@ def status_changed(request) -> None:
 		notify(request, "return_rejected", order_email)
 	elif request.status == "Completed":
 		if request.request_type == "Return":
-			return_stock(request)
+			# credited first: a paid order not invoiced yet is invoiced while its goods count as delivered
 			credit(request)
+			return_stock(request)
 		amount = (
 			frappe.utils.fmt_money(
 				abs(flt(frappe.db.get_value("Sales Invoice", request.credit_note, "grand_total"))),
@@ -209,13 +210,19 @@ def credit(request) -> None:
 	"""ERPNext's credit note (a return Sales Invoice) for the item."""
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 
-	from shop.storefront.payment import order_invoice
+	from shop.storefront.payment import invoice_paid_order, order_invoice, payment_status
 
 	if request.credit_note:
 		return
 	invoice = order_invoice(request.sales_order)
 	if not invoice:
-		return
+		order = frappe.get_doc("Sales Order", request.sales_order)
+		# what the customer paid is credited against an invoice, as a cancelled paid order is
+		if payment_status(order) != "Paid":
+			return
+		invoice = invoice_paid_order(order)
+		if not invoice:
+			return
 	note = make_sales_return(invoice)
 	return_lines(note, request)
 	note.flags.ignore_permissions = True

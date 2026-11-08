@@ -125,6 +125,27 @@ class TestReturns(IntegrationTestCase):
 		listed = returns_api.get_requests(status="Approved")
 		self.assertIn(created["name"], [row.name for row in listed["requests"]])
 
+	def test_a_return_on_a_paid_order_never_invoiced_is_still_owed_back(self):
+		from shop.api import orders as orders_api
+
+		cart.add_item("SHOP-DEMO-003", qty=1)
+		order = checkout.place_order(customer=BUYER, address=ADDRESS, payment_method="bank")["sales_order"]
+		token = frappe.db.get_value("Shop Cart", {"sales_order": order}, "token")
+		orders_api.mark_paid(order)
+		name = service.send(order, "manual")
+		fulfillment_api.mark_shipped(name, carrier="Delhivery", tracking_number="RTN-5")
+		created = returns.create_request(
+			order=order, item_code="SHOP-DEMO-003", request_type="Return", reason="Broken", qty=1, token=token
+		)
+		returns_api.set_status(created["name"], "Approved")
+		with patch("frappe.sendmail"):
+			result = returns_api.set_status(created["name"], "Completed")
+		self.assertTrue(result["credit_note"])
+		self.assertEqual(
+			[row["credit_note"] for row in orders_api.get_order(order)["refunds_due"]],
+			[result["credit_note"]],
+		)
+
 	def test_completed_return_credits_and_staff_approve_the_card_refund(self):
 		from shop.api import orders as orders_api
 		from shop.storefront import payment
