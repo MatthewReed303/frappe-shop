@@ -641,6 +641,8 @@ def add_card_fee(order, export: bool, gateway=None) -> list[frappe._dict]:
 	before = flt(order.grand_total)
 	label = fee_label(gateway)
 	row, gross, net = probe_line(order, s.card_fee_item, label)
+	# named as the gateway's fee on the order and its invoice, whatever the item is called
+	row.item_name = label
 	kept = (percent * before + fixed / flt(order.conversion_rate)) / (1 - percent * gross / net)
 	set_charge(row, round_up(kept / net, row.precision("rate")))
 	return [frappe._dict(kind="card_fee", label=label, item=s.card_fee_item)]

@@ -307,6 +307,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 			fee_row(by_card, "TEST-CARD-FEE").amount, fee_row(by_wallet, "TEST-CARD-FEE").amount
 		)
 		self.assertIn("Wallet fee", [line["label"] for line in totals.payload(by_wallet)["lines"]])
+		self.assertEqual(fee_row(by_wallet, "TEST-CARD-FEE").item_name, "Wallet fee")
 		# a plain "gateway" is the first one
 		self.assertEqual(totals.resolve_method(totals.GATEWAY), card)
 
@@ -340,6 +341,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		)
 		self.assertEqual(
 			(by_card.shop_payment_gateway, by_card.currency), (gateway(self.company), self.company_currency)
+		)
+		self.assertEqual(
+			[row.item_name for row in by_wallet.items if row.item_code == "TEST-CARD-FEE"], ["Wallet fee"]
 		)
 		for order in (by_wallet, by_card):
 			request = frappe.get_doc("Payment Request", {"reference_name": order.name, "docstatus": 1})
