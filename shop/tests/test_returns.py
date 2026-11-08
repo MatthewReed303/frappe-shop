@@ -167,6 +167,15 @@ class TestReturns(IntegrationTestCase):
 			[result["credit_note"]],
 		)
 
+	def test_shipping_and_fees_arent_sent_back(self):
+		from types import SimpleNamespace
+
+		from shop.storefront import totals
+
+		order = SimpleNamespace(name="SO-1", items=[frappe._dict(item_code="SHIP-FEE", qty=1)])
+		with patch.object(totals, "is_charge_item", return_value=True), self.assertRaises(frappe.ValidationError):
+			returns.validate_item(order, "SHIP-FEE", 1)
+
 	def test_a_card_refund_records_what_the_gateway_paid_back(self):
 		from shop.storefront import payment
 

@@ -417,6 +417,14 @@ def validate_order(cart, customer: dict, payment_method: str, accept_terms: int 
 
 
 def validate_stock(cart):
+	# two checkouts at once can't both take the last one: the second waits for the first
+	codes = [row.item_code for row in cart.items]
+	parts = [part for code in codes for part, _qty in stock.bundle_parts(code)]
+	if codes:
+		frappe.db.sql(
+			"select name from `tabBin` where item_code in %(codes)s and warehouse = %(warehouse)s for update",
+			{"codes": [*codes, *parts], "warehouse": frappe.get_cached_doc("Shop Settings").default_warehouse},
+		)
 	for row in cart.items:
 		cart_module.validate_purchasable(row.item_code)
 		available = stock.available_qty(row.item_code)
@@ -638,6 +646,8 @@ def check_credit_limit(sales_order) -> None:
 	limit = flt(get_credit_limit(customer, company))
 	if not limit:
 		return
+	# two orders at once can't both fit under the limit: the second waits for the first
+	frappe.db.get_value("Customer", customer, "name", for_update=True)
 	if flt(get_customer_outstanding(customer, company)) + flt(sales_order.base_grand_total) > limit:
 		frappe.throw(_("This order is over your account's credit limit. Please contact us to place it."))
 

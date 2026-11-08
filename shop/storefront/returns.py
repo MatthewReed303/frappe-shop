@@ -49,8 +49,11 @@ def create_request(
 
 
 def validate_item(order, item_code: str, qty: float):
+	from shop.storefront.totals import is_charge_item
+
 	row = next((item for item in order.items if item.item_code == item_code), None)
-	if not row:
+	if not row or is_charge_item(item_code):
+		# shipping and fees aren't sent back
 		frappe.throw(_("That item is not part of this order"))
 	if flt(qty) <= 0:
 		frappe.throw(_("Choose how many to send back"))
@@ -186,14 +189,14 @@ def status_changed(request) -> None:
 		)
 
 
-def return_lines(doc, request) -> None:
+def return_lines(doc, request, qty: float | None = None) -> None:
 	"""Keep only the returned item on a return made from a Delivery Note or invoice, for the quantity
 	returned."""
 	rows = [row for row in doc.items if row.item_code == request.item_code]
 	if not rows:
 		frappe.throw(_("{0} is not on {1}").format(request.item_name, doc.return_against))
 	row = rows[0]
-	row.qty = -min(flt(request.qty), abs(flt(row.qty)))
+	row.qty = -min(flt(qty if qty is not None else request.qty), abs(flt(row.qty)))
 	doc.items = [row]
 	if doc.doctype != "Sales Invoice":
 		return
@@ -214,25 +217,33 @@ def return_stock(request) -> None:
 
 	if request.return_delivery_note:
 		return
-	note = frappe.db.get_value(
+	# the item may have gone out on more than one Delivery Note: each gives back what it can
+	remaining, made = flt(request.qty), []
+	for line in frappe.get_all(
 		"Delivery Note Item",
-		{
+		filters={
 			"against_sales_order": request.sales_order,
 			"item_code": request.item_code,
 			"docstatus": 1,
 			"qty": [">", 0],
 		},
-		"parent",
+		fields=["parent", "qty", "returned_qty"],
 		order_by="creation desc",
-	)
-	if not note:
-		return
-	returned = make_sales_return(note)
-	return_lines(returned, request)
-	returned.flags.ignore_permissions = True
-	returned.insert(ignore_permissions=True)
-	returned.submit()
-	request.db_set("return_delivery_note", returned.name)
+	):
+		take = min(remaining, flt(line.qty) - flt(line.returned_qty))
+		if take <= 0:
+			continue
+		returned = make_sales_return(line.parent)
+		return_lines(returned, request, take)
+		returned.flags.ignore_permissions = True
+		returned.insert(ignore_permissions=True)
+		returned.submit()
+		made.append(returned.name)
+		remaining -= take
+		if remaining <= 0:
+			break
+	if made:
+		request.db_set("return_delivery_note", ", ".join(made)[:140])
 
 
 def credit(request) -> None:
