@@ -83,12 +83,72 @@ class TestFulfillment(IntegrationTestCase):
 			service.send(order, "does-not-exist")
 
 	def test_amazon_maps_provider_statuses(self):
-		from shop.fulfillment.providers.amazon import STATUS_MAP
+		from shop.fulfillment.providers.amazon import STATUS_MAP, status_key
 
-		self.assertEqual(STATUS_MAP["COMPLETE"], "Delivered")
-		self.assertEqual(STATUS_MAP["CANCELLED"], "Cancelled")
-		self.assertEqual(STATUS_MAP["UNFULFILLABLE"], "Failed")
+		# Amazon's schema and its examples spell statuses differently
+		for status in ("Complete", "COMPLETE", "CompletePartialled", "COMPLETE_PARTIALLED"):
+			self.assertEqual(STATUS_MAP[status_key(status)], "Shipped")
+		self.assertEqual(STATUS_MAP[status_key("Cancelled")], "Cancelled")
+		self.assertEqual(STATUS_MAP[status_key("UNFULFILLABLE")], "Failed")
 		self.assertEqual(get_provider("amazon_mcf").label, "Amazon Multi-Channel Fulfillment")
+
+	def test_amazon_requests_follow_the_selling_partner_api(self):
+		from shop.fulfillment.providers import amazon
+
+		order = frappe.get_doc("Sales Order", self.place_order())
+		settings = frappe._dict(displayable_org_name="Test Store", shipping_speed="Standard", marketplace_id="M1")
+		sent = []
+		with (
+			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
+			patch.object(amazon.AmazonProvider, "request", lambda provider, *args: sent.append(args) or {}),
+		):
+			provider = amazon.AmazonProvider()
+			result = provider.create_shipment(order, [{"item_code": "SHOP-DEMO-003", "qty": 2.0}] * 2)
+			method, path, payload = sent[0]
+			self.assertEqual((method, path), ("POST", "/fba/outbound/2020-07-01/fulfillmentOrders"))
+			self.assertEqual(payload["destinationAddress"]["countryCode"], "IN")
+			self.assertNotIn("", payload["destinationAddress"].values())
+			self.assertEqual(
+				[item["sellerFulfillmentOrderItemId"] for item in payload["items"]],
+				["1-SHOP-DEMO-003", "2-SHOP-DEMO-003"],
+			)
+			self.assertEqual(result["external_id"], order.name)
+
+			# sent again after a cancelled attempt, the order needs an ID Amazon hasn't seen
+			frappe.get_doc(
+				{
+					"doctype": "Shop Fulfillment",
+					"sales_order": order.name,
+					"provider": "amazon_mcf",
+					"status": "Cancelled",
+					"external_id": order.name,
+				}
+			).insert(ignore_permissions=True)
+			self.assertEqual(provider.create_shipment(order, [])["external_id"], f"{order.name}-2")
+
+		shipped = {
+			"payload": {
+				"fulfillmentOrder": {"fulfillmentOrderStatus": "COMPLETE"},
+				"fulfillmentShipments": [
+					{
+						"fulfillmentShipmentStatus": "SHIPPED",
+						"fulfillmentShipmentPackage": [{"carrierCode": "UPS", "trackingNumber": "1Z1"}],
+					}
+				],
+			}
+		}
+		with (
+			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
+			patch.object(amazon.AmazonProvider, "request", return_value=shipped),
+		):
+			status = amazon.AmazonProvider().fetch_status(frappe._dict(external_id=order.name))
+			self.assertEqual((status["status"], status["tracking_number"]), ("Shipped", "1Z1"))
+			shipped["payload"]["fulfillmentShipments"][0]["fulfillmentShipmentPackage"][0]["deliveryInformation"] = {}
+			self.assertEqual(amazon.AmazonProvider().fetch_status(frappe._dict(external_id="x"))["status"], "Shipped")
+			shipped["payload"]["fulfillmentShipments"][0]["fulfillmentShipmentPackage"][0]["deliveryInformation"] = {
+				"deliveryDocumentList": []
+			}
+			self.assertEqual(amazon.AmazonProvider().fetch_status(frappe._dict(external_id="x"))["status"], "Delivered")
 
 	def enable_auto_send(self):
 		previous = frappe.db.get_single_value("Shop Settings", "fulfillment_provider")
