@@ -49,6 +49,8 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SetupGuide: typeof import('./src/components/SetupGuide.vue')['default']
     StorefrontThemes: typeof import('./src/components/StorefrontThemes.vue')['default']
+    TradeAccountCard: typeof import('./src/components/TradeAccountCard.vue')['default']
+    TradeDiscounts: typeof import('./src/components/TradeDiscounts.vue')['default']
     UiDataTable: typeof import('./src/components/UiDataTable.vue')['default']
     UiEmptyState: typeof import('./src/components/UiEmptyState.vue')['default']
     UiFilterBar: typeof import('./src/components/UiFilterBar.vue')['default']

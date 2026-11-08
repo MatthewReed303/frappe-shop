@@ -96,6 +96,10 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   ERPNext Lead (UTM Source *Store Trade Application*). Staff approve or decline it from the
   Lead: approving makes the Customer (or updates the applicant's own) in the **Trade
   Customer Group**, with Payment Terms, credit limit and pay on account as chosen.
+  Waiting applications show on the Shop dashboard. In the Shop admin, a customer's page can
+  make them a trade customer (or end it), and Settings lists the **Trade discounts**: percent
+  off an Item Group for the trade group, each an ERPNext Pricing Rule. Finer pricing (by item,
+  quantity or customer) is set up in ERPNext.
 - **Quote Requests**: shoppers can ask for a quote at checkout. It arrives as a draft
   Quotation, valid for **Quotes Valid For** days; staff submit it and send it from the
   Quotation, and the customer accepts it online, which places the order.

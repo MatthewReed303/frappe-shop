@@ -248,6 +248,39 @@ def trade_defaults(lead: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def set_trade_terms(
+	customer,
+	customer_group: str | None = None,
+	payment_terms: str | None = None,
+	credit_limit: float | None = None,
+	allow_on_account: int = 0,
+	price_list: str | None = None,
+) -> None:
+	"""A trade customer's terms on their Customer: the trade group and what staff set; anything
+	left unset keeps the customer's current value."""
+	settings = frappe.get_cached_doc("Shop Settings")
+	customer.customer_group = (
+		customer_group or settings.get("trade_customer_group") or customer.customer_group
+	)
+	if price_list:
+		customer.default_price_list = price_list
+	if payment_terms:
+		customer.payment_terms = payment_terms
+	if customer.meta.has_field("shop_allow_on_account"):
+		customer.shop_allow_on_account = (
+			1 if cint(allow_on_account) else customer.get("shop_allow_on_account") or 0
+		)
+	if flt(credit_limit):
+		customer.credit_limits = [
+			row for row in customer.get("credit_limits") or [] if row.company != settings.company
+		]
+		# the limit applies to what is invoiced on account; orders paid up front aren't held by it
+		customer.append(
+			"credit_limits",
+			{"company": settings.company, "credit_limit": flt(credit_limit), "bypass_credit_limit_check": 1},
+		)
+
+
 def approve_trade(
 	lead: str,
 	customer_group: str | None = None,
@@ -279,28 +312,7 @@ def approve_trade(
 		frappe.has_permission("Customer", "create", throw=True)
 		customer = _make_customer(doc.name, ignore_permissions=True)
 		customer.tax_id = doc.shop_tax_id
-	settings = frappe.get_cached_doc("Shop Settings")
-	customer.customer_group = (
-		customer_group or settings.get("trade_customer_group") or customer.customer_group
-	)
-	# only what the approver set changes an existing customer
-	if price_list:
-		customer.default_price_list = price_list
-	if payment_terms:
-		customer.payment_terms = payment_terms
-	if customer.meta.has_field("shop_allow_on_account"):
-		customer.shop_allow_on_account = (
-			1 if cint(allow_on_account) else customer.get("shop_allow_on_account") or 0
-		)
-	if flt(credit_limit):
-		customer.credit_limits = [
-			row for row in customer.get("credit_limits") or [] if row.company != settings.company
-		]
-		# the limit applies to what is invoiced on account; orders paid up front aren't held by it
-		customer.append(
-			"credit_limits",
-			{"company": settings.company, "credit_limit": flt(credit_limit), "bypass_credit_limit_check": 1},
-		)
+	set_trade_terms(customer, customer_group, payment_terms, credit_limit, allow_on_account, price_list)
 	user = (
 		doc.shop_user
 		or (doc.email_id if frappe.db.exists("User", doc.email_id) else None)

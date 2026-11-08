@@ -29,10 +29,13 @@
 		<div class="mt-8">
 			<h2 class="text-lg font-medium text-ink-gray-8">Needs attention</h2>
 			<div class="mt-3 grid gap-4 sm:grid-cols-3">
-				<router-link
+				<component
+					:is="item.href ? 'a' : 'router-link'"
 					v-for="item in attention"
 					:key="item.label"
 					:to="item.route"
+					:href="item.href"
+					:target="item.href ? '_blank' : undefined"
 					class="group flex items-center gap-3 rounded-lg border border-outline-gray-1 p-4 transition hover:bg-surface-gray-1"
 				>
 					<component :is="item.icon" class="size-5 shrink-0 text-ink-gray-5" />
@@ -41,7 +44,7 @@
 						<div class="text-sm text-ink-gray-6">{{ item.label }}</div>
 					</div>
 					<LucideChevronRight class="size-4 text-ink-gray-4 transition group-hover:text-ink-gray-7" />
-				</router-link>
+				</component>
 			</div>
 		</div>
 
@@ -123,6 +126,7 @@ import { TabButtons, createResource, toast } from 'frappe-ui'
 import { useRouter } from 'vue-router'
 
 import LucideBoxes from '~icons/lucide/boxes'
+import LucideBriefcase from '~icons/lucide/briefcase'
 import LucideChevronRight from '~icons/lucide/chevron-right'
 import LucidePackage from '~icons/lucide/package'
 import LucideShoppingBasket from '~icons/lucide/shopping-basket'
@@ -201,6 +205,17 @@ const attention = computed(() => {
 			route: '/carts',
 			icon: LucideShoppingBasket,
 		},
+		// only for a store with trade accounts; staff approve them on the Lead in Desk
+		...(data.trade_applications != null
+			? [
+					{
+						label: 'trade applications waiting',
+						count: data.trade_applications,
+						href: '/app/lead?utm_source=Store%20Trade%20Application&status=Open',
+						icon: LucideBriefcase,
+					},
+				]
+			: []),
 	]
 })
 

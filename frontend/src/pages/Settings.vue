@@ -435,6 +435,7 @@
 					label="Email monthly statements"
 					description="Each trade customer gets a statement every month."
 				/>
+				<TradeDiscounts v-if="data.trade_customer_group" />
 				<Switch
 					v-model="accounts.allow_quote_requests"
 					label="Quote requests"
@@ -477,6 +478,7 @@ import CatalogImageInput from '@/components/CatalogImageInput.vue'
 import CatalogListState from '@/components/CatalogListState.vue'
 import CatalogSection from '@/components/CatalogSection.vue'
 import NewServiceItem from '@/components/NewServiceItem.vue'
+import TradeDiscounts from '@/components/TradeDiscounts.vue'
 import StorefrontThemes from '@/components/StorefrontThemes.vue'
 
 const saving = ref('')

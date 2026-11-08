@@ -42,6 +42,13 @@
 						</div>
 					</div>
 
+					<TradeAccountCard
+						v-if="doc.trade?.enabled"
+						:customer="doc.name"
+						:status="doc.trade"
+						@updated="customer.reload()"
+					/>
+
 					<div class="rounded-lg border border-outline-gray-1 p-4">
 						<h2 class="text-base font-medium text-ink-gray-8">Addresses</h2>
 						<div v-if="!doc.addresses.length" class="mt-2 text-sm text-ink-gray-5">
@@ -103,6 +110,7 @@ import { useRouter } from 'vue-router'
 import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import LucideStar from '~icons/lucide/star'
 
+import TradeAccountCard from '@/components/TradeAccountCard.vue'
 import UiDataTable from '@/components/UiDataTable.vue'
 import UiEmptyState from '@/components/UiEmptyState.vue'
 import UiPageHeader from '@/components/UiPageHeader.vue'

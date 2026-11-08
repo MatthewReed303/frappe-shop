@@ -2,6 +2,7 @@ import frappe
 from frappe.utils import cint, flt
 
 from shop.api import only_managers
+from shop.api.trade import trade_status
 from shop.storefront import pricing
 
 
@@ -96,6 +97,7 @@ def get_customer(name: str) -> dict:
 		),
 		"addresses": addresses(name),
 		"reviews": reviews(email),
+		"trade": trade_status(name),
 	}
 
 
