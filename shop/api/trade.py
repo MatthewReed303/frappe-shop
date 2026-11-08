@@ -116,12 +116,18 @@ def make_trade_customer(
 
 @frappe.whitelist(methods=["POST"])
 def end_trade(customer: str) -> dict:
-	"""Back to the group new customers join, without paying on account."""
+	"""Back to the group new customers join, without the trade terms approval gave: paying on
+	account, payment terms, price list and the store company's credit limit."""
 	only_managers()
+	group = frappe.db.get_single_value("Selling Settings", "customer_group")
+	if not group:
+		frappe.throw(_("Set the default Customer Group in Selling Settings first, for the customer to move to"))
 	doc = frappe.get_doc("Customer", customer)
-	doc.customer_group = (
-		frappe.db.get_single_value("Selling Settings", "customer_group") or doc.customer_group
-	)
+	doc.customer_group = group
+	doc.payment_terms = None
+	doc.default_price_list = None
+	company = frappe.get_cached_doc("Shop Settings").company
+	doc.set("credit_limits", [row for row in doc.get("credit_limits") or [] if row.company != company])
 	if doc.meta.has_field("shop_allow_on_account"):
 		doc.shop_allow_on_account = 0
 	doc.save(ignore_permissions=True)

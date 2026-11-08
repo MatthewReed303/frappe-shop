@@ -203,10 +203,26 @@ def set_collections(doc, collections) -> None:
 
 
 def set_price(item_code: str, rate: float) -> None:
+	"""The store price the storefront shows: the price list's Item Price for everyone (not a
+	customer's own) that applies today, saved as ERPNext saves it."""
+	from frappe.utils import getdate
+
 	settings = frappe.get_cached_doc("Shop Settings")
-	name = frappe.db.get_value("Item Price", {"item_code": item_code, "price_list": settings.price_list})
-	if name:
-		frappe.db.set_value("Item Price", name, "price_list_rate", rate)
+	today = getdate()
+	for row in frappe.get_all(
+		"Item Price",
+		filters={"item_code": item_code, "price_list": settings.price_list, "customer": ["is", "not set"]},
+		fields=["name", "valid_from", "valid_upto"],
+		order_by="valid_from desc",
+	):
+		if (row.valid_from and getdate(row.valid_from) > today) or (
+			row.valid_upto and getdate(row.valid_upto) < today
+		):
+			continue
+		price = frappe.get_doc("Item Price", row.name)
+		price.price_list_rate = rate
+		price.flags.ignore_permissions = True
+		price.save()
 		return
 	frappe.get_doc(
 		{

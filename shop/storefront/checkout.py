@@ -60,6 +60,10 @@ def bank_currency_note() -> str | None:
 	note = _("We give you local bank details for the currency you choose.")
 	if fees:
 		fee = f"{fees[-1]:g}%" if len(fees) == 1 else _("up to {0}%").format(f"{fees[-1]:g}")
+		settings = frappe.get_cached_doc("Shop Settings")
+		if settings.prices_include_tax and pricing.item_tax_rate(settings.get("conversion_fee_item")):
+			# the fee is grossed up by the tax on it at home
+			fee = _("{0} plus tax where it applies").format(fee)
 		note += " " + _("Paying in another currency than {0} adds {1} to cover converting the money.").format(
 			totals.company_currency(), fee
 		)

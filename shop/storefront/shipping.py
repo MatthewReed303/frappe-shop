@@ -88,14 +88,11 @@ def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = Fa
 
 
 def ships(cart) -> bool:
-	"""Whether anything in the cart is sent: services aren't."""
-	return bool(
-		frappe.get_all(
-			"Item",
-			filters={"name": ["in", [row.item_code for row in cart.items]], "is_stock_item": 1},
-			limit=1,
-		)
-	)
+	"""Whether anything in the cart is sent: services aren't (a Product Bundle is sent when any of
+	its parts is)."""
+	from shop.storefront.stock import is_stock_item
+
+	return any(is_stock_item(row.item_code) for row in cart.items)
 
 
 def provider_options(cart, address: frappe._dict, subtotal: float) -> tuple[list[dict], list[str], bool]:

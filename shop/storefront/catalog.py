@@ -262,11 +262,7 @@ def display_stock(products: list) -> dict:
 	templates = [p.item for p in products if p.has_variants]
 	variants = variants_by_template(templates)
 	codes = simple + [code for group in variants.values() for code in group]
-	stocked = (
-		set(frappe.get_all("Item", filters={"name": ["in", codes], "is_stock_item": 1}, pluck="name"))
-		if codes
-		else set()
-	)
+	stocked = {code for code in codes if stock.is_stock_item(code)}
 	quantities = stock.get_stock([code for code in codes if code in stocked], sellable=True)
 	# services aren't counted in stock
 	available = {code: code not in stocked or quantities.get(code, 0) > 0 for code in codes}
@@ -279,7 +275,10 @@ def display_stock(products: list) -> dict:
 def variants_by_template(templates: list[str]) -> dict[str, list[str]]:
 	if not templates:
 		return {}
-	rows = frappe.get_all("Item", filters={"variant_of": ["in", templates]}, fields=["name", "variant_of"])
+	# variants that can be sold, as the product page offers them
+	rows = frappe.get_all(
+		"Item", filters={"variant_of": ["in", templates], "disabled": 0}, fields=["name", "variant_of"]
+	)
 	grouped = {}
 	for row in rows:
 		grouped.setdefault(row.variant_of, []).append(row.name)

@@ -35,6 +35,15 @@ doc_events = {
 	# statement runs follow the Customer Group
 	"Customer": {"on_update": "shop.storefront.statements.sync_customer"},
 	"Sales Order": {"before_insert": "shop.storefront.payment.forget_checkout_on_amend"},
+	# prices worked out earlier in the request are worked out again
+	"Item Price": {
+		"on_update": "shop.storefront.pricing.forget_rates",
+		"on_trash": "shop.storefront.pricing.forget_rates",
+	},
+	"Pricing Rule": {
+		"on_update": "shop.storefront.pricing.forget_rates",
+		"on_trash": "shop.storefront.pricing.forget_rates",
+	},
 }
 
 override_doctype_class = {

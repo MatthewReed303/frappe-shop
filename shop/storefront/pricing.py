@@ -17,7 +17,8 @@ def get_prices(item_codes: list[str], qtys: dict | None = None, customer: str | 
 	if customer == "session":
 		customer = session_customer()
 	if not customer:
-		return guest_prices(retail, qtys) if qtys else retail
+		# a guest sees the Pricing Rules everyone gets (the store's customer group), as checkout charges
+		return guest_prices(retail, qtys or {})
 	price_list = customer_price_list(customer)
 	prices = {}
 	for code in item_codes:
@@ -416,6 +417,11 @@ def customer_rate(
 		rate = list_rate - flt(details.get("discount_amount"))
 	cache[key] = flt(rate, 2)
 	return cache[key]
+
+
+def forget_rates(doc=None, method=None) -> None:
+	"""Item Price and Pricing Rule changes: rates worked out earlier in this request are stale."""
+	frappe.local.shop_customer_rates = {}
 
 
 def request_cache(name: str) -> dict:

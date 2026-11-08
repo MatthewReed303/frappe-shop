@@ -1,6 +1,7 @@
 """Checkout totals worked out by ERPNext: tax in or on top of prices, exports, coupons, shipping,
 card and conversion fees, other currencies, and what happens once an order is placed."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import frappe
@@ -91,6 +92,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		frappe.db.delete("Shop Cart")
 		if hasattr(frappe.local, "request"):
 			del frappe.local.request
+		# what the store works out once per request, kept across tests in one process otherwise
+		frappe.local.shop_customer_rates = {}
+		frappe.local.shop_item_tax_rates = {}
 		settings = frappe.get_doc("Shop Settings")
 		self.original = {field: settings.get(field) for field in SETTINGS_FIELDS}
 		self.original_banks = [row.as_dict() for row in settings.bank_accounts]
@@ -710,6 +714,81 @@ class TestCheckoutTotals(IntegrationTestCase):
 				"Comment", {"reference_name": name, "content": ["like", f"%{transaction.name}%cancelled%"]}
 			)
 		)
+
+	def test_an_item_with_a_sales_unit_is_sold_in_its_stock_unit(self):
+		from shop.storefront import pricing, stock
+
+		if not frappe.db.exists("UOM", "_Test Box of 10"):
+			frappe.get_doc({"doctype": "UOM", "uom_name": "_Test Box of 10", "must_be_whole_number": 1}).insert()
+		item = frappe.get_doc("Item", ITEM)
+		item.append("uoms", {"uom": "_Test Box of 10", "conversion_factor": 10})
+		item.sales_uom = "_Test Box of 10"
+		item.save()
+
+		def restore():
+			doc = frappe.get_doc("Item", ITEM)
+			doc.sales_uom = None
+			doc.uoms = [row for row in doc.uoms if row.uom != "_Test Box of 10"]
+			doc.save()
+
+		self.addCleanup(restore)
+		shown = pricing.get_price(ITEM)["rate"]
+		left = stock.available_qty(ITEM)
+		basket = self.basket(int(left))
+		row = totals.compute(basket, self.home_address, None, "bank").order.items[0]
+		# charged per unit at the price shown, and the stock it takes is what was checked
+		self.assertEqual((row.rate, row.stock_qty), (shown, left))
+
+	def test_a_product_bundle_is_limited_by_its_parts_and_ships(self):
+		from shop.storefront import shipping, stock
+
+		code = "_TEST-BUNDLE-OF-TWO"
+		if not frappe.db.exists("Item", code):
+			frappe.get_doc(
+				{
+					"doctype": "Item",
+					"item_code": code,
+					"item_name": code,
+					"item_group": "All Item Groups",
+					"stock_uom": "Nos",
+					"is_stock_item": 0,
+				}
+			).insert()
+		bundle = frappe.get_doc(
+			{"doctype": "Product Bundle", "new_item_code": code, "items": [{"item_code": ITEM, "qty": 2}]}
+		).insert()
+		self.addCleanup(frappe.delete_doc, "Product Bundle", bundle.name, force=True)
+		self.assertTrue(stock.is_stock_item(code))
+		self.assertEqual(stock.available_qty(code), stock.available_qty(ITEM) // 2)
+		self.assertTrue(shipping.ships(SimpleNamespace(items=[frappe._dict(item_code=code)])))
+
+	def test_a_zero_rated_item_is_charged_its_price_abroad(self):
+		from shop.storefront import pricing
+
+		with patch.object(pricing, "item_tax_rate", return_value=0):
+			basket = self.basket(1)
+			row = totals.compute(basket, self.abroad_address, None, "bank").order.items[0]
+		# no tax was in its price at home, so none is taken off for an export
+		self.assertAlmostEqual(row.base_rate, self.price, delta=0.01)
+
+	def test_a_guest_sees_the_pricing_rules_everyone_gets(self):
+		from shop.storefront import pricing
+
+		rule = frappe.get_doc(
+			{
+				"doctype": "Pricing Rule",
+				"title": "_Test everyone 20 off",
+				"apply_on": "Item Code",
+				"items": [{"item_code": ITEM}],
+				"selling": 1,
+				"rate_or_discount": "Discount Percentage",
+				"discount_percentage": 20,
+				"company": self.company,
+				"currency": self.company_currency,
+			}
+		).insert()
+		self.addCleanup(frappe.delete_doc, "Pricing Rule", rule.name, force=True)
+		self.assertEqual(pricing.get_prices([ITEM], customer=None)[ITEM]["rate"], flt(self.price * 0.8, 2))
 
 	def test_more_than_owed_is_kept_as_the_customers_advance(self):
 		self.basket(1)

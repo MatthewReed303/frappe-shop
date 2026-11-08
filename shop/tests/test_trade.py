@@ -72,7 +72,16 @@ class TestTrade(IntegrationTestCase):
 		self.assertTrue(status["is_trade"])
 		self.assertEqual((status["payment_terms"], status["credit_limit"]), (terms, 500))
 		self.assertEqual(customers.get_customer(self.customer.name)["trade"]["is_trade"], True)
-		self.assertFalse(trade.end_trade(self.customer.name)["allow_on_account"])
+		previous = frappe.db.get_single_value("Selling Settings", "customer_group")
+		self.addCleanup(frappe.db.set_single_value, "Selling Settings", "customer_group", previous)
+		frappe.db.set_single_value("Selling Settings", "customer_group", other)
+		self.customer.db_set("default_price_list", frappe.db.get_value("Price List", {"selling": 1}))
+		ended = trade.end_trade(self.customer.name)
+		# none of what approval gave is left
+		self.assertFalse(ended["allow_on_account"])
+		self.assertFalse(ended["is_trade"])
+		self.assertEqual((ended["payment_terms"], ended["credit_limit"]), (None, None))
+		self.assertFalse(frappe.db.get_value("Customer", self.customer.name, "default_price_list"))
 
 	def test_waiting_applications_only_with_trade_accounts(self):
 		self.assertIsInstance(admin.get_dashboard()["trade_applications"], int)

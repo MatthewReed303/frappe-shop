@@ -219,6 +219,17 @@ def bank_routes(currency: str, tax_factor: float = 1) -> list[dict]:
 	return routes
 
 
+def fee_factor(export: bool, shown_factor: float = 1) -> float:
+	"""What a transfer fee adds to the order per unit of the fee the store keeps: fees are grossed up
+	by the tax on the fee item at home, so a store showing prices with tax shows the fee with it."""
+	s = settings()
+	if export or not (s.prices_include_tax or s.get("show_prices_with_tax")):
+		return 1
+	from shop.storefront import pricing
+
+	return max(shown_factor, 1 + pricing.item_tax_rate(s.get("transfer_fee_item")) / 100)
+
+
 def suggested_bank_method(address: frappe._dict | None, currency: str) -> str:
 	"""Swift for a payer abroad: one whose country doesn't use the account's currency."""
 	from frappe.geo.country_info import get_country_info
@@ -380,6 +391,10 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 			{
 				"item_code": row.item_code,
 				"qty": flt(row.qty),
+				# the store prices, shows and stocks items in their stock unit; ERPNext would
+				# otherwise sell in the item's Sales UOM (a box of ten at the price of one)
+				"uom": frappe.get_cached_value("Item", row.item_code, "stock_uom"),
+				"conversion_factor": 1,
 				"warehouse": s.default_warehouse,
 				"delivery_date": order.delivery_date,
 			},
@@ -407,10 +422,14 @@ def remove_included_tax(order, template: str | None) -> None:
 	s = settings()
 	if not s.prices_include_tax or template == s.tax_template:
 		return
-	factor = (1 + included_rate(template) / 100) / (1 + included_rate(s.tax_template) / 100)
-	if factor == 1:
-		return
+	from shop.storefront import pricing
+
+	other = 1 + included_rate(template) / 100
 	for item in order.items:
+		# the store's tax on this item, which its Item Tax Template sets (none on a zero-rated one)
+		factor = other / (1 + pricing.item_tax_rate(item.item_code) / 100)
+		if factor == 1:
+			continue
 		for field in ("price_list_rate", "rate", "discount_amount"):
 			item.set(field, flt(flt(item.get(field)) * factor, item.precision(field)))
 
@@ -800,7 +819,9 @@ def payload(quote: frappe._dict) -> dict:
 		"bank_currencies": [
 			{"currency": row.currency, "label": row.label or row.currency} for row in bank_accounts()
 		],
-		"bank_routes": bank_routes(currency, factor()) if quote.payment_method in BANK_METHODS else [],
+		"bank_routes": bank_routes(currency, fee_factor(quote.export, factor()))
+		if quote.payment_method in BANK_METHODS
+		else [],
 		"suggested_bank_method": suggested_bank_method(quote.address, currency)
 		if quote.payment_method in BANK_METHODS
 		else None,
