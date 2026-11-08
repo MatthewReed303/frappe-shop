@@ -29,6 +29,7 @@ LIST_FIELDS = [
 	"delivery_date",
 	"status",
 	"grand_total",
+	"currency",
 	"per_delivered",
 	"docstatus",
 	"contact_email",
@@ -72,7 +73,7 @@ def get_orders(
 
 def decorate(orders: list) -> None:
 	for order in orders:
-		order["formatted_total"] = pricing.format_amount(order.grand_total)
+		order["formatted_total"] = pricing.document_amount(order.grand_total, order.currency)
 		order["display_status"] = display_status(order)
 		order["payment_status"] = payment.payment_status(frappe.get_doc("Sales Order", order.name))
 		order["fulfillment_status"] = fulfillment_label(order)
@@ -132,23 +133,23 @@ def get_order(name: str) -> dict:
 		"docstatus": order.docstatus,
 		"payment_status": payment.payment_status(order),
 		"amount_due": payment.amount_due(order),
-		"formatted_amount_due": pricing.format_amount(payment.amount_due(order))
-		if order.currency == frappe.get_cached_doc("Shop Settings").currency
-		else f"{payment.totals.money(payment.amount_due(order), order.currency)} {order.currency}",
+		"formatted_amount_due": pricing.document_amount(payment.amount_due(order), order.currency),
 		"bank_accounts": bank_accounts(order),
 		"refunds_due": payment.refunds_due(order.name),
 		"fulfillment_status": fulfillment_label(order),
 		"address": address_display(order.shipping_address_name),
-		"formatted_total": pricing.format_amount(order.total),
-		"formatted_discount": pricing.format_amount(order.discount_amount) if order.discount_amount else None,
-		"formatted_grand_total": pricing.format_amount(order.grand_total),
+		"formatted_total": pricing.document_amount(order.total, order.currency),
+		"formatted_discount": pricing.document_amount(order.discount_amount, order.currency)
+		if order.discount_amount
+		else None,
+		"formatted_grand_total": pricing.document_amount(order.grand_total, order.currency),
 		"items": [
 			{
 				"item_code": row.item_code,
 				"item_name": row.item_name,
 				"qty": row.qty,
-				"formatted_rate": pricing.format_amount(row.rate),
-				"formatted_amount": pricing.format_amount(row.amount),
+				"formatted_rate": pricing.document_amount(row.rate, order.currency),
+				"formatted_amount": pricing.document_amount(row.amount, order.currency),
 			}
 			for row in order.items
 		],
@@ -167,16 +168,43 @@ def timeline(order) -> list[dict]:
 		events.append(
 			{"label": "Payment recorded", "on": str(frappe.db.get_value("Payment Entry", payment, "creation"))[:16]}
 		)
+	fulfillments = frappe.get_all(
+		"Shop Fulfillment",
+		filters={"sales_order": order.name},
+		fields=["provider", "requested_on", "shipped_on", "delivered_on", "cancelled_on"],
+		order_by="creation",
+	)
+	if fulfillments:
+		from shop.fulfillment.service import provider_label
+
+		for row in fulfillments:
+			for label, on in (
+				(_("Sent to {0}").format(provider_label(row.provider)), row.requested_on),
+				(_("Shipped"), row.shipped_on),
+				(_("Delivered"), row.delivered_on),
+				(_("Shipment cancelled"), row.cancelled_on),
+			):
+				if on:
+					events.append({"label": label, "on": str(on)[:16]})
 	for note in frappe.get_all(
-		"Delivery Note Item",
-		filters={"against_sales_order": order.name, "docstatus": 1},
-		fields=["parent", "creation"],
-		group_by="parent",
+		"Delivery Note",
+		filters={"name": ["in", delivery_notes(order.name)], "docstatus": 1},
+		fields=["is_return", "creation"],
+		order_by="creation",
 	):
-		events.append({"label": "Fulfilled", "on": str(note.creation)[:16]})
+		if note.is_return:
+			events.append({"label": _("Returned"), "on": str(note.creation)[:16]})
+		elif not fulfillments:
+			events.append({"label": _("Fulfilled"), "on": str(note.creation)[:16]})
 	if order.docstatus == 2:
 		events.append({"label": "Order cancelled", "on": str(order.modified)[:16]})
 	return events
+
+
+def delivery_notes(order_name: str) -> list[str]:
+	return frappe.get_all(
+		"Delivery Note Item", filters={"against_sales_order": order_name}, pluck="parent", distinct=True
+	)
 
 
 def address_display(name: str | None) -> str | None:

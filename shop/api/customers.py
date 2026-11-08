@@ -42,14 +42,14 @@ def order_totals(names: list[str]) -> dict:
 	rows = frappe.get_all(
 		"Sales Order",
 		filters={"customer": ["in", names], "docstatus": 1},
-		fields=["customer", "grand_total", "transaction_date"],
+		fields=["customer", "base_grand_total", "transaction_date"],
 		order_by="transaction_date desc",
 	)
 	summary = {}
 	for row in rows:
 		entry = summary.setdefault(row.customer, {"orders": 0, "spent": 0.0, "last": None})
 		entry["orders"] += 1
-		entry["spent"] += flt(row.grand_total)
+		entry["spent"] += flt(row.base_grand_total)
 		entry["last"] = entry["last"] or str(row.transaction_date)
 	return summary
 
@@ -80,11 +80,11 @@ def get_customer(name: str) -> dict:
 	orders = frappe.get_all(
 		"Sales Order",
 		filters={"customer": name, "docstatus": ["<", 2]},
-		fields=["name", "transaction_date", "status", "grand_total"],
+		fields=["name", "transaction_date", "status", "grand_total", "currency", "base_grand_total"],
 		order_by="creation desc",
 	)
 	for order in orders:
-		order["formatted_total"] = pricing.format_amount(order.grand_total)
+		order["formatted_total"] = pricing.document_amount(order.grand_total, order.currency)
 	email = contact_emails([name]).get(name)
 	return {
 		"name": customer.name,
@@ -93,7 +93,7 @@ def get_customer(name: str) -> dict:
 		"joined": str(customer.creation)[:10],
 		"orders": orders,
 		"formatted_spent": pricing.format_amount(
-			sum(flt(order.grand_total) for order in orders if order.status != "Cancelled")
+			sum(flt(order.base_grand_total) for order in orders if order.status != "Cancelled")
 		),
 		"addresses": addresses(name),
 		"reviews": reviews(email),

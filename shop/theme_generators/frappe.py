@@ -3376,7 +3376,12 @@ def confirmation_blocks(refs):
 						visibilityCondition={"key": "order.awaiting_shipment", "comesFrom": "dataScript"},
 					),
 					delivery_tile,
-					info_tile("Order confirmation", "A receipt for this order has been sent to your email address."),
+					info_tile(
+						"Order confirmation",
+						"A receipt for this order has been sent to your email address.",
+						name="Receipt Tile",
+						visibilityCondition={"key": "order.emailed", "comesFrom": "dataScript"},
+					),
 				],
 			),
 			returns_section(refs),

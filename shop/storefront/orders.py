@@ -106,10 +106,17 @@ def order_summary(order, token: str | None = None) -> dict:
 	paid = payment.is_paid(order)
 	method = payment.method(order)
 	cancelled = is_cancelled(order)
+	# an order staff entered in Desk was never confirmed by the store's emails
+	from_store = placed_in_store(order)
 	return {
 		"returns": returns.summary(order.name),
 		"confirmed": None if cancelled else "true",
-		"heading": _("Your order has been cancelled") if cancelled else _("Thank you for your order!"),
+		"emailed": "true" if from_store and not cancelled else None,
+		"heading": _("Your order has been cancelled")
+		if cancelled
+		else _("Thank you for your order!")
+		if from_store
+		else _("Your order"),
 		"name": order.name,
 		"status": order.status,
 		"display_status": display_status(order, paid),
@@ -120,7 +127,9 @@ def order_summary(order, token: str | None = None) -> dict:
 		if cancelled
 		else _("Your order is waiting for payment.")
 		if order.docstatus == 1 and not paid and method == totals.GATEWAY
-		else _("We've emailed you a copy of this order."),
+		else _("We've emailed you a copy of this order.")
+		if from_store
+		else _("Here's your order and where it's up to."),
 		"progress": order_progress(order, shipment),
 		"shipment": shipment,
 		# paid, or to be paid on account or on delivery, and not sent yet
@@ -166,6 +175,15 @@ def order_summary(order, token: str | None = None) -> dict:
 			for row in products
 		],
 	}
+
+
+def placed_in_store(order) -> bool:
+	"""Checked out in the store or accepted from a quote, rather than entered by staff in Desk."""
+	return bool(
+		order.get("shop_payment_method")
+		or order.get("shop_access_token")
+		or frappe.db.exists("Shop Cart", {"sales_order": order.name})
+	)
 
 
 def totals_html(order, lines: list[dict], notes: list[str], charges) -> str:
@@ -347,7 +365,9 @@ def shipment_summary(order_name: str) -> dict | None:
 		return None
 	shipment = rows[0]
 	shipment.shipped_on = str(shipment.shipped_on) if shipment.shipped_on else None
-	shipment.line = " · ".join(part for part in (shipment.carrier, shipment.tracking_number) if part)
+	shipment.line = " · ".join(part for part in (shipment.carrier, shipment.tracking_number) if part) or (
+		_("We're getting your parcel ready to send.") if shipment.status in ("Pending", "Accepted") else None
+	)
 	return shipment
 
 

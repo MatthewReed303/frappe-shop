@@ -81,6 +81,12 @@ def format_amount(amount: float) -> str:
 	return fmt_money(amount, currency=settings.currency)
 
 
+def document_amount(amount: float, currency: str) -> str:
+	"""An amount in a document's own currency, with the code when that isn't the store's."""
+	formatted = fmt_money(amount, currency=currency)
+	return formatted if currency == store_currency() else f"{formatted} {currency}"
+
+
 def store_amount(amount: float) -> str:
 	"""An exact store-currency amount, with the currency code when the store shows several."""
 	return with_code(format_amount(amount), store_currency())

@@ -185,6 +185,55 @@ class TestAdminApi(IntegrationTestCase):
 		with patch.object(orders, "fulfillment_label", return_value="Shipped"):
 			self.assertEqual(orders.display_status(order), "Fulfilled")
 
+	def test_the_timeline_follows_the_parcel(self):
+		name = self.place_order()
+		fulfillment = frappe.get_doc(
+			{
+				"doctype": "Shop Fulfillment",
+				"sales_order": name,
+				"provider": "test-carrier",
+				"status": "Accepted",
+				"requested_on": frappe.utils.now_datetime(),
+			}
+		).insert(ignore_permissions=True)
+		labels = [event["label"] for event in orders.get_order(name)["timeline"]]
+		self.assertIn("Sent to test-carrier", labels)
+		self.assertNotIn("Shipped", labels)
+		self.assertNotIn("Fulfilled", labels)
+
+		fulfillment.db_set({"status": "Shipped", "shipped_on": frappe.utils.now_datetime()})
+		self.assertIn("Shipped", [event["label"] for event in orders.get_order(name)["timeline"]])
+
+	def test_an_order_entered_in_desk_doesnt_claim_the_store_emailed_it(self):
+		store_order = frappe.get_doc("Sales Order", self.place_order())
+		self.assertEqual(order_summary(store_order)["emailed"], "true")
+
+		desk_order = frappe.copy_doc(store_order)
+		for field in ("shop_payment_method", "shop_access_token", "shop_payment_due"):
+			if desk_order.meta.has_field(field):
+				desk_order.set(field, None)
+		desk_order.insert(ignore_permissions=True)
+		summary = order_summary(desk_order)
+		self.assertIsNone(summary["emailed"])
+		self.assertEqual(summary["heading"], "Your order")
+		self.assertNotIn("emailed", summary["confirmation_note"])
+
+	def test_an_order_in_another_currency_is_shown_in_it_and_counted_in_the_company_currency(self):
+		name = self.place_order()
+		order = frappe.get_doc("Sales Order", name)
+		before = analytics.get_overview(days=1)["revenue"]
+		frappe.db.set_value(
+			"Sales Order",
+			name,
+			{"currency": "USD", "grand_total": order.grand_total / 2},
+			update_modified=False,
+		)
+
+		self.assertTrue(orders.get_order(name)["formatted_grand_total"].endswith(" USD"))
+		listed = next(row for row in orders.get_orders(search=name)["orders"] if row["name"] == name)
+		self.assertTrue(listed["formatted_total"].endswith(" USD"))
+		self.assertEqual(analytics.get_overview(days=1)["revenue"], before)
+
 	def test_erpnext_order_defaults_are_set_from_shop_settings(self):
 		group = frappe.db.get_single_value("Selling Settings", "customer_group")
 		rounding = frappe.db.get_single_value("Global Defaults", "disable_rounded_total")
