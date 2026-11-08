@@ -347,6 +347,16 @@ class TestTradeAccounts(IntegrationTestCase):
 			frappe.db.get_value("Sales Invoice", invoice, "payment_terms_template"), "_Test 20th"
 		)
 
+		# cancelled before it was paid: the credit note settles the invoice, nothing is refunded
+		from unittest.mock import patch
+
+		from shop.storefront import payment
+
+		with patch("frappe.sendmail"):
+			payment.cancel_by_store(order.name)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount"), 0)
+		self.assertEqual(payment.refunds_due(order.name), [])
+
 	def test_credit_limit_holds_only_orders_on_account(self):
 		email = "limited.buyer@example.com"
 		customer = self.approved_trade_customer(email, credit_limit=flt(self.retail))

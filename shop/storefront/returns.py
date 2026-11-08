@@ -226,7 +226,12 @@ def credit(request) -> None:
 	"""ERPNext's credit note (a return Sales Invoice) for the item."""
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 
-	from shop.storefront.payment import invoice_paid_order, order_invoice, payment_status
+	from shop.storefront.payment import (
+		invoice_paid_order,
+		order_invoice,
+		payment_status,
+		settle_against_invoice,
+	)
 
 	if request.credit_note:
 		return
@@ -241,6 +246,7 @@ def credit(request) -> None:
 			return
 	note = make_sales_return(invoice)
 	return_lines(note, request)
+	settle_against_invoice(note, invoice)
 	note.flags.ignore_permissions = True
 	note.insert(ignore_permissions=True)
 	note.submit()

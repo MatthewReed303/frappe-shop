@@ -101,8 +101,9 @@ TEMPLATES = {
 		"Your order {{ doc.name }} has been cancelled",
 		"<p>We've cancelled your order {{ doc.name }} at {{ store_name }}.</p>"
 		"{% if note %}<p>{{ note }}</p>{% endif %}"
-		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll let you "
-		"know when the refund of what you paid is on its way.</p>{% endif %}"
+		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached."
+		"{% if refund_due %} We'll let you know when the refund of what you paid is on its way."
+		"{% else %} There's nothing to pay for this order.{% endif %}</p>{% endif %}"
 		"<p>Reply to this email if you have any questions.</p>",
 	),
 	"refund_sent": (

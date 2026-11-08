@@ -478,6 +478,13 @@ def cancel_if_unpaid(name: str) -> bool:
 	return True
 
 
+def settle_against_invoice(credit_note, invoice: str) -> None:
+	"""A credit note for an invoice still owed (an order on account) takes it off what is owed,
+	instead of becoming money to pay back."""
+	if flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) > 0:
+		credit_note.update_outstanding_for_self = 0
+
+
 def refunds_due(order_name: str) -> list[dict]:
 	"""The order's credit notes still owed to the customer, and whether the card can be refunded."""
 	invoice = order_invoice(order_name)
@@ -489,6 +496,9 @@ def refunds_due(order_name: str) -> list[dict]:
 		fields=["name", "outstanding_amount", "currency"],
 		order_by="creation asc",
 	)
+	# credited beyond what was still owed on it: the invoice itself has money to pay back
+	if flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) < 0:
+		notes.insert(0, frappe._dict(name=invoice, currency=frappe.db.get_value("Sales Invoice", invoice, "currency")))
 	online = bool(online_refund_controller(order_name))
 	return [
 		{
@@ -658,6 +668,7 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 		order.cancel()
 	else:
 		credit_note = make_sales_return(invoice)
+		settle_against_invoice(credit_note, invoice)
 		credit_note.flags.ignore_permissions = True
 		credit_note.insert(ignore_permissions=True)
 		credit_note.submit()
@@ -680,6 +691,7 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 		note=note,
 		credit_note=result["credit_note"],
 		amount=amount,
+		refund_due=bool(refunds_due(name)),
 	)
 	return result
 
