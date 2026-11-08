@@ -18,10 +18,17 @@ def get_fulfillment(order: str) -> dict | None:
 	return service.for_order(order)
 
 
-@frappe.whitelist(methods=["POST"])
-def send_order(order: str, provider: str | None = None) -> dict:
+@frappe.whitelist()
+def get_parcels(order: str) -> list[dict]:
+	"""Each parcel of an order (one per warehouse it is sent from) and its fulfillment."""
 	only_managers()
-	return service.summary(service.send(order, provider))
+	return service.order_parcels(order)
+
+
+@frappe.whitelist(methods=["POST"])
+def send_order(order: str, provider: str | None = None, warehouse: str | None = None) -> dict:
+	only_managers()
+	return service.summary(service.send(order, provider, warehouse or None))
 
 
 @frappe.whitelist(methods=["POST"])

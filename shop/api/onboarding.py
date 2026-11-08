@@ -90,7 +90,21 @@ def fill_commerce_defaults(settings):
 		settings.company = frappe.db.get_value("Company", {}, "name")
 	if not settings.price_list:
 		settings.price_list = frappe.db.get_value("Price List", {"selling": 1, "enabled": 1}, "name")
-	if not settings.default_warehouse:
-		settings.default_warehouse = frappe.db.get_value(
-			"Warehouse", {"company": settings.company, "warehouse_name": "Stores"}, "name"
+	add_first_location(settings)
+
+
+def add_first_location(settings, warehouse: str | None = None) -> None:
+	"""A store without a fulfillment location sells from ERPNext's default warehouse (Stock
+	Settings) when it is the company's, else from the company's first warehouse."""
+	if settings.get("fulfillment_locations"):
+		return
+	default = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+	warehouse = (
+		warehouse
+		or (default if default and frappe.db.get_value("Warehouse", default, "company") == settings.company else None)
+		or frappe.db.get_value(
+			"Warehouse", {"company": settings.company, "is_group": 0, "disabled": 0}, "name", order_by="lft"
 		)
+	)
+	if warehouse:
+		settings.append("fulfillment_locations", {"warehouse": warehouse, "fulfillment_provider": "manual"})

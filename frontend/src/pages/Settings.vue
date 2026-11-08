@@ -287,19 +287,65 @@
 				</template>
 			</CatalogSection>
 
-			<CatalogSection title="Fulfillment" description="Who picks, packs and ships your orders.">
-				<FormControl
-					v-model="fulfillment.fulfillment_provider"
-					type="select"
-					label="Default provider"
-					:options="providerOptions"
-					class="max-w-sm"
-				/>
-				<Switch
-					v-model="fulfillment.auto_send_to_fulfillment"
-					label="Automatically send paid orders"
-					description="Hand an order over as soon as its payment is recorded."
-				/>
+			<CatalogSection
+				title="Fulfillment"
+				description="The warehouses you sell from and who ships from each, first to last."
+			>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div
+						v-for="(row, index) in fulfillment.fulfillment_locations"
+						:key="index"
+						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+					>
+						<FormControl
+							v-model="row.warehouse"
+							type="select"
+							label="Warehouse"
+							:options="data.warehouses || []"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model="row.fulfillment_provider"
+							type="select"
+							label="Shipped by"
+							:options="providerOptions"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model="row.ship_from_address"
+							type="select"
+							label="Ship from"
+							:options="[{ label: 'The warehouse\'s address', value: '' }, ...(data.addresses || [])]"
+							class="col-span-3"
+						/>
+						<Switch
+							v-model="row.auto_send"
+							label="Send paid orders automatically"
+							class="col-span-2 self-end"
+						/>
+						<div class="col-span-1 flex items-end justify-end gap-1">
+							<Button
+								variant="ghost"
+								:disabled="index === 0"
+								:aria-label="'Move up'"
+								@click="moveLocation(index, -1)"
+							>
+								↑
+							</Button>
+							<Button variant="ghost" @click="fulfillment.fulfillment_locations.splice(index, 1)">
+								Remove
+							</Button>
+						</div>
+					</div>
+					<div>
+						<Button @click="addLocation">Add warehouse</Button>
+					</div>
+				</div>
+				<p class="text-p-sm text-ink-gray-5">
+					An order takes each item from the first warehouse that has all of it, and is sent from each
+					warehouse as its own parcel. At checkout each parcel is priced by who ships it, and the
+					customer picks a service for each.
+				</p>
 				<p class="text-p-sm text-ink-gray-5">
 					Providers marked as needing setup have to be connected before orders can reach them.
 				</p>
@@ -329,12 +375,6 @@
 						type="select"
 						label="Price list"
 						:options="listOptions(data.price_lists)"
-					/>
-					<FormControl
-						v-model="catalog.default_warehouse"
-						type="select"
-						label="Default warehouse"
-						:options="data.warehouses || []"
 					/>
 					<FormControl
 						v-model.number="catalog.low_stock_threshold"
@@ -581,10 +621,33 @@ const accounts = reactive({
 	allow_quote_requests: false,
 	quote_valid_days: 30,
 })
-const fulfillment = reactive({ fulfillment_provider: 'manual', auto_send_to_fulfillment: false })
+type LocationRow = {
+	warehouse: string
+	fulfillment_provider: string
+	ship_from_address: string
+	auto_send: boolean
+}
+
+const fulfillment = reactive({ fulfillment_locations: [] as LocationRow[] })
+
+function addLocation() {
+	const used = fulfillment.fulfillment_locations.map((row) => row.warehouse)
+	const next = (data.value.warehouses || []).find((option: { value: string }) => !used.includes(option.value))
+	fulfillment.fulfillment_locations.push({
+		warehouse: next?.value || '',
+		fulfillment_provider: 'manual',
+		ship_from_address: '',
+		auto_send: false,
+	})
+}
+
+function moveLocation(index: number, step: number) {
+	const rows = fulfillment.fulfillment_locations
+	const [row] = rows.splice(index, 1)
+	rows.splice(index + step, 0, row)
+}
 const catalog = reactive({
 	price_list: '',
-	default_warehouse: '',
 	low_stock_threshold: 0,
 	tax_template: '',
 	export_tax_template: '',
@@ -649,12 +712,15 @@ function hydrate(doc: Record<string, any>) {
 		quote_valid_days: doc.quote_valid_days || 30,
 	})
 	Object.assign(fulfillment, {
-		fulfillment_provider: doc.fulfillment_provider || 'manual',
-		auto_send_to_fulfillment: !!doc.auto_send_to_fulfillment,
+		fulfillment_locations: (doc.fulfillment_locations || []).map((row: LocationRow) => ({
+			...row,
+			ship_from_address: row.ship_from_address || '',
+			auto_send: !!row.auto_send,
+		})),
 	})
+
 	Object.assign(catalog, {
 		price_list: doc.price_list || '',
-		default_warehouse: doc.default_warehouse || '',
 		low_stock_threshold: doc.low_stock_threshold || 0,
 		tax_template: doc.tax_template || '',
 		export_tax_template: doc.export_tax_template || '',

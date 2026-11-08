@@ -270,6 +270,8 @@ def display_status(order, paid: bool) -> str:
 	if not paid and order.get("shop_payment_method") in (*totals.BANK_METHODS, totals.GATEWAY):
 		return _("Awaiting payment")
 	shipment = shipment_summary(order.name)
+	if shipment and shipment.partly_shipped:
+		return _("Partly shipped")
 	if shipment and shipment.status in ("Pending", "Accepted"):
 		return _("Preparing your order")
 	if shipment and shipment.status == "Shipped":
@@ -353,22 +355,62 @@ def has_payment(order_name: str) -> bool:
 	)
 
 
+STAGES = {"Failed": 0, "Pending": 0, "Accepted": 1, "Shipped": 2, "Delivered": 3}
+
+
+def unsent_warehouses(order_name: str, sent) -> list[str]:
+	"""Warehouses the order's goods are sent from that have no fulfillment yet."""
+	from shop.storefront.totals import is_charge_item
+
+	rows = frappe.get_all(
+		"Sales Order Item", filters={"parent": order_name}, fields=["item_code", "warehouse"], order_by="idx"
+	)
+	return list(
+		dict.fromkeys(
+			row.warehouse for row in rows if not is_charge_item(row.item_code) and row.warehouse not in sent
+		)
+	)
+
+
 def shipment_summary(order_name: str) -> dict | None:
+	"""Where the order's parcels are: one per warehouse it is sent from. The order is only as far
+	along as its least advanced parcel, and is partly shipped while some are on their way."""
 	rows = frappe.get_all(
 		"Shop Fulfillment",
 		filters={"sales_order": order_name, "status": ["!=", "Cancelled"]},
-		fields=["status", "carrier", "tracking_number", "tracking_url", "shipped_on"],
-		order_by="creation desc",
-		limit=1,
+		fields=["status", "carrier", "tracking_number", "tracking_url", "shipped_on", "warehouse"],
+		order_by="creation asc",
 	)
 	if not rows:
 		return None
-	shipment = rows[0]
-	shipment.shipped_on = str(shipment.shipped_on) if shipment.shipped_on else None
-	shipment.line = " · ".join(part for part in (shipment.carrier, shipment.tracking_number) if part) or (
-		_("We're getting your parcel ready to send.") if shipment.status in ("Pending", "Accepted") else None
+	latest = {}
+	for row in rows:
+		latest[row.warehouse] = row  # the latest fulfillment of each parcel
+	if None not in latest:
+		# a parcel not sent yet is still being prepared
+		for warehouse in unsent_warehouses(order_name, latest):
+			latest[warehouse] = frappe._dict(status="Pending", warehouse=warehouse)
+	parcels = list(latest.values())
+	for parcel in parcels:
+		parcel.shipped_on = str(parcel.shipped_on) if parcel.shipped_on else None
+		parcel.line = " · ".join(part for part in (parcel.carrier, parcel.tracking_number) if part) or (
+			_("We're getting your parcel ready to send.") if STAGES.get(parcel.status, 0) < 2 else None
+		)
+	least = min(parcels, key=lambda parcel: STAGES.get(parcel.status, 0))
+	shipped = sorted(parcel.shipped_on for parcel in parcels if parcel.shipped_on)
+	partly = len(parcels) > 1 and STAGES.get(least.status, 0) < 2 and bool(shipped)
+	lines = [parcel.line for parcel in parcels if parcel.line]
+	return frappe._dict(
+		status=least.status,
+		partly_shipped=partly,
+		carrier=least.carrier,
+		tracking_number=least.tracking_number,
+		tracking_url=next((parcel.tracking_url for parcel in parcels if parcel.tracking_url), None),
+		shipped_on=shipped[0] if shipped else None,
+		last_shipped_on=shipped[-1] if shipped else None,
+		line=" / ".join(dict.fromkeys(lines)) or None,
+		parcels=parcels if len(parcels) > 1 else [],
 	)
-	return shipment
 
 
 def shipping_label(order, charges=None) -> str:

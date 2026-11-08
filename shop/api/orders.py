@@ -108,6 +108,8 @@ def fulfillment_label(order) -> str:
 	if order.docstatus == 2:
 		return "Cancelled"
 	shipment = shipment_summary(order.name)
+	if shipment and shipment.partly_shipped:
+		return "Partly shipped"
 	if shipment:
 		return FULFILLMENT_LABELS.get(shipment.status, "Preparing")
 	if flt(order.per_delivered) >= 100:

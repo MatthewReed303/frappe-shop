@@ -104,7 +104,8 @@ def shipped_date(order_name: str):
 	if frappe.db.exists("Shop Fulfillment", {"sales_order": order_name}):
 		# sent through a fulfilment provider: only a shipment the courier has counts
 		shipment = orders_module.shipment_summary(order_name)
-		return get_datetime(shipment["shipped_on"]) if shipment and shipment.get("shipped_on") else None
+		# the window runs from the last parcel to leave
+		return get_datetime(shipment["last_shipped_on"]) if shipment and shipment.get("last_shipped_on") else None
 	delivered = frappe.db.get_value(
 		"Delivery Note Item",
 		{"against_sales_order": order_name, "docstatus": 1},

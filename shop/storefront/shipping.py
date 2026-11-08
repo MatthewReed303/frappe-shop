@@ -38,13 +38,53 @@ def is_complete(address: frappe._dict) -> bool:
 	return bool(address.address_line1 and address.city and address.country)
 
 
-def quote_key(cart, address: frappe._dict) -> str:
-	items = sorted((row.item_code, flt(row.qty)) for row in cart.items)
-	raw = json.dumps([items, [address.get(key) for key in ADDRESS_KEYS]], sort_keys=True)
+def quote_key(cart, address: frappe._dict, parcel: frappe._dict | None = None) -> str:
+	if parcel:
+		items = sorted((row["item_code"], flt(row["qty"])) for row in parcel["items"])
+		origin = [parcel.warehouse, parcel.ship_from, parcel.provider]
+	else:
+		items = sorted((row.item_code, flt(row.qty)) for row in cart.items)
+		origin = []
+	raw = json.dumps([items, [address.get(key) for key in ADDRESS_KEYS], origin], sort_keys=True)
 	return hashlib.sha256(raw.encode()).hexdigest()[:20]
 
 
-def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = False) -> dict:
+def parcels(order) -> list[frappe._dict]:
+	"""The goods of an order that are sent, by the warehouse they are sent from (in the store's
+	order): one parcel each, quoted on its own."""
+	from shop.storefront.stock import is_stock_item, location, warehouses
+	from shop.storefront.totals import is_charge_item
+
+	groups: dict = {}
+	for row in order.items:
+		if not is_charge_item(row.item_code):
+			groups.setdefault(row.warehouse or None, []).append(row)
+	order_of = {name: index for index, name in enumerate(warehouses())}
+	result = []
+	for warehouse in sorted(groups, key=lambda name: order_of.get(name, len(order_of))):
+		rows = groups[warehouse]
+		if not any(is_stock_item(row.item_code) for row in rows):
+			continue  # nothing in it is sent
+		place = location(warehouse)
+		result.append(
+			frappe._dict(
+				key=warehouse or "",
+				warehouse=warehouse,
+				provider=place.provider if place else None,
+				ship_from=place.ship_from if place else None,
+				items=[
+					{"item_code": row.item_code, "item_name": row.item_name, "qty": flt(row.qty), "rate": flt(row.rate)}
+					for row in rows
+				],
+				subtotal=sum(flt(row.base_net_amount) for row in rows),
+			)
+		)
+	return result
+
+
+def get_options(
+	cart, address: frappe._dict, subtotal: float, refresh: bool = False, parcel: frappe._dict | None = None
+) -> dict:
 	"""Shipping options for this cart and address: {"options": [...], "messages": [...]}.
 
 	Rates from shipping providers are cached on the cart for half an hour, keyed by the items and
@@ -52,24 +92,24 @@ def get_options(cart, address: frappe._dict, subtotal: float, refresh: bool = Fa
 	flat rate depends on the order value, so it is worked out every time."""
 	if not is_complete(address):
 		return {"options": [], "messages": [], "pending": True}
-	if not ships(cart):
+	if not parcel and not ships(cart):
 		return {
 			"options": [
 				{"id": FLAT_RATE_ID, "label": _("No delivery needed"), "amount": 0.0, "tax_included": True}
 			],
 			"messages": [],
 		}
-	key = quote_key(cart, address)
-	cached = cached_quotes(cart)
-	if not refresh and cached.get("key") == key and fresh(cached):
+	key = quote_key(cart, address, parcel)
+	cached = cached_quotes(cart).get(key) or {}
+	if not refresh and fresh(cached):
 		options, messages, active = cached["options"], cached.get("messages", []), cached.get("active", False)
 	else:
-		options, messages, active = provider_options(cart, address, subtotal)
+		options, messages, active = provider_options(cart, address, subtotal, parcel)
 		if options:
 			store_quotes(
 				cart,
+				key,
 				{
-					"key": key,
 					"created": str(now_datetime()),
 					"options": options,
 					"messages": messages,
@@ -95,18 +135,27 @@ def ships(cart) -> bool:
 	return any(is_stock_item(row.item_code) for row in cart.items)
 
 
-def provider_options(cart, address: frappe._dict, subtotal: float) -> tuple[list[dict], list[str], bool]:
+def provider_options(
+	cart, address: frappe._dict, subtotal: float, parcel: frappe._dict | None = None
+) -> tuple[list[dict], list[str], bool]:
 	"""Rates from the shop_shipping_rate_providers hooks, the messages they gave, and whether any
-	of them is switched on."""
+	of them is switched on. A parcel is quoted with its own goods, from its warehouse and address,
+	and says who sends it (location_provider), so a rate provider quotes only what it sends."""
 	settings = frappe.get_cached_doc("Shop Settings")
 	context = frappe._dict(
 		cart_items=[
-			{"item_code": row.item_code, "qty": flt(row.qty), "rate": flt(row.rate)} for row in cart.items
-		],
+			{"item_code": row["item_code"], "qty": flt(row["qty"]), "rate": flt(row["rate"])}
+			for row in parcel["items"]
+		]
+		if parcel
+		else [{"item_code": row.item_code, "qty": flt(row.qty), "rate": flt(row.rate)} for row in cart.items],
 		address=address,
-		subtotal=subtotal,
+		subtotal=parcel.subtotal if parcel else subtotal,
 		company=settings.company,
 		currency=frappe.get_cached_value("Company", settings.company, "default_currency"),
+		warehouse=parcel.warehouse if parcel else None,
+		ship_from=parcel.ship_from if parcel else None,
+		location_provider=parcel.provider if parcel else None,
 	)
 	options, messages = [], []
 	active = False  # a provider that is switched off returns None
@@ -173,10 +222,15 @@ def flat_rate_option(subtotal: float) -> dict | None:
 
 
 def cached_quotes(cart) -> dict:
+	"""The cart's recent quotes, by quote key (one per parcel and address)."""
 	try:
-		return json.loads(cart.get("shipping_quotes") or "{}")
+		cached = json.loads(cart.get("shipping_quotes") or "{}")
 	except ValueError:
 		return {}
+	if "key" in cached:
+		# one quote, as kept before parcels
+		return {cached["key"]: cached}
+	return cached
 
 
 def fresh(cached: dict) -> bool:
@@ -184,7 +238,9 @@ def fresh(cached: dict) -> bool:
 	return bool(created) and time_diff_in_seconds(now_datetime(), created) < QUOTE_TTL_SECONDS
 
 
-def store_quotes(cart, quotes: dict) -> None:
+def store_quotes(cart, key: str, quote: dict) -> None:
+	quotes = {k: v for k, v in cached_quotes(cart).items() if fresh(v)}
+	quotes[key] = quote
 	cart.shipping_quotes = json.dumps(quotes, default=str)
 	if not cart.is_new():
 		cart.db_set("shipping_quotes", cart.shipping_quotes, update_modified=False)
@@ -197,6 +253,20 @@ def find_option(options: list[dict], option_id: str | None) -> dict | None:
 	return None
 
 
-def remember_choice(cart, option_id: str | None) -> None:
-	if cint(bool(option_id)) and cart.get("shipping_rate") != option_id:
-		cart.db_set("shipping_rate", option_id, update_modified=False)
+def remember_choice(cart, choice: str | dict | None) -> None:
+	"""The shopper's shipping choice: an option id, or one per parcel {warehouse: option id}."""
+	value = json.dumps(choice, sort_keys=True) if isinstance(choice, dict) else choice
+	if cint(bool(value)) and cart.get("shipping_rate") != value:
+		cart.db_set("shipping_rate", value, update_modified=False)
+
+
+def parse_choice(value) -> dict | str | None:
+	"""A shipping choice as the browser or the cart has it: an option id, or {parcel key: id}."""
+	if isinstance(value, dict):
+		return value
+	if isinstance(value, str) and value.startswith("{"):
+		try:
+			return json.loads(value)
+		except ValueError:
+			return None
+	return value or None

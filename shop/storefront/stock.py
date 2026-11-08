@@ -5,28 +5,115 @@ from frappe import _
 from frappe.utils import cint, flt
 
 
-def get_stock(item_codes: list[str], sellable: bool = False) -> dict[str, float]:
-	"""Stock in the store's warehouse; sellable leaves out what orders not yet delivered wait for. A
-	Product Bundle has as many as its stocked parts make up."""
-	if not item_codes:
-		return {}
+def locations() -> list[frappe._dict]:
+	"""The store's fulfillment locations, first to last: a warehouse, who sends from it and from
+	which address."""
 	settings = frappe.get_cached_doc("Shop Settings")
+	return [
+		frappe._dict(
+			warehouse=row.warehouse,
+			provider=row.fulfillment_provider or "manual",
+			ship_from=row.ship_from_address or warehouse_address(row.warehouse),
+			auto_send=cint(row.auto_send),
+		)
+		for row in settings.get("fulfillment_locations") or []
+		if row.warehouse
+	]
+
+
+def location(warehouse: str | None) -> frappe._dict | None:
+	return next((row for row in locations() if row.warehouse == warehouse), None)
+
+
+def warehouses() -> list[str]:
+	return [row.warehouse for row in locations()]
+
+
+def primary_warehouse() -> str | None:
+	"""The store's first warehouse: where stock is received and services are booked."""
+	names = warehouses()
+	return names[0] if names else None
+
+
+def warehouse_address(warehouse: str) -> str | None:
+	"""The Address linked to a Warehouse in ERPNext, its preferred one first."""
+	rows = frappe.get_all(
+		"Dynamic Link",
+		filters={"link_doctype": "Warehouse", "link_name": warehouse, "parenttype": "Address"},
+		pluck="parent",
+	)
+	if not rows:
+		return None
+	return frappe.db.get_value(
+		"Address",
+		{"name": ["in", rows], "disabled": 0},
+		"name",
+		order_by="is_shipping_address desc, is_primary_address desc",
+	)
+
+
+def warehouse_stock(item_codes: list[str], sellable: bool = False) -> dict[str, dict[str, float]]:
+	"""Stock of each item (and each Product Bundle) in each of the store's warehouses; sellable
+	leaves out what orders not yet delivered wait for. A bundle counts where all its stocked parts
+	are."""
+	names = warehouses()
+	if not item_codes or not names:
+		return {code: {} for code in item_codes}
 	parts = {code: bundle_parts(code) for code in item_codes}
 	codes = list(dict.fromkeys([*item_codes, *(part for rows in parts.values() for part, _qty in rows)]))
-	rows = frappe.get_all(
+	bins = frappe.get_all(
 		"Bin",
-		filters={"item_code": ["in", codes], "warehouse": settings.default_warehouse},
-		fields=["item_code", "actual_qty", "reserved_qty"],
+		filters={"item_code": ["in", codes], "warehouse": ["in", names]},
+		fields=["item_code", "warehouse", "actual_qty", "reserved_qty"],
 	)
-	qty_map = dict.fromkeys(codes, 0.0)
-	qty_map.update(
-		{row.item_code: flt(row.actual_qty) - (flt(row.reserved_qty) if sellable else 0) for row in rows}
-	)
+	qty = {code: dict.fromkeys(names, 0.0) for code in codes}
+	for row in bins:
+		qty[row.item_code][row.warehouse] = flt(row.actual_qty) - (flt(row.reserved_qty) if sellable else 0)
 	for code, bundle in parts.items():
-		stocked = [(part, qty) for part, qty in bundle if frappe.get_cached_value("Item", part, "is_stock_item")]
+		stocked = [(part, n) for part, n in bundle if frappe.get_cached_value("Item", part, "is_stock_item")]
 		if stocked:
-			qty_map[code] = min(math.floor(qty_map.get(part, 0) / qty) for part, qty in stocked)
-	return {code: qty_map[code] for code in item_codes}
+			qty[code] = {
+				warehouse: min(math.floor(qty[part][warehouse] / n) for part, n in stocked)
+				for warehouse in names
+			}
+	return {code: qty[code] for code in item_codes}
+
+
+def get_stock(item_codes: list[str], sellable: bool = False) -> dict[str, float]:
+	"""Stock across the store's warehouses; sellable leaves out what orders not yet delivered wait
+	for. A Product Bundle has as many as its stocked parts make up in each warehouse."""
+	by_warehouse = warehouse_stock(item_codes, sellable)
+	return {code: sum(max(qty, 0) for qty in by_warehouse[code].values()) for code in item_codes}
+
+
+def allocate(lines: list[tuple[str, float]]) -> list[frappe._dict]:
+	"""Which warehouse each line is sent from: the first, in the store's order, that has all of it;
+	a line no single warehouse has is split across them. What isn't stocked (a service), or isn't in
+	stock where the store sells out-of-stock items, goes to the first warehouse."""
+	first = primary_warehouse()
+	codes = list(dict.fromkeys(code for code, _qty in lines))
+	left = warehouse_stock([code for code in codes if is_stock_item(code)], sellable=True)
+	allocated = []
+	for code, qty in lines:
+		qty = flt(qty)
+		if code not in left:
+			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=first))
+			continue
+		stock = left[code]
+		whole = next((warehouse for warehouse in warehouses() if stock.get(warehouse, 0) >= qty), None)
+		if whole:
+			stock[whole] -= qty
+			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=whole))
+			continue
+		for warehouse in warehouses():
+			take = min(qty, max(stock.get(warehouse, 0), 0))
+			if take > 0:
+				stock[warehouse] -= take
+				qty -= take
+				allocated.append(frappe._dict(item_code=code, qty=take, warehouse=warehouse))
+		if qty > 0:
+			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=first))
+	return allocated
 
 
 def bundle_parts(item_code: str) -> list[tuple[str, float]]:

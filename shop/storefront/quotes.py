@@ -45,13 +45,9 @@ def request_quote(
 
 		terms.apply_to(quotation)
 		if order_quote.shipping:
-			quotation.shop_shipping_option = json.dumps(
-				{
-					k: order_quote.shipping.get(k)
-					for k in ("id", "label", "amount", "carrier", "service", "meta")
-				},
-				default=str,
-			)
+			from shop.storefront.checkout import shipping_choice_json
+
+			quotation.shop_shipping_option = shipping_choice_json(order_quote)
 		quotation.flags.ignore_permissions = True
 		quotation.insert(ignore_permissions=True)
 		from shop.storefront import emails
@@ -337,6 +333,27 @@ def tell_staff_prices_changed(quotation: str, order_total: float) -> None:
 	)
 
 
+def quoted_shipping(quotation):
+	"""The shipping the quote was made with: one service, or one per parcel."""
+	chosen = json.loads(quotation.shop_shipping_option)
+	return [frappe._dict(row) for row in chosen] if isinstance(chosen, list) else frappe._dict(chosen)
+
+
+def reassign_short_lines(order) -> None:
+	"""A line whose quoted warehouse no longer has it is sent from the first of the store's
+	warehouses that does."""
+	from shop.storefront.stock import is_stock_item, warehouse_stock, warehouses
+
+	codes = [row.item_code for row in order.items if is_stock_item(row.item_code)]
+	stock = warehouse_stock(codes, sellable=True)
+	for row in order.items:
+		if row.item_code not in stock or stock[row.item_code].get(row.warehouse, 0) >= flt(row.qty):
+			continue
+		better = next((name for name in warehouses() if stock[row.item_code].get(name, 0) >= flt(row.qty)), None)
+		if better:
+			row.warehouse = better
+
+
 def make_order(quotation):
 	from erpnext.selling.doctype.quotation.quotation import make_sales_order
 
@@ -397,12 +414,13 @@ def accept_quote(
 			)
 		order.contact_email = quotation.contact_email
 		order.shop_access_token = frappe.generate_hash(length=32)
+		quoted = quoted_shipping(quotation) if quotation.get("shop_shipping_option") else None
 		order_quote = frappe._dict(
 			payment_method=payment_method,
-			shipping=frappe._dict(json.loads(quotation.shop_shipping_option))
-			if quotation.get("shop_shipping_option")
-			else None,
+			shipping=quoted[0] if isinstance(quoted, list) else quoted,
+			shippings=quoted if isinstance(quoted, list) else None,
 		)
+		reassign_short_lines(order)
 		set_shop_details(order, order_quote, cint(accept_terms), cint(business_buyer))
 		add_payment_fee(order, quotation, payment_method)
 		order.flags.ignore_permissions = True

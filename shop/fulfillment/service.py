@@ -9,38 +9,111 @@ from shop.fulfillment.provider import get_provider
 OPEN_STATUSES = ("Pending", "Accepted", "Shipped")
 
 
-def send(order_name: str, provider_key: str | None = None) -> str:
-	"""Hand an order to a fulfillment provider. Returns the fulfillment name."""
+def parcels(order) -> dict[str | None, list[dict]]:
+	"""The order's goods by the warehouse they are sent from: one parcel per warehouse."""
+	from shop.storefront.totals import is_charge_item
+
+	grouped: dict[str | None, list[dict]] = {}
+	for row in order.items:
+		if is_charge_item(row.item_code):
+			continue
+		grouped.setdefault(row.warehouse or None, []).append(
+			{
+				"item_code": row.item_code,
+				"item_name": row.item_name,
+				"qty": flt(row.qty),
+				"warehouse": row.warehouse or None,
+			}
+		)
+	return grouped
+
+
+def parcel_provider(warehouse: str | None) -> str:
+	"""Who sends from a warehouse: its location's provider, else the store's first location's."""
+	from shop.storefront.stock import location, locations
+
+	row = location(warehouse) or next(iter(locations()), None)
+	return row.provider if row else "manual"
+
+
+def chosen_option(order, warehouse: str | None) -> dict | None:
+	"""The shipping service the customer chose for the parcel from this warehouse."""
+	raw = order.get("shop_shipping_option")
+	if not raw:
+		return None
+	try:
+		chosen = json.loads(raw)
+	except ValueError:
+		return None
+	if isinstance(chosen, dict):
+		# an order placed before parcels: one choice for everything
+		return chosen
+	return next((option for option in chosen if option.get("warehouse") == warehouse), None)
+
+
+def send(order_name: str, provider_key: str | None = None, warehouse: str | None = None) -> str:
+	"""Hand a parcel of an order to a fulfillment provider: the one from this warehouse, or the
+	order's first parcel not sent yet. Returns the fulfillment name."""
 	order = frappe.get_doc("Sales Order", order_name)
 	if order.docstatus != 1:
 		frappe.throw(_("Only submitted orders can be sent for fulfillment"))
-	existing = frappe.db.exists(
-		"Shop Fulfillment", {"sales_order": order_name, "status": ["in", OPEN_STATUSES]}
-	)
-	if existing:
-		frappe.throw(_("This order is already with a fulfillment provider"))
-	key = provider_key or configured_provider()
+	groups = parcels(order)
+	if warehouse is None:
+		waiting = [name for name in groups if not open_fulfillment(order_name, name)]
+		if not waiting:
+			frappe.throw(_("This order is already with a fulfillment provider"))
+		warehouse = waiting[0]
+	elif warehouse not in groups:
+		frappe.throw(_("Nothing in this order is sent from {0}").format(warehouse))
+	if open_fulfillment(order_name, warehouse):
+		frappe.throw(_("This parcel is already with a fulfillment provider"))
+	key = provider_key or parcel_provider(warehouse)
 	provider = get_provider(key)
 	if not provider.is_configured():
 		frappe.throw(_("{0} is not set up yet. {1}").format(provider.label, provider.setup_hint()))
-	from shop.storefront.totals import is_charge_item
+	from shop.storefront.stock import location, warehouse_address
 
-	items = [
-		{"item_code": row.item_code, "item_name": row.item_name, "qty": flt(row.qty)}
-		for row in order.items
-		if not is_charge_item(row.item_code)
-	]
-	record = {"doctype": "Shop Fulfillment", "sales_order": order_name, "provider": key, "items": items}
+	place = location(warehouse)
+	items = groups[warehouse]
+	option = chosen_option(order, warehouse)
+	record = {
+		"doctype": "Shop Fulfillment",
+		"sales_order": order_name,
+		"provider": key,
+		"warehouse": warehouse,
+		"ship_from_address": (place.ship_from if place else None)
+		or (warehouse_address(warehouse) if warehouse else None),
+		"shipping_option": json.dumps(option, default=str) if option else None,
+		"items": [{field: row[field] for field in ("item_code", "item_name", "qty")} for row in items],
+	}
 	frappe.db.savepoint("shop_send")
 	fulfillment = frappe.get_doc({**record, "status": "Pending"}).insert(ignore_permissions=True)
 	try:
-		apply_result(fulfillment, provider.create_shipment(order, items))
+		apply_result(fulfillment, create_shipment(provider, order, items, fulfillment))
 	except Exception as error:
 		# what the provider made before failing (a Delivery Note, say) is undone; the failure is kept
 		frappe.db.rollback(save_point="shop_send")
 		frappe.get_doc({**record, "status": "Failed", "error": str(error)[:500]}).insert(ignore_permissions=True)
 		raise
 	return fulfillment.name
+
+
+def create_shipment(provider, order, items: list[dict], fulfillment) -> dict:
+	"""A provider that takes the fulfillment gets it (its warehouse, address and the customer's
+	choice); an older one gets the order and items only."""
+	import inspect
+
+	if "fulfillment" in inspect.signature(provider.create_shipment).parameters:
+		return provider.create_shipment(order, items, fulfillment=fulfillment)
+	return provider.create_shipment(order, items)
+
+
+def open_fulfillment(order_name: str, warehouse: str | None) -> str | None:
+	"""The parcel's fulfillment still in hand, if any. One recorded without a warehouse (before
+	parcels) stands for the whole order."""
+	filters = {"sales_order": order_name, "status": ["in", OPEN_STATUSES]}
+	whole = frappe.db.get_value("Shop Fulfillment", {**filters, "warehouse": ["is", "not set"]})
+	return whole or frappe.db.get_value("Shop Fulfillment", {**filters, "warehouse": warehouse})
 
 
 def sync(fulfillment_name: str) -> dict:
@@ -103,9 +176,7 @@ def notify_customer(fulfillment, status: str) -> None:
 
 
 def record_delivery(fulfillment) -> None:
-	"""File the delivery in ERPNext so stock and the order status stay honest."""
-	from shop.api.orders import fulfill
-
+	"""File the parcel's delivery in ERPNext so stock and the order status stay honest."""
 	order = frappe.db.get_value(
 		"Sales Order", fulfillment.sales_order, ["docstatus", "per_delivered"], as_dict=True
 	)
@@ -114,7 +185,7 @@ def record_delivery(fulfillment) -> None:
 	# a Delivery Note that fails half way isn't left behind as a draft
 	frappe.db.savepoint("shop_record_delivery")
 	try:
-		fulfill(fulfillment.sales_order)
+		deliver_parcel(fulfillment)
 	except Exception:
 		frappe.db.rollback(save_point="shop_record_delivery")
 		frappe.log_error(
@@ -124,10 +195,28 @@ def record_delivery(fulfillment) -> None:
 		)
 
 
+def deliver_parcel(fulfillment) -> str | None:
+	"""A Delivery Note for what the order still has to deliver from the parcel's warehouse (all of
+	it, for a fulfillment recorded before parcels)."""
+	from shop.compat import make_delivery_note
+
+	note = make_delivery_note(fulfillment.sales_order)
+	if fulfillment.get("warehouse"):
+		note.items = [row for row in note.items if row.warehouse == fulfillment.warehouse]
+	if not note.items:
+		return None
+	note.flags.ignore_permissions = True
+	note.insert(ignore_permissions=True)
+	note.submit()
+	return note.name
+
+
 def auto_send(order_name: str) -> None:
-	"""Hand a paid order over without waiting to be asked, when the store wants that: once the
-	payment is saved, so a provider never gets an order whose payment was rolled back."""
-	if not frappe.get_cached_doc("Shop Settings").get("auto_send_to_fulfillment"):
+	"""Hand a paid order over without waiting to be asked, from the locations that want that: once
+	the payment is saved, so a provider never gets an order whose payment was rolled back."""
+	from shop.storefront.stock import locations
+
+	if not any(row.auto_send for row in locations()):
 		return
 	frappe.enqueue(
 		"shop.fulfillment.service.send_paid_order",
@@ -139,26 +228,36 @@ def auto_send(order_name: str) -> None:
 
 
 def send_paid_order(order_name: str) -> None:
-	if not frappe.get_cached_doc("Shop Settings").get("auto_send_to_fulfillment"):
-		return
-	# only the first hand-over is automatic: an order sent before (even if that was cancelled),
-	# delivered, closed or cancelled is left to staff
-	if frappe.db.exists("Shop Fulfillment", {"sales_order": order_name, "status": ["!=", "Failed"]}):
-		return
+	from shop.storefront.stock import location, locations
+
 	order = frappe.db.get_value("Sales Order", order_name, ["docstatus", "status", "per_delivered"], as_dict=True)
 	if not order or order.docstatus != 1 or order.status in ("Closed", "Completed") or flt(order.per_delivered):
 		return
-	try:
-		send(order_name)
-	except Exception:
-		frappe.log_error(
-			title="Automatic fulfillment failed", reference_doctype="Sales Order", reference_name=order_name
-		)
+	first = next(iter(locations()), None)
+	for warehouse in parcels(frappe.get_doc("Sales Order", order_name)):
+		place = location(warehouse) or first
+		if not place or not place.auto_send:
+			continue
+		# only the first hand-over of a parcel is automatic: one sent before (even if that was
+		# cancelled) is left to staff
+		if frappe.db.exists(
+			"Shop Fulfillment", {"sales_order": order_name, "status": ["!=", "Failed"], "warehouse": warehouse}
+		) or frappe.db.exists(
+			"Shop Fulfillment",
+			{"sales_order": order_name, "status": ["!=", "Failed"], "warehouse": ["is", "not set"]},
+		):
+			continue
+		try:
+			send(order_name, warehouse=warehouse)
+		except Exception:
+			frappe.log_error(
+				title="Automatic fulfillment failed", reference_doctype="Sales Order", reference_name=order_name
+			)
 
 
 def configured_provider() -> str:
-	settings = frappe.get_cached_doc("Shop Settings")
-	return settings.get("fulfillment_provider") or "manual"
+	"""The provider of the store's first location."""
+	return parcel_provider(None)
 
 
 def summary(fulfillment) -> dict:
@@ -169,6 +268,8 @@ def summary(fulfillment) -> dict:
 		"sales_order": fulfillment.sales_order,
 		"provider": fulfillment.provider,
 		"provider_label": provider_label(fulfillment.provider),
+		"warehouse": fulfillment.get("warehouse"),
+		"shipping_option": json.loads(fulfillment.shipping_option) if fulfillment.get("shipping_option") else None,
 		"status": fulfillment.status,
 		"external_id": fulfillment.external_id,
 		"carrier": fulfillment.carrier,
@@ -191,10 +292,44 @@ def provider_label(key: str) -> str:
 
 
 def for_order(order_name: str) -> dict | None:
+	"""The order's latest fulfillment."""
 	name = frappe.db.get_value(
 		"Shop Fulfillment", {"sales_order": order_name}, "name", order_by="creation desc"
 	)
 	return summary(name) if name else None
+
+
+def order_parcels(order_name: str) -> list[dict]:
+	"""Each parcel of the order: its warehouse, who sends it, its goods and its latest fulfillment."""
+	from shop.storefront.stock import location
+
+	order = frappe.get_doc("Sales Order", order_name)
+	result = []
+	for warehouse, items in parcels(order).items():
+		names = frappe.get_all(
+			"Shop Fulfillment",
+			filters={"sales_order": order_name, "warehouse": warehouse or ["is", "not set"]},
+			pluck="name",
+			order_by="creation desc",
+		)
+		if not names and len(parcels(order)) == 1:
+			# recorded before parcels, without a warehouse
+			names = frappe.get_all(
+				"Shop Fulfillment", filters={"sales_order": order_name}, pluck="name", order_by="creation desc"
+			)
+		result.append(
+			{
+				"warehouse": warehouse,
+				"warehouse_label": frappe.db.get_value("Warehouse", warehouse, "warehouse_name") if warehouse else None,
+				"provider": parcel_provider(warehouse),
+				"provider_label": provider_label(parcel_provider(warehouse)),
+				"located": bool(location(warehouse)),
+				"items": items,
+				"fulfillment": summary(names[0]) if names else None,
+				"history": [summary(name) for name in names[1:]],
+			}
+		)
+	return result
 
 
 def sync_open_shipments() -> None:

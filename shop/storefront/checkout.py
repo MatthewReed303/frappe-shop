@@ -97,8 +97,13 @@ def quote(
 		frappe.throw(_("Your cart is empty"))
 	with elevated():
 		result = totals.compute(cart, address, shipping_option, payment_method, currency)
-		if result.shipping:
-			shipping.remember_choice(cart, result.shipping["id"])
+		if result.shippings:
+			shipping.remember_choice(
+				cart,
+				{row.parcel: row.id for row in result.shippings}
+				if len(result.shippings) > 1
+				else result.shippings[0].id,
+			)
 		return totals.payload(result)
 
 
@@ -423,8 +428,8 @@ def validate_stock(cart):
 	parts = [part for code in codes for part, _qty in stock.bundle_parts(code)]
 	if codes:
 		frappe.db.sql(
-			"select name from `tabBin` where item_code in %(codes)s and warehouse = %(warehouse)s for update",
-			{"codes": [*codes, *parts], "warehouse": frappe.get_cached_doc("Shop Settings").default_warehouse},
+			"select name from `tabBin` where item_code in %(codes)s and warehouse in %(warehouses)s for update",
+			{"codes": [*codes, *parts], "warehouses": stock.warehouses() or [""]},
 		)
 	for row in cart.items:
 		cart_module.validate_purchasable(row.item_code)
@@ -673,10 +678,7 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 	if days:
 		sales_order.shop_payment_due = add_days(nowdate(), days)
 	if order_quote.shipping:
-		sales_order.shop_shipping_option = json.dumps(
-			{key: order_quote.shipping.get(key) for key in ("id", "label", "amount", "carrier", "service", "meta")},
-			default=str,
-		)
+		sales_order.shop_shipping_option = shipping_choice_json(order_quote)
 	from shop.storefront import terms
 
 	# an order made from a quote keeps the quote's terms
@@ -686,6 +688,16 @@ def set_shop_details(sales_order, order_quote, terms_accepted: int, business_buy
 		sales_order.shop_terms_version = terms.version()
 		sales_order.shop_terms_accepted_on = frappe.utils.now_datetime()
 	sales_order.shop_business_buyer = 1 if business_buyer else 0
+
+
+SHIPPING_FIELDS = ("id", "label", "amount", "carrier", "service", "meta", "warehouse")
+
+
+def shipping_choice_json(order_quote) -> str:
+	"""What the customer chose to ship with: one service, or one per parcel (with its warehouse)."""
+	chosen = order_quote.get("shippings") or [order_quote.shipping]
+	rows = [{key: row.get(key) for key in SHIPPING_FIELDS} for row in chosen]
+	return json.dumps(rows if len(rows) > 1 else rows[0], default=str)
 
 
 def check_total(sales_order, order_quote) -> None:

@@ -124,11 +124,13 @@ def terms_record() -> str:
 	return "_Test Store Terms"
 
 
-def sellable(item_code: str, qty: float) -> None:
-	"""At least this many of the item to sell, whatever earlier tests' orders are waiting for."""
+def sellable(item_code: str, qty: float, warehouse: str | None = None) -> None:
+	"""At least this many of the item to sell (in this warehouse, else the store's first), whatever
+	earlier tests' orders are waiting for."""
 	from shop.storefront import stock
 
-	short = qty - stock.get_stock([item_code], sellable=True).get(item_code, 0)
+	warehouse = warehouse or stock.primary_warehouse()
+	short = qty - max(stock.warehouse_stock([item_code], sellable=True)[item_code].get(warehouse, 0), 0)
 	if short <= 0:
 		return
 	settings = frappe.get_cached_doc("Shop Settings")
@@ -141,7 +143,7 @@ def sellable(item_code: str, qty: float) -> None:
 				{
 					"item_code": item_code,
 					"qty": short,
-					"t_warehouse": settings.default_warehouse,
+					"t_warehouse": warehouse,
 					"basic_rate": 1,
 				}
 			],
@@ -149,3 +151,40 @@ def sellable(item_code: str, qty: float) -> None:
 	)
 	entry.insert(ignore_permissions=True)
 	entry.submit()
+
+
+def second_warehouse(company: str) -> str:
+	"""A second stock warehouse of the company, as a store with two locations has."""
+	abbr = frappe.get_cached_value("Company", company, "abbr")
+	name = f"_Test Shop Second - {abbr}"
+	if not frappe.db.exists("Warehouse", name):
+		parent = frappe.db.get_value("Warehouse", {"company": company, "is_group": 1}, "name", order_by="lft")
+		frappe.get_doc(
+			{
+				"doctype": "Warehouse",
+				"warehouse_name": "_Test Shop Second",
+				"company": company,
+				"parent_warehouse": parent,
+			}
+		).insert(ignore_permissions=True)
+	return name
+
+
+def use_locations(test, *rows: dict) -> None:
+	"""The store's fulfillment locations for one test, put back afterwards."""
+	settings = frappe.get_doc("Shop Settings")
+	original = [
+		{f: row.get(f) for f in ("warehouse", "fulfillment_provider", "ship_from_address", "auto_send")}
+		for row in settings.fulfillment_locations
+	]
+
+	def put(locations):
+		doc = frappe.get_doc("Shop Settings")
+		doc.fulfillment_locations = []
+		for row in locations:
+			doc.append("fulfillment_locations", row)
+		doc.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+
+	test.addCleanup(put, original)
+	put(rows)

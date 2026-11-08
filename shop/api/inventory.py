@@ -2,19 +2,26 @@ import frappe
 from frappe.utils import cint, flt
 
 from shop.api import only_managers
-from shop.storefront import pricing
+from shop.storefront import pricing, stock
 
 LOW_STOCK_DEFAULT = 5
 
 
 @frappe.whitelist()
-def get_inventory(search: str | None = None, low_only: bool = False, start: int = 0, limit: int = 50) -> dict:
+def get_inventory(
+	search: str | None = None,
+	low_only: bool = False,
+	start: int = 0,
+	limit: int = 50,
+	warehouse: str | None = None,
+) -> dict:
 	only_managers()
 	settings = frappe.get_cached_doc("Shop Settings")
+	warehouse = store_warehouse(warehouse)
 	threshold = cint(settings.get("low_stock_threshold")) or LOW_STOCK_DEFAULT
 	rows = tracked_items(search)
 	relabel_variants(rows)
-	quantities = stock_map([row["item_code"] for row in rows], settings.default_warehouse)
+	quantities = stock_map([row["item_code"] for row in rows], warehouse)
 	for row in rows:
 		row["stock"] = quantities.get(row["item_code"], 0)
 		row["low"] = row["stock"] <= threshold
@@ -26,8 +33,18 @@ def get_inventory(search: str | None = None, low_only: bool = False, start: int 
 		"total": len(rows),
 		"low_count": len([row for row in rows if row["low"]]),
 		"threshold": threshold,
-		"warehouse": warehouse_label(settings.default_warehouse),
+		"warehouse": warehouse,
+		"warehouses": [{"value": name, "label": warehouse_label(name)} for name in stock.warehouses()],
 	}
+
+
+def store_warehouse(warehouse: str | None) -> str | None:
+	"""One of the store's warehouses: the one asked for, else its first."""
+	if not warehouse:
+		return stock.primary_warehouse()
+	if warehouse not in stock.warehouses():
+		frappe.throw(frappe._("{0} is not one of the store's warehouses").format(warehouse))
+	return warehouse
 
 
 def relabel_variants(rows: list[dict]) -> None:
@@ -96,13 +113,16 @@ def valuation_rate(item_code: str, warehouse: str) -> float:
 
 
 @frappe.whitelist(methods=["POST"])
-def set_stock(item_code: str, qty: float) -> dict:
-	"""Reconcile an item to an exact quantity."""
+def set_stock(item_code: str, qty: float, warehouse: str | None = None) -> dict:
+	"""Reconcile an item to an exact quantity in one of the store's warehouses."""
 	only_managers()
 	settings = frappe.get_cached_doc("Shop Settings")
-	row = {"item_code": item_code, "warehouse": settings.default_warehouse, "qty": flt(qty)}
+	warehouse = store_warehouse(warehouse)
+	if not warehouse:
+		frappe.throw(frappe._("Add a warehouse under Fulfillment locations in Settings first"))
+	row = {"item_code": item_code, "warehouse": warehouse, "qty": flt(qty)}
 	# valued as ERPNext values it, never made up from the selling price
-	rate = valuation_rate(item_code, settings.default_warehouse)
+	rate = valuation_rate(item_code, warehouse)
 	if rate:
 		row["valuation_rate"] = rate
 	else:

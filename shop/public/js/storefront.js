@@ -336,12 +336,31 @@
 		return address;
 	}
 
+	// one service, or one per parcel when the order is sent from more than one warehouse
+	function shippingChoice(form) {
+		const picks = [...form.querySelectorAll('input[name^="shipping_option:"]:checked')];
+		if (picks.length) {
+			return JSON.stringify(Object.fromEntries(picks.map((input) => [input.name.slice("shipping_option:".length), input.value])));
+		}
+		return new FormData(form).get("shipping_option") || undefined;
+	}
+
+	function shippingOptionsHtml(options, name) {
+		return options
+			.map(
+				(option) => `<label class="checkout-option"><input type="radio" name="${esc(name)}" value="${esc(option.id)}"${option.selected ? " checked" : ""}>
+						<span class="checkout-option-label">${esc(option.label)}${option.eta ? ` <small>${esc(option.eta)}</small>` : ""}</span>
+						<span class="checkout-option-price">${esc(option.formatted)}</span></label>`
+			)
+			.join("");
+	}
+
 	function checkoutChoice(form) {
 		const data = new FormData(form);
 		const currency = form.querySelector('select[name="currency"]');
 		const method = data.get("payment_method") || undefined;
 		return {
-			shipping_option: data.get("shipping_option") || undefined,
+			shipping_option: shippingChoice(form),
 			// an international transfer is chosen under bank transfer, as where the money comes from
 			payment_method: method === "bank" && data.get("bank_route") ? data.get("bank_route") : method,
 			// until the shopper picks one, the store suggests their own currency
@@ -383,17 +402,19 @@
 		if (options) {
 			if (quote.shipping_pending) {
 				options.innerHTML = `<p class="checkout-hint">Enter your address to see shipping options.</p>`;
+			} else if ((quote.shipping_groups || []).length) {
+				options.innerHTML =
+					quote.shipping_groups
+						.map(
+							(group) => `<div class="checkout-parcel"><p class="checkout-hint"><strong>${esc(group.label)}</strong> · ${esc(group.items)}</p>
+							${group.options.length ? shippingOptionsHtml(group.options, `shipping_option:${group.key}`) : `<div class="checkout-warning" role="alert"><p>We can't send this parcel to this address.</p></div>`}</div>`
+						)
+						.join("") + (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
 			} else if (!quote.shipping_options.length) {
 				const reasons = (quote.shipping_messages || []).map((m) => `<p>${esc(m)}</p>`).join("");
 				options.innerHTML = `<div class="checkout-warning" role="alert">${reasons || "<p>We can't ship to this address. Check it, or contact us.</p>"}</div>`;
 			} else {
-				options.innerHTML = quote.shipping_options
-					.map(
-						(option) => `<label class="checkout-option"><input type="radio" name="shipping_option" value="${esc(option.id)}"${option.selected ? " checked" : ""}>
-						<span class="checkout-option-label">${esc(option.label)}${option.eta ? ` <small>${esc(option.eta)}</small>` : ""}</span>
-						<span class="checkout-option-price">${esc(option.formatted)}</span></label>`
-					)
-					.join("") + (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
+				options.innerHTML = shippingOptionsHtml(quote.shipping_options, "shipping_option") + (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
 			}
 		}
 		form.querySelectorAll('[data-shop="payment-fee"]').forEach((note) => {
@@ -545,7 +566,7 @@
 			const result = await call("shop.storefront.quotes.request_quote", {
 				customer: { email: data.get("email"), full_name: data.get("full_name"), phone: data.get("phone") },
 				address: formAddress(form),
-				shipping_option: data.get("shipping_option") || undefined,
+				shipping_option: shippingChoice(form),
 				message: data.get("quote_message") || "",
 			});
 			const done = document.querySelector('[data-shop="quote-done"]');
@@ -576,7 +597,7 @@
 		form.addEventListener("change", (event) => {
 			const name = event.target.name;
 			if (name === "currency" || name === "bank_route") event.target.dataset.chosen = "1";
-			if (["shipping_option", "payment_method", "currency", "bank_route", "country"].includes(name)) scheduleQuote(0);
+			if (["shipping_option", "payment_method", "currency", "bank_route", "country"].includes(name) || name.startsWith("shipping_option:")) scheduleQuote(0);
 		});
 		scheduleQuote(0);
 	}

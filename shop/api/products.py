@@ -315,6 +315,11 @@ def get_item_groups() -> dict:
 
 def receive_stock(item_code: str, qty: float, rate: float, settings) -> None:
 	from shop.api.inventory import valuation_rate
+	from shop.storefront.stock import primary_warehouse
+
+	warehouse = primary_warehouse()
+	if not warehouse:
+		frappe.throw(_("Add a warehouse under Fulfillment locations in Settings to receive stock"))
 
 	entry = frappe.get_doc(
 		{
@@ -325,9 +330,9 @@ def receive_stock(item_code: str, qty: float, rate: float, settings) -> None:
 				{
 					"item_code": item_code,
 					"qty": qty,
-					"t_warehouse": settings.default_warehouse,
+					"t_warehouse": warehouse,
 					# valued as ERPNext values the item, never made up from the selling price
-					"basic_rate": valuation_rate(item_code, settings.default_warehouse),
+					"basic_rate": valuation_rate(item_code, warehouse),
 					"allow_zero_valuation_rate": 1,
 				}
 			],

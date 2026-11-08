@@ -15,9 +15,6 @@ EDITABLE = (
 	"shipping_account",
 	"low_stock_threshold",
 	"price_list",
-	"default_warehouse",
-	"fulfillment_provider",
-	"auto_send_to_fulfillment",
 	"show_prices_with_tax",
 	"other_currencies_with_tax",
 	"export_tax_template",
@@ -47,7 +44,6 @@ CHECKS = {
 	"enable_cod",
 	"allow_out_of_stock",
 	"prices_include_tax",
-	"auto_send_to_fulfillment",
 	"show_prices_with_tax",
 	"other_currencies_with_tax",
 	"enable_bank_transfer",
@@ -70,6 +66,7 @@ COUNTS = {
 	"return_window_days",
 	"quote_valid_days",
 }
+LOCATION_FIELDS = ("warehouse", "fulfillment_provider", "ship_from_address", "auto_send")
 GATEWAY_FIELDS = (
 	"payment_gateway",
 	"label",
@@ -113,6 +110,10 @@ def get_settings() -> dict:
 			"gateway_accounts": frappe.get_all(
 				"Payment Gateway Account", fields=["name", "payment_gateway", "currency"]
 			),
+			"fulfillment_locations": [
+				{field: row.get(field) for field in LOCATION_FIELDS} for row in settings.fulfillment_locations
+			],
+			"addresses": company_addresses(settings.company),
 			"payment_gateways": [
 				{field: row.get(field) for field in GATEWAY_FIELDS} for row in settings.payment_gateways
 			],
@@ -151,6 +152,31 @@ def get_settings() -> dict:
 		}
 	)
 	return payload
+
+
+def company_addresses(company: str | None) -> list[dict]:
+	"""Addresses parcels can be sent from: the company's and its warehouses'."""
+	if not company:
+		return []
+	from shop.storefront.stock import warehouse_address
+
+	names = frappe.get_all(
+		"Dynamic Link",
+		filters={"link_doctype": "Company", "link_name": company, "parenttype": "Address"},
+		pluck="parent",
+	)
+	for warehouse in frappe.get_all("Warehouse", filters={"company": company, "is_group": 0}, pluck="name"):
+		address = warehouse_address(warehouse)
+		if address:
+			names.append(address)
+	return [
+		{"value": row.name, "label": f"{row.address_title or row.name}, {row.city or ''}".strip(", ")}
+		for row in frappe.get_all(
+			"Address",
+			filters={"name": ["in", list(dict.fromkeys(names)) or [""]], "disabled": 0},
+			fields=["name", "address_title", "city"],
+		)
+	]
 
 
 def company_bank_accounts(company: str) -> list[dict]:
@@ -195,6 +221,15 @@ def save_settings(payload: dict) -> dict:
 		elif field in COUNTS:
 			value = cint(value)
 		settings.set(field, value)
+	if "fulfillment_locations" in payload:
+		settings.set(
+			"fulfillment_locations",
+			[
+				{field: row.get(field) for field in LOCATION_FIELDS}
+				for row in payload["fulfillment_locations"] or []
+				if row.get("warehouse")
+			],
+		)
 	if "payment_gateways" in payload:
 		settings.set(
 			"payment_gateways",

@@ -17,7 +17,6 @@
   "price_list",
   "currency",
   "column_break_commerce",
-  "default_warehouse",
   "allow_out_of_stock",
   "prices_include_tax",
   "show_prices_with_tax",
@@ -28,9 +27,9 @@
   "column_break_shipping",
   "shipping_account",
   "low_stock_threshold",
-  "fulfillment_provider",
-  "auto_send_to_fulfillment",
   "shipping_item",
+  "fulfillment_section",
+  "fulfillment_locations",
   "payments_section",
   "enable_cod",
   "column_break_payments",
@@ -147,12 +146,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "default_warehouse",
-   "fieldtype": "Link",
-   "label": "Default Warehouse",
-   "options": "Warehouse"
-  },
-  {
    "default": "0",
    "fieldname": "allow_out_of_stock",
    "fieldtype": "Check",
@@ -197,19 +190,6 @@
    "fieldname": "low_stock_threshold",
    "fieldtype": "Int",
    "label": "Low Stock Threshold"
-  },
-  {
-   "default": "manual",
-   "description": "Who ships your orders. Providers are supplied by installed apps.",
-   "fieldname": "fulfillment_provider",
-   "fieldtype": "Data",
-   "label": "Fulfillment Provider"
-  },
-  {
-   "default": "0",
-   "fieldname": "auto_send_to_fulfillment",
-   "fieldtype": "Check",
-   "label": "Send Paid Orders Automatically"
   },
   {
    "fieldname": "payments_section",
@@ -485,11 +465,23 @@
    "fieldname": "email_statements",
    "fieldtype": "Check",
    "label": "Email Monthly Statements"
+  },
+  {
+   "fieldname": "fulfillment_section",
+   "fieldtype": "Section Break",
+   "label": "Fulfillment Locations"
+  },
+  {
+   "description": "The warehouses the store sells from, first to last: an order takes each item's stock from the first warehouse that has it, and is sent from each warehouse by its provider, one parcel per warehouse.",
+   "fieldname": "fulfillment_locations",
+   "fieldtype": "Table",
+   "label": "Fulfillment Locations",
+   "options": "Shop Fulfillment Location"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-09 11:00:00.000000",
+ "modified": "2026-11-09 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

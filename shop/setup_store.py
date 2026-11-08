@@ -35,7 +35,8 @@ def set_up(
 	settings = frappe.get_doc("Shop Settings")
 	settings.company = company or settings.company
 	settings.price_list = price_list or settings.price_list
-	settings.default_warehouse = warehouse or settings.default_warehouse
+	if warehouse and warehouse not in [row.warehouse for row in settings.fulfillment_locations]:
+		settings.append("fulfillment_locations", {"warehouse": warehouse, "fulfillment_provider": "manual"})
 	fill_commerce_defaults(settings)
 	company_doc = frappe.get_doc("Company", settings.company)
 	settings.currency = settings.currency or company_doc.default_currency

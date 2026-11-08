@@ -19,7 +19,16 @@
 			>
 				<template #prefix><LucideSearch class="size-4 text-ink-gray-5" /></template>
 			</FormControl>
-			<Switch v-model="lowOnly" label="Low stock only" class="!w-auto" />
+			<div class="flex items-center gap-4">
+				<FormControl
+					v-if="(inventory.data?.warehouses || []).length > 1"
+					v-model="warehouse"
+					type="select"
+					:options="inventory.data?.warehouses || []"
+					class="w-56"
+				/>
+				<Switch v-model="lowOnly" label="Low stock only" class="!w-auto" />
+			</div>
 		</div>
 
 		<CatalogListState
@@ -116,6 +125,7 @@ const PAGE_SIZE = 20
 
 const search = ref('')
 const lowOnly = ref(false)
+const warehouse = ref('')
 const start = ref(0)
 const drafts = reactive<Record<string, string | number>>({})
 const savingCode = ref('')
@@ -127,6 +137,7 @@ const inventory = createResource({
 		low_only: lowOnly.value ? 1 : 0,
 		start: start.value,
 		limit: PAGE_SIZE,
+		warehouse: warehouse.value || undefined,
 	}),
 	auto: true,
 })
@@ -137,10 +148,16 @@ const stats = computed(() => [
 	{ label: 'Items tracked', value: inventory.data?.total ?? '--' },
 	{ label: 'Low stock', value: inventory.data?.low_count ?? '--' },
 	{ label: 'Low stock threshold', value: inventory.data?.threshold ?? '--' },
-	{ label: 'Warehouse', value: inventory.data?.warehouse || '--' },
+	{
+		label: 'Warehouse',
+		value:
+			(inventory.data?.warehouses || []).find(
+				(option: { value: string; label: string }) => option.value === inventory.data?.warehouse,
+			)?.label || '--',
+	},
 ])
 
-watch([search, lowOnly], () => {
+watch([search, lowOnly, warehouse], () => {
 	start.value = 0
 	inventory.reload()
 })
@@ -167,7 +184,11 @@ async function setStock(row: InventoryRow) {
 	row.stock = qty
 	savingCode.value = row.item_code
 	try {
-		const result = await call('shop.api.inventory.set_stock', { item_code: row.item_code, qty })
+		const result = await call('shop.api.inventory.set_stock', {
+			item_code: row.item_code,
+			qty,
+			warehouse: inventory.data?.warehouse,
+		})
 		row.stock = result.stock
 		delete drafts[row.item_code]
 		toast.success(`Stock set to ${result.stock}`)

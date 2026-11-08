@@ -14,6 +14,9 @@ class ShopSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 		from shop.shop.doctype.shop_bank_account.shop_bank_account import ShopBankAccount
+		from shop.shop.doctype.shop_fulfillment_location.shop_fulfillment_location import (
+			ShopFulfillmentLocation,
+		)
 		from shop.shop.doctype.shop_payment_gateway.shop_payment_gateway import ShopPaymentGateway
 		from shop.shop.doctype.shop_theme_page.shop_theme_page import ShopThemePage
 
@@ -21,7 +24,6 @@ class ShopSettings(Document):
 		allow_out_of_stock: DF.Check
 		allow_quote_requests: DF.Check
 		applied_route_prefix: DF.Data | None
-		auto_send_to_fulfillment: DF.Check
 		bank_accounts: DF.Table[ShopBankAccount]
 		bank_charges_account: DF.Link | None
 		bank_transfer_days: DF.Int
@@ -31,14 +33,13 @@ class ShopSettings(Document):
 		company: DF.Link | None
 		conversion_fee_item: DF.Link | None
 		currency: DF.Link | None
-		default_warehouse: DF.Link | None
 		email_statements: DF.Check
 		enable_bank_transfer: DF.Check
 		enable_cod: DF.Check
 		export_tax_template: DF.Link | None
 		flat_shipping_rate: DF.Currency
+		fulfillment_locations: DF.Table[ShopFulfillmentLocation]
 		free_shipping_above: DF.Currency
-		fulfillment_provider: DF.Data | None
 		invoice_paid_orders: DF.Check
 		low_stock_threshold: DF.Int
 		onboarding_complete: DF.Check
@@ -70,6 +71,7 @@ class ShopSettings(Document):
 
 	def validate(self):
 		self.validate_order_naming_series()
+		self.validate_fulfillment_locations()
 		self.route_prefix = normalize_prefix(self.route_prefix)
 		first_segment = self.route_prefix.split("/")[0] if self.route_prefix else ""
 		if first_segment in STOREFRONT_SEGMENTS:
@@ -78,6 +80,26 @@ class ShopSettings(Document):
 					frappe.bold(first_segment)
 				)
 			)
+
+	def validate_fulfillment_locations(self):
+		from shop.fulfillment.provider import registry
+
+		seen = set()
+		providers = registry()
+		for row in self.fulfillment_locations:
+			if row.warehouse in seen:
+				frappe.throw(_("Warehouse {0} is listed twice").format(frappe.bold(row.warehouse)))
+			seen.add(row.warehouse)
+			company, is_group = frappe.db.get_value("Warehouse", row.warehouse, ["company", "is_group"])
+			if is_group:
+				frappe.throw(_("{0} is a group warehouse: pick the warehouse stock is kept in").format(row.warehouse))
+			if self.company and company != self.company:
+				frappe.throw(_("Warehouse {0} belongs to another company").format(frappe.bold(row.warehouse)))
+			row.fulfillment_provider = row.fulfillment_provider or "manual"
+			if row.fulfillment_provider not in providers:
+				frappe.throw(
+					_("Fulfillment provider {0} is not installed").format(frappe.bold(row.fulfillment_provider))
+				)
 
 	def validate_order_naming_series(self):
 		if not self.order_naming_series:

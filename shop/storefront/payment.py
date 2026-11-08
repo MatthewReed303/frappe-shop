@@ -722,7 +722,7 @@ def cancel_by_store(name: str, note: str | None = None) -> dict:
 	if order.docstatus != 1 or order.status == "Closed":
 		frappe.throw(_("This order can't be cancelled"))
 	shipment = shipment_summary(name)
-	if (shipment and shipment.status in ("Shipped", "Delivered")) or (
+	if (shipment and (shipment.partly_shipped or shipment.status in ("Shipped", "Delivered"))) or (
 		not shipment and flt(order.per_delivered)
 	):
 		frappe.throw(_("This order has shipped. Use a return instead."))

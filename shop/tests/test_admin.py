@@ -242,7 +242,8 @@ class TestAdminApi(IntegrationTestCase):
 		storefront_cart.add_item("SHOP-DEMO-003")
 		typed = '"<img src=x onerror=alert(1)>"'
 		name = checkout.place_order(
-			customer=dict(BUYER, full_name=f"Ann {typed}"), address=dict(ADDRESS, address_line1=f"1 Road {typed}")
+			customer=dict(BUYER, full_name=f"Ann {typed}"),
+			address=dict(ADDRESS, address_line1=f"1 Road {typed}"),
 		)["sales_order"]
 		order = frappe.get_doc("Sales Order", name)
 		self.assertNotIn("<img", frappe.db.get_value("Address", order.shipping_address_name, "address_line1"))
@@ -381,18 +382,37 @@ class TestAdminApi(IntegrationTestCase):
 
 	def test_fulfillment_settings_persist(self):
 		from shop.api import settings as settings_api
+		from shop.storefront import stock
+		from shop.tests.utils import second_warehouse
 
 		original = settings_api.get_settings()
 		self.addCleanup(
-			settings_api.save_settings,
-			{
-				"auto_send_to_fulfillment": bool(original["auto_send_to_fulfillment"]),
-				"fulfillment_provider": original["fulfillment_provider"] or "manual",
-			},
+			settings_api.save_settings, {"fulfillment_locations": original["fulfillment_locations"]}
 		)
+		first = stock.primary_warehouse()
+		second = second_warehouse(original["company"])
 		updated = settings_api.save_settings(
-			{"auto_send_to_fulfillment": True, "fulfillment_provider": "manual"}
+			{
+				"fulfillment_locations": [
+					{"warehouse": first, "fulfillment_provider": "manual", "auto_send": True},
+					{"warehouse": second, "fulfillment_provider": "", "auto_send": False},
+					{"warehouse": ""},
+				]
+			}
 		)
-		self.assertEqual(updated["auto_send_to_fulfillment"], 1)
-		self.assertEqual(updated["fulfillment_provider"], "manual")
+		self.assertEqual(
+			[
+				(row["warehouse"], row["fulfillment_provider"], row["auto_send"])
+				for row in updated["fulfillment_locations"]
+			],
+			[(first, "manual", 1), (second, "manual", 0)],
+		)
+		with self.assertRaises(frappe.ValidationError):
+			settings_api.save_settings(
+				{"fulfillment_locations": [{"warehouse": first}, {"warehouse": first}]}
+			)
+		with self.assertRaises(frappe.ValidationError):
+			settings_api.save_settings(
+				{"fulfillment_locations": [{"warehouse": first, "fulfillment_provider": "nobody"}]}
+			)
 		self.assertTrue(updated["fulfillment_providers"])

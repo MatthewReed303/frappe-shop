@@ -108,10 +108,14 @@ class TestFulfillment(IntegrationTestCase):
 		from shop.fulfillment.providers import amazon
 
 		order = frappe.get_doc("Sales Order", self.place_order())
-		settings = frappe._dict(displayable_org_name="Test Store", shipping_speed="Standard", marketplace_id="M1")
+		settings = frappe._dict(
+			displayable_org_name="Test Store", shipping_speed="Standard", marketplace_id="M1"
+		)
 		sent = []
 		with (
-			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
+			patch.object(
+				amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)
+			),
 			patch.object(
 				amazon.AmazonProvider,
 				"request",
@@ -145,10 +149,14 @@ class TestFulfillment(IntegrationTestCase):
 		# the first request timed out after Amazon took it: sending again follows that order
 		taken = {"payload": {"fulfillmentOrder": {"fulfillmentOrderStatus": "RECEIVED"}}}
 		with (
-			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
+			patch.object(
+				amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)
+			),
 			patch.object(amazon.AmazonProvider, "request", return_value=taken) as request,
 		):
-			again = amazon.AmazonProvider().create_shipment(frappe.get_doc("Sales Order", self.place_order()), [])
+			again = amazon.AmazonProvider().create_shipment(
+				frappe.get_doc("Sales Order", self.place_order()), []
+			)
 		self.assertEqual(again["status"], "Accepted")
 		self.assertEqual([call.args[0] for call in request.call_args_list], ["GET"])
 
@@ -164,28 +172,32 @@ class TestFulfillment(IntegrationTestCase):
 			}
 		}
 		with (
-			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
+			patch.object(
+				amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)
+			),
 			patch.object(amazon.AmazonProvider, "request", return_value=shipped),
 		):
 			status = amazon.AmazonProvider().fetch_status(frappe._dict(external_id=order.name))
 			self.assertEqual((status["status"], status["tracking_number"]), ("Shipped", "1Z1"))
-			shipped["payload"]["fulfillmentShipments"][0]["fulfillmentShipmentPackage"][0]["deliveryInformation"] = {}
-			self.assertEqual(amazon.AmazonProvider().fetch_status(frappe._dict(external_id="x"))["status"], "Shipped")
-			shipped["payload"]["fulfillmentShipments"][0]["fulfillmentShipmentPackage"][0]["deliveryInformation"] = {
-				"deliveryDocumentList": []
-			}
-			self.assertEqual(amazon.AmazonProvider().fetch_status(frappe._dict(external_id="x"))["status"], "Delivered")
+			shipped["payload"]["fulfillmentShipments"][0]["fulfillmentShipmentPackage"][0][
+				"deliveryInformation"
+			] = {}
+			self.assertEqual(
+				amazon.AmazonProvider().fetch_status(frappe._dict(external_id="x"))["status"], "Shipped"
+			)
+			shipped["payload"]["fulfillmentShipments"][0]["fulfillmentShipmentPackage"][0][
+				"deliveryInformation"
+			] = {"deliveryDocumentList": []}
+			self.assertEqual(
+				amazon.AmazonProvider().fetch_status(frappe._dict(external_id="x"))["status"], "Delivered"
+			)
 
 	def enable_auto_send(self):
-		previous = frappe.db.get_single_value("Shop Settings", "fulfillment_provider")
-		frappe.db.set_single_value(
-			"Shop Settings", {"auto_send_to_fulfillment": 1, "fulfillment_provider": "manual"}
-		)
-		frappe.clear_cache(doctype="Shop Settings")
-		self.addCleanup(
-			frappe.db.set_single_value,
-			"Shop Settings",
-			{"auto_send_to_fulfillment": 0, "fulfillment_provider": previous},
+		from shop.storefront.stock import primary_warehouse
+		from shop.tests.utils import use_locations
+
+		use_locations(
+			self, {"warehouse": primary_warehouse(), "fulfillment_provider": "manual", "auto_send": 1}
 		)
 
 	def test_paid_orders_ship_themselves_when_the_store_asks(self):
@@ -210,7 +222,9 @@ class TestFulfillment(IntegrationTestCase):
 		order = self.place_order()
 		token = frappe.db.get_value("Shop Cart", {"sales_order": order}, "token")
 		summary = store_orders.get_order_summary(order, token)
-		self.assertEqual([stage["done"] for stage in summary["progress"]], ["true", "false", "false", "false"])
+		self.assertEqual(
+			[stage["done"] for stage in summary["progress"]], ["true", "false", "false", "false"]
+		)
 		self.assertIsNone(summary["shipment"])
 		self.assertEqual(summary["awaiting_shipment"], "true")
 
@@ -239,9 +253,7 @@ class TestFulfillment(IntegrationTestCase):
 		record = service.for_order(order)
 		self.assertEqual(record["status"], "Failed")
 		self.assertIn("The provider is down", record["error"])
-		self.assertFalse(
-			frappe.db.exists("Comment", {"reference_name": order, "content": "half done"})
-		)
+		self.assertFalse(frappe.db.exists("Comment", {"reference_name": order, "content": "half done"}))
 
 	def test_orders_are_not_sent_twice_by_the_automatic_route(self):
 		self.enable_auto_send()

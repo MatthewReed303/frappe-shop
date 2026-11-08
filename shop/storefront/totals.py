@@ -375,14 +375,24 @@ def compute(
 	coupon = apply_coupon(order)
 	calculate(order)
 
-	options = shipping_module.get_options(
-		cart, address, flt(order.base_total) - flt(order.base_discount_amount), refresh_shipping
-	)
-	chosen = shipping_module.find_option(options["options"], shipping_option or cart.get("shipping_rate"))
-	if not chosen and options["options"]:
-		chosen = options["options"][0]
-	if chosen:
-		add_shipping(order, chosen)
+	subtotal = flt(order.base_total) - flt(order.base_discount_amount)
+	choice = shipping_module.parse_choice(shipping_option or cart.get("shipping_rate"))
+	parcels = shipping_module.parcels(order)
+	groups = []
+	for index, parcel in enumerate(parcels or [None]):
+		options = shipping_module.get_options(cart, address, subtotal, refresh_shipping, parcel)
+		wanted = (
+			choice.get(parcel.key if parcel else "") if isinstance(choice, dict) else (choice if index == 0 else None)
+		)
+		chosen = shipping_module.find_option(options["options"], wanted) or next(iter(options["options"]), None)
+		if chosen and parcel:
+			chosen = dict(chosen, warehouse=parcel.warehouse, parcel=parcel.key)
+			if len(parcels) > 1:
+				chosen["label"] = _("{0} (parcel {1} of {2})").format(chosen["label"], index + 1, len(parcels))
+		if chosen:
+			add_shipping(order, chosen)
+		groups.append(frappe._dict(parcel=parcel, options=options, chosen=chosen))
+	first = groups[0]
 
 	fees = []
 	if is_gateway(method):
@@ -404,12 +414,28 @@ def compute(
 		payment_method=method,
 		tax_template=template,
 		coupon=coupon,
-		shipping=frappe._dict(chosen) if chosen else None,
+		# the order ships when every parcel has a service
+		shipping=frappe._dict(first.chosen) if all(group.chosen for group in groups) else None,
+		shippings=[frappe._dict(group.chosen) for group in groups if group.chosen],
 		shipping_options=[
-			dict(option, customer_amount=shipping_line_amount(order, option)) for option in options["options"]
+			dict(option, customer_amount=shipping_line_amount(order, option)) for option in first.options["options"]
 		],
-		shipping_messages=options.get("messages") or [],
-		shipping_pending=bool(options.get("pending")),
+		shipping_groups=[
+			frappe._dict(
+				key=group.parcel.key if group.parcel else "",
+				items=group.parcel["items"] if group.parcel else [],
+				chosen=group.chosen,
+				options=[
+					dict(option, customer_amount=shipping_line_amount(order, option))
+					for option in group.options["options"]
+				],
+			)
+			for group in groups
+		],
+		shipping_messages=list(
+			dict.fromkeys(message for group in groups for message in group.options.get("messages") or [])
+		),
+		shipping_pending=any(group.options.get("pending") for group in groups),
 		fees=fees,
 		total=order_total(order),
 	)
@@ -465,17 +491,20 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 	)
 	# ERPNext applies the coupon's Pricing Rule, which says who and what it is for
 	order.coupon_code = cart.get("coupon_code")
-	for row in cart.items:
+	from shop.storefront.stock import allocate
+
+	# each line is sent from the first of the store's warehouses that has it
+	for line in allocate([(row.item_code, flt(row.qty)) for row in cart.items]):
 		order.append(
 			"items",
 			{
-				"item_code": row.item_code,
-				"qty": flt(row.qty),
+				"item_code": line.item_code,
+				"qty": line.qty,
 				# the store prices, shows and stocks items in their stock unit; ERPNext would
 				# otherwise sell in the item's Sales UOM (a box of ten at the price of one)
-				"uom": frappe.get_cached_value("Item", row.item_code, "stock_uom"),
+				"uom": frappe.get_cached_value("Item", line.item_code, "stock_uom"),
 				"conversion_factor": 1,
-				"warehouse": s.default_warehouse,
+				"warehouse": line.warehouse,
 				"delivery_date": order.delivery_date,
 			},
 		)
@@ -892,6 +921,27 @@ def payload(quote: frappe._dict) -> dict:
 			}
 			for option in quote.shipping_options
 		],
+		# an order sent in more than one parcel: a service is chosen for each
+		"shipping_groups": [
+			{
+				"key": group.key,
+				"label": _("Parcel {0} of {1}").format(index, len(quote.shipping_groups)),
+				"items": ", ".join(f"{row['item_name']} \u00d7 {flt(row['qty']):g}" for row in group["items"]),
+				"options": [
+					{
+						"id": option["id"],
+						"label": option["label"],
+						"eta": option.get("eta"),
+						"formatted": option_amount(option),
+						"selected": bool(group.chosen and option["id"] == group.chosen["id"]),
+					}
+					for option in group.options
+				],
+			}
+			for index, group in enumerate(quote.shipping_groups, start=1)
+		]
+		if len(quote.shipping_groups) > 1
+		else [],
 		"shipping_messages": quote.shipping_messages,
 		"shipping_pending": quote.shipping_pending,
 		"can_ship": bool(quote.shipping),
