@@ -36,7 +36,7 @@ def create_request(
 			"sales_order": order,
 			"item_code": item_code,
 			"request_type": request_type,
-			"qty": flt(qty) or 1,
+			"qty": flt(qty),
 			"reason": reason.strip(),
 		}
 	).insert(ignore_permissions=True)
@@ -51,7 +51,23 @@ def validate_item(order, item_code: str, qty: float):
 	row = next((item for item in order.items if item.item_code == item_code), None)
 	if not row:
 		frappe.throw(_("That item is not part of this order"))
-	if flt(qty) > flt(row.qty):
+	if flt(qty) <= 0:
+		frappe.throw(_("Choose how many to send back"))
+	returned = sum(
+		flt(done)
+		for done in frappe.get_all(
+			"Shop Return Request",
+			filters={"sales_order": order.name, "item_code": item_code, "status": "Completed"},
+			pluck="qty",
+		)
+	)
+	if flt(qty) > flt(row.qty) - returned:
+		if returned:
+			frappe.throw(
+				_("You ordered {0} of this item and {1} came back already").format(
+					int(row.qty), int(returned)
+				)
+			)
 		frappe.throw(_("You ordered only {0} of this item").format(int(row.qty)))
 
 

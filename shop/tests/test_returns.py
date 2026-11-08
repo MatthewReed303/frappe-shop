@@ -105,6 +105,27 @@ class TestReturns(IntegrationTestCase):
 				token=token,
 			)
 
+	def test_only_what_hasnt_come_back_can_be_returned(self):
+		order, token = self.shipped_order()
+		for qty in (0, -1):
+			with self.assertRaisesRegex(frappe.ValidationError, "how many"):
+				returns.create_request(
+					order=order,
+					item_code="SHOP-DEMO-003",
+					request_type="Return",
+					reason="x",
+					qty=qty,
+					token=token,
+				)
+		created = returns.create_request(
+			order=order, item_code="SHOP-DEMO-003", request_type="Return", reason="Chipped", token=token
+		)
+		frappe.db.set_value("Shop Return Request", created["name"], "status", "Completed")
+		with self.assertRaisesRegex(frappe.ValidationError, "came back already"):
+			returns.create_request(
+				order=order, item_code="SHOP-DEMO-003", request_type="Return", reason="Again", token=token
+			)
+
 	def test_items_outside_the_order_are_rejected(self):
 		order, token = self.shipped_order()
 		with self.assertRaises(frappe.ValidationError):
