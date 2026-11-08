@@ -65,3 +65,28 @@ class TestPayments(IntegrationTestCase):
 			)
 			payment_request.run_method("on_payment_authorized", "Completed")
 			self.assertIsNone(checkout.get_checkout_summary()["waiting_order"])
+
+	def test_a_request_for_an_order_entered_in_desk_is_left_to_erpnext(self):
+		from unittest.mock import patch
+
+		from erpnext.accounts.doctype.payment_request.payment_request import make_payment_request
+
+		if not self.gateway_account:
+			self.skipTest("no payment gateway account configured")
+		frappe.db.set_single_value("Shop Settings", "payment_gateway_account", self.gateway_account)
+		cart.add_item("SHOP-DEMO-004")
+		store_order = frappe.get_doc(
+			"Sales Order", checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
+		)
+		desk_order = frappe.copy_doc(store_order)
+		for field in ("shop_payment_method", "shop_access_token", "shop_payment_due"):
+			if desk_order.meta.has_field(field):
+				desk_order.set(field, None)
+		desk_order.insert(ignore_permissions=True).submit()
+		payment_request = make_payment_request(
+			dt="Sales Order", dn=desk_order.name, submit_doc=1, mute_email=1, return_doc=1
+		)
+		with patch("shop.fulfillment.service.auto_send") as auto_send:
+			self.assertIsNone(payment_request.run_method("on_payment_authorized", "Completed"))
+		auto_send.assert_not_called()
+		self.assertEqual(frappe.db.get_value("Payment Request", payment_request.name, "status"), "Paid")
