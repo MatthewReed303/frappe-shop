@@ -116,8 +116,9 @@ TEMPLATES = {
 		"Shop: Refund Sent",
 		ORDER,
 		"Your refund for order {{ doc.name }}",
-		"<p>We've refunded {{ amount }} for order {{ doc.name }}{% if to_card %} to your card. It can take a few "
-		"days to show on your statement{% else %} to your bank account{% endif %}.</p>",
+		"<p>We've refunded {{ amount }} for order {{ doc.name }}{% if to_card %} the way you paid"
+		"{% if gateway %} ({{ gateway }}){% endif %}. It can take a few days to show on your statement"
+		"{% else %} to your bank account{% endif %}.</p>",
 	),
 	"order_cancelled": (
 		"Shop: Order Cancelled",

@@ -107,7 +107,9 @@
 									{{ due.formatted_amount }} · credit note {{ due.credit_note }}
 								</span>
 								<span class="flex gap-2">
-									<Button v-if="due.online" @click="openRefund(due, 'card')">Refund to card</Button>
+									<Button v-if="due.online" @click="openRefund(due, 'card')">
+										Refund via {{ due.gateway || 'payment gateway' }}
+									</Button>
 									<Button @click="openRefund(due, 'bank')">Refund from bank</Button>
 								</span>
 							</li>
@@ -143,7 +145,7 @@
 				<p class="text-p-base text-ink-gray-7">
 					{{
 						refund.how === 'card'
-							? `Refund ${refund.due?.formatted_amount} to the customer's card through the payment gateway? This sends the money now.`
+							? `Refund ${refund.due?.formatted_amount} the way the customer paid (${refund.due?.gateway || 'payment gateway'})? This sends the money now.`
 							: `Record a refund of ${refund.due?.formatted_amount} paid from your bank account. Pay the customer from that account yourself.`
 					}}
 				</p>
@@ -256,7 +258,13 @@ const bankAccountOptions = computed(() =>
 	})),
 )
 
-type RefundDue = { credit_note: string; amount: number; formatted_amount: string; online: boolean }
+type RefundDue = {
+	credit_note: string
+	amount: number
+	formatted_amount: string
+	online: boolean
+	gateway: string | null
+}
 
 const showRefund = ref(false)
 const refund = reactive<{ due: RefundDue | null; how: 'card' | 'bank'; bank_account: string }>({

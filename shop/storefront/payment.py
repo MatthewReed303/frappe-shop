@@ -572,16 +572,24 @@ def refunds_due(order_name: str) -> list[dict]:
 	if flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) < 0:
 		currency = frappe.db.get_value("Sales Invoice", invoice, "currency")
 		notes.insert(0, frappe._dict(name=invoice, currency=currency))
-	online = bool(online_refund_controller(order_name))
+	found = online_refund_controller(order_name)
+	gateway = paid_through(found[0]) if found else None
 	return [
 		{
 			"credit_note": note.name,
 			"amount": owed(note.name),
 			"formatted_amount": money_text(owed(note.name), note.currency),
-			"online": online,
+			"online": bool(found),
+			"gateway": gateway,
 		}
 		for note in notes
 	]
+
+
+def paid_through(payment_request) -> str:
+	"""What the store calls the gateway an order was paid through, e.g. "Card" or "PayPal"."""
+	row = totals.gateway_row(payment_request.payment_gateway)
+	return totals.gateway_label(row) if row else payment_request.payment_gateway
 
 
 def online_refund_controller(order_name: str):
@@ -615,8 +623,10 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 
 	from shop.storefront import emails
 
-	if credit_note not in [due["credit_note"] for due in refunds_due(order_name)]:
+	due = next((row for row in refunds_due(order_name) if row["credit_note"] == credit_note), None)
+	if not due:
 		frappe.throw(_("Credit note {0} has nothing left to refund for this order").format(credit_note))
+	gateway = due["gateway"]
 	amount = money_text(owed(credit_note), frappe.db.get_value("Sales Invoice", credit_note, "currency"))
 	if bank_account:
 		entry = get_payment_entry(
@@ -645,6 +655,7 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 		order,
 		amount=amount,
 		to_card=not bank_account,
+		gateway=None if bank_account else gateway,
 	)
 	return name
 

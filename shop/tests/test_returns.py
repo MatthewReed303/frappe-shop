@@ -213,6 +213,20 @@ class TestReturns(IntegrationTestCase):
 			)
 		self.assertIsNone(payment.gateway_controller("_Test No Settings"))
 
+	def test_a_refund_says_which_gateway_it_goes_back_through(self):
+		from shop.storefront import emails, payment, totals
+
+		with patch.object(totals, "gateway_row", return_value=frappe._dict(label="PayPal", payment_gateway="PayPal")):
+			self.assertEqual(payment.paid_through(frappe._dict(payment_gateway="PayPal")), "PayPal")
+		# a gateway the store no longer offers is called by its name
+		with patch.object(totals, "gateway_row", return_value=None):
+			self.assertEqual(payment.paid_through(frappe._dict(payment_gateway="Stripe-Old")), "Stripe-Old")
+		emails.ensure_templates()
+		_subject, body = emails.render(
+			"refund_sent", frappe._dict(name="SO-1"), amount="$10.00", to_card=True, gateway="PayPal"
+		)
+		self.assertIn("the way you paid (PayPal)", body)
+
 	def test_a_refund_is_in_the_currency_the_customer_paid_in(self):
 		from shop.storefront import payment
 
