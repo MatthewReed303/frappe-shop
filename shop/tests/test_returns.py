@@ -167,6 +167,25 @@ class TestReturns(IntegrationTestCase):
 			[result["credit_note"]],
 		)
 
+	def test_a_card_refund_records_what_the_gateway_paid_back(self):
+		from shop.storefront import payment
+
+		entry = MagicMock(paid_from_account_currency="USD", paid_amount=18.99, name="PE-1")
+		gateway = MagicMock()
+		gateway.refund.return_value = "re_test"
+		request = frappe._dict(name="PR-1", payment_account="Stripe USD")
+		with (
+			patch.object(payment, "online_refund_controller", return_value=(request, gateway)),
+			patch.object(payment, "owed", return_value=20.0),
+			patch("erpnext.accounts.doctype.payment_entry.payment_entry.get_payment_entry", return_value=entry),
+			patch("frappe.db.get_value", return_value="USD"),
+		):
+			payment.refund_online("SO-1", "CN-1")
+		# what left the gateway's account, with ERPNext's exchange gain or loss for the rest
+		self.assertEqual(entry.paid_amount, 20.0)
+		entry.set_exchange_gain_loss.assert_called_once()
+		gateway.refund.assert_called_once_with("Payment Request", "PR-1", 20.0, "CN-1")
+
 	def test_a_refund_is_in_the_currency_the_customer_paid_in(self):
 		from shop.storefront import payment
 

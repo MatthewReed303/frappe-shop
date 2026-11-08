@@ -493,8 +493,8 @@ def refunds_due(order_name: str) -> list[dict]:
 	return [
 		{
 			"credit_note": note.name,
-			"amount": abs(flt(note.outstanding_amount)),
-			"formatted_amount": money_text(abs(flt(note.outstanding_amount)), note.currency),
+			"amount": owed(note.name),
+			"formatted_amount": money_text(owed(note.name), note.currency),
 			"online": online,
 		}
 		for note in notes
@@ -525,6 +525,7 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 
 	if credit_note not in [due["credit_note"] for due in refunds_due(order_name)]:
 		frappe.throw(_("Credit note {0} has nothing left to refund for this order").format(credit_note))
+	amount = money_text(owed(credit_note), frappe.db.get_value("Sales Invoice", credit_note, "currency"))
 	if bank_account:
 		entry = get_payment_entry(
 			"Sales Invoice",
@@ -549,9 +550,7 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 		"refund_sent",
 		order.contact_email,
 		order,
-		amount=money_text(
-			abs(flt(frappe.db.get_value("Payment Entry", name, "paid_amount"))), order.currency
-		),
+		amount=amount,
 		to_card=not bank_account,
 	)
 	return name
@@ -568,6 +567,11 @@ def refund_online(order_name: str, credit_note: str) -> str | None:
 	payment_request, controller = found
 	amount = owed(credit_note)
 	entry = get_payment_entry("Sales Invoice", credit_note, bank_account=payment_request.payment_account)
+	if entry.paid_from_account_currency == frappe.db.get_value("Sales Invoice", credit_note, "currency"):
+		# the gateway pays back exactly what the customer paid; ERPNext books the change in rate since
+		entry.paid_amount = amount
+		entry.set_amounts()
+		entry.set_exchange_gain_loss()
 	entry.reference_no, entry.reference_date = credit_note, nowdate()
 	entry.flags.ignore_permissions = True
 	entry.insert(ignore_permissions=True)

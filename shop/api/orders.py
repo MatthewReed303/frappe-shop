@@ -159,15 +159,33 @@ def get_order(name: str) -> dict:
 
 def timeline(order) -> list[dict]:
 	events = [{"label": "Order placed", "on": str(order.creation)[:16]}]
-	payment = frappe.db.get_value(
-		"Payment Entry Reference",
-		{"reference_doctype": "Sales Order", "reference_name": order.name, "docstatus": 1},
-		"parent",
+	# a payment made before invoicing is moved onto the invoice by ERPNext; refunds pay credit notes
+	invoices = frappe.get_all(
+		"Sales Invoice Item", filters={"sales_order": order.name, "docstatus": 1}, pluck="parent", distinct=True
 	)
-	if payment:
-		events.append(
-			{"label": "Payment recorded", "on": str(frappe.db.get_value("Payment Entry", payment, "creation"))[:16]}
-		)
+	credit_notes = (
+		frappe.get_all("Sales Invoice", filters={"return_against": ["in", invoices], "docstatus": 1}, pluck="name")
+		if invoices
+		else []
+	)
+	entries = frappe.get_all(
+		"Payment Entry Reference",
+		filters={"reference_name": ["in", [order.name, *invoices, *credit_notes]], "docstatus": 1},
+		pluck="parent",
+		distinct=True,
+	)
+	paid_seen = False
+	for entry in frappe.get_all(
+		"Payment Entry",
+		filters={"name": ["in", entries]},
+		fields=["payment_type", "creation"],
+		order_by="creation",
+	):
+		if entry.payment_type == "Pay":
+			events.append({"label": _("Refund sent"), "on": str(entry.creation)[:16]})
+		elif not paid_seen:
+			paid_seen = True
+			events.append({"label": "Payment recorded", "on": str(entry.creation)[:16]})
 	fulfillments = frappe.get_all(
 		"Shop Fulfillment",
 		filters={"sales_order": order.name},
