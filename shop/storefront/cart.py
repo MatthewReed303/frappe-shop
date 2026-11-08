@@ -288,19 +288,24 @@ def first_image(shop_product: str) -> str | None:
 
 
 def validate_purchasable(item_code: str) -> str:
-	item = frappe.db.get_value("Item", item_code, ["has_variants", "variant_of", "disabled"], as_dict=True)
+	item = frappe.db.get_value(
+		"Item", item_code, ["item_name", "has_variants", "variant_of", "disabled"], as_dict=True
+	)
 	if not item or item.disabled or item.has_variants:
-		frappe.throw(_("Item {0} is not available").format(item_code))
+		frappe.throw(_("{0} is no longer available").format(item.item_name if item else item_code))
 	published_item = item.variant_of or item_code
 	shop_product = frappe.db.get_value("Shop Product", {"item": published_item, "published": 1})
 	if not shop_product:
-		frappe.throw(_("Item {0} is not available").format(item_code))
+		frappe.throw(_("{0} is no longer available").format(item.item_name))
 	return shop_product
 
 
 def check_available(item_code: str, qty: float) -> None:
 	"""The shopper can buy this many: the item has a price for them and enough stock."""
-	name = frappe.get_cached_value("Item", item_code, "item_name") or item_code
+	name, uom = frappe.get_cached_value("Item", item_code, ["item_name", "sales_uom"]) or (item_code, None)
+	uom = uom or frappe.get_cached_value("Item", item_code, "stock_uom")
+	if flt(qty) != cint(qty) and frappe.get_cached_value("UOM", uom, "must_be_whole_number"):
+		frappe.throw(_("{0} is sold in whole numbers").format(name))
 	if item_code not in pricing.get_prices([item_code], {item_code: qty}):
 		frappe.throw(_("{0} isn't available online").format(name))
 	available = stock.available_qty(item_code)

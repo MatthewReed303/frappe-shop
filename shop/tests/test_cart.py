@@ -29,13 +29,33 @@ class TestCart(IntegrationTestCase):
 		payload = cart.set_qty("SHOP-DEMO-003", qty=0)
 		self.assertEqual(payload["items"], [])
 
+	def test_whole_items_are_sold_whole(self):
+		cart.add_item("SHOP-DEMO-003")
+		uom = frappe.db.get_value("Item", "SHOP-DEMO-003", "stock_uom")
+		whole = frappe.db.get_value("UOM", uom, "must_be_whole_number")
+		frappe.db.set_value("UOM", uom, "must_be_whole_number", 1)
+		self.addCleanup(frappe.db.set_value, "UOM", uom, "must_be_whole_number", whole)
+		frappe.clear_cache(doctype="UOM")
+		with self.assertRaisesRegex(frappe.ValidationError, "whole numbers"):
+			cart.set_qty("SHOP-DEMO-003", qty=0.5)
+		with self.assertRaisesRegex(frappe.ValidationError, "whole numbers"):
+			cart.add_item("SHOP-DEMO-003", qty=1.5)
+		self.assertEqual(cart.get_cart()["item_count"], 1)
+
+	def test_an_item_taken_off_sale_is_named(self):
+		frappe.db.set_value("Item", "SHOP-DEMO-003", "disabled", 1)
+		self.addCleanup(frappe.db.set_value, "Item", "SHOP-DEMO-003", "disabled", 0)
+		name = frappe.db.get_value("Item", "SHOP-DEMO-003", "item_name")
+		with self.assertRaisesRegex(frappe.ValidationError, f"{name} is no longer available"):
+			cart.add_item("SHOP-DEMO-003")
+
 	def test_variant_item_resolves_to_product(self):
-		variant = frappe.get_all(
-			"Item", filters={"variant_of": "SHOP-DEMO-001"}, pluck="name", limit=1
-		)[0]
+		variant = frappe.get_all("Item", filters={"variant_of": "SHOP-DEMO-001"}, pluck="name", limit=1)[0]
 		payload = cart.add_item(variant)
 		self.assertEqual(payload["items"][0]["slug"], "crew-neck-t-shirt")
-		values = frappe.get_all("Item Variant Attribute", filters={"parent": variant}, pluck="attribute_value", order_by="idx asc")
+		values = frappe.get_all(
+			"Item Variant Attribute", filters={"parent": variant}, pluck="attribute_value", order_by="idx asc"
+		)
 		self.assertTrue(payload["items"][0]["product_name"].endswith(" / ".join(values)))
 
 	def in_stock(self, qty, allow_out_of_stock=0, threshold=0):
@@ -74,7 +94,9 @@ class TestCart(IntegrationTestCase):
 		with patch("shop.storefront.pricing.get_prices", return_value={}):
 			with self.assertRaisesRegex(frappe.ValidationError, "isn't available online"):
 				cart.add_item("SHOP-DEMO-003")
-			self.assertEqual(stock.availability("SHOP-DEMO-003", priced=False)["stock_status"], "Not available online")
+			self.assertEqual(
+				stock.availability("SHOP-DEMO-003", priced=False)["stock_status"], "Not available online"
+			)
 
 	def test_what_the_product_page_says_about_stock(self):
 		with self.in_stock(3, threshold=5):
