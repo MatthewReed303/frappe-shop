@@ -246,6 +246,11 @@ def lines_html(doc) -> str:
 	return rows + "".join(f'<p class="order-note">{esc(note)}</p>' for note in notes)
 
 
+def gateway_currency() -> str | None:
+	account = frappe.get_cached_doc("Shop Settings").get("payment_gateway_account")
+	return frappe.db.get_value("Payment Gateway Account", account, "currency") if account else None
+
+
 def quote_payment_methods(quotation) -> list[dict]:
 	"""How the quote's customer can pay for it: online, by bank transfer to an account in the
 	quote's currency, or on account when the signed-in shopper is that customer and may."""
@@ -256,6 +261,9 @@ def quote_payment_methods(quotation) -> list[dict]:
 		if method["method"] in totals.BANK_METHODS and not totals.bank_account(
 			quotation.currency, method["method"]
 		):
+			continue
+		if method["method"] == totals.GATEWAY and quotation.currency != gateway_currency():
+			# the store's online payments are taken, and recorded, in its gateway account's currency
 			continue
 		if method["method"] in (totals.GATEWAY, *totals.BANK_METHODS):
 			fee = payment_fee(quotation, method["method"])

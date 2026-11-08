@@ -438,6 +438,23 @@ class TestTradeAccounts(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			quotes.accept_quote(quotation.name, quotation.shop_access_token, totals.BANK, accept_terms=1)
 
+	def test_a_quote_is_paid_online_only_in_the_gateways_currency(self):
+		from unittest.mock import patch
+
+		quotation = frappe._dict(currency="USD", party_name="Someone Else")
+		card = {"method": totals.GATEWAY, "label": "Card"}
+		with (
+			patch.object(totals, "payment_methods", return_value=[card]),
+			patch.object(quotes, "is_export", return_value=True),
+			patch.object(quotes, "payment_fee", return_value=0),
+		):
+			with patch.object(quotes, "gateway_currency", return_value="NZD"):
+				self.assertEqual(quotes.quote_payment_methods(quotation), [])
+			with patch.object(quotes, "gateway_currency", return_value="USD"):
+				self.assertEqual(
+					[m["method"] for m in quotes.quote_payment_methods(quotation)], [totals.GATEWAY]
+				)
+
 	def test_card_fee_is_added_to_quotes_paid_by_card(self):
 		frappe.db.set_single_value(
 			"Shop Settings",
