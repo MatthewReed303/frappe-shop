@@ -11,6 +11,7 @@ class ShopBankAccount(Document):
 		from frappe.types import DF
 
 		bank_account: DF.Link
+		branch_code_label: DF.Data | None
 		conversion_fee_percent: DF.Percent
 		instructions: DF.SmallText | None
 		label: DF.Data | None

@@ -82,6 +82,7 @@ GATEWAY_FIELDS = (
 BANK_ACCOUNT_FIELDS = (
 	"bank_account",
 	"label",
+	"branch_code_label",
 	"conversion_fee_percent",
 	"local_transfer_fee",
 	"swift_transfer_fee",
@@ -101,6 +102,13 @@ def get_settings() -> dict:
 			"round_order_totals": not cint(frappe.db.get_single_value("Global Defaults", "disable_rounded_total")),
 			"company": settings.company,
 			"currency": settings.currency,
+			# what ERPNext's company is set up with: its accounts' currency and its country
+			"company_currency": frappe.get_cached_value("Company", settings.company, "default_currency")
+			if settings.company
+			else None,
+			"company_country": frappe.get_cached_value("Company", settings.company, "country")
+			if settings.company
+			else None,
 			"active_theme": settings.active_theme,
 			"gateway_accounts": frappe.get_all(
 				"Payment Gateway Account", fields=["name", "payment_gateway", "currency"]

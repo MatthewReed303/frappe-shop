@@ -68,7 +68,7 @@
 						<FormControl
 							v-model.number="row.fee_fixed"
 							type="number"
-							:label="`Fixed fee (${data.currency})`"
+							:label="`Fixed fee (${data.company_currency})`"
 							class="col-span-2"
 						/>
 						<FormControl
@@ -80,7 +80,7 @@
 						<FormControl
 							v-model.number="row.fee_fixed_international"
 							type="number"
-							:label="`Fixed fee, international (${data.currency})`"
+							:label="`Fixed fee, international (${data.company_currency})`"
 							class="col-span-2"
 						/>
 						<Button
@@ -104,8 +104,9 @@
 					</div>
 					<p class="text-p-sm text-ink-gray-5">
 						Each gateway is a choice at checkout. An order is charged in the shopper's currency when the
-						gateway has a Payment Gateway Account in it, otherwise in {{ data.currency }}. International
-						fees are used for orders shipped abroad.
+						gateway has a Payment Gateway Account in it, otherwise in the company's currency in ERPNext
+						({{ data.company_currency }}). Fixed fees are in that currency. International fees are used
+						for orders shipped outside the company's country ({{ data.company_country }}).
 					</p>
 				</div>
 				<FormControl
@@ -147,6 +148,12 @@
 								label="Label"
 								placeholder="e.g. US dollars"
 								class="col-span-3"
+							/>
+							<FormControl
+								v-model="row.branch_code_label"
+								label="Branch code name"
+								placeholder="e.g. BSB, Sort code"
+								class="col-span-2"
 							/>
 							<FormControl
 								v-model.number="row.conversion_fee_percent"
@@ -359,13 +366,13 @@
 				<Switch
 					v-model="catalog.other_currencies_with_tax"
 					label="Show other currencies with tax"
-					description="Off: prices in another currency are shown without tax, as for a buyer abroad. Checkout always charges the tax for the delivery address."
+:description="`Off: prices in another currency are shown without tax, as for a buyer outside ${data.company_country || 'the company\'s country'}. Checkout always charges the tax for the delivery address.`"
 				/>
 				<FormControl
 					v-model="catalog.export_tax_template"
 					type="select"
 					label="Export tax template"
-					description="Taxes for orders shipped abroad, when no Tax Rule for the shopping cart matches."
+:description="`Taxes for orders shipped outside ${data.company_country || 'the company\'s country'}, when no Tax Rule for the shopping cart matches.`"
 					:options="taxOptions"
 					class="max-w-sm"
 				/>
@@ -710,6 +717,7 @@ const providerOptions = computed(() =>
 type BankAccountRow = {
 	bank_account: string
 	label: string
+	branch_code_label: string
 	conversion_fee_percent: number
 	local_transfer_fee: number
 	swift_transfer_fee: number
@@ -743,6 +751,7 @@ function addBankAccount() {
 	payments.bank_accounts.push({
 		bank_account: '',
 		label: '',
+		branch_code_label: '',
 		conversion_fee_percent: 0,
 		local_transfer_fee: 0,
 		swift_transfer_fee: 0,

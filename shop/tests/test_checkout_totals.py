@@ -644,6 +644,15 @@ class TestCheckoutTotals(IntegrationTestCase):
 			[line for line in details if line.startswith(totals.branch_code_label(self.foreign))]
 		)
 
+	def test_a_bank_accounts_branch_code_is_named_as_the_store_sets(self):
+		home = totals.bank_accounts()[0]
+		self.assertIn(f"{totals.branch_code_label(home.currency)}: 2", home.details)
+		settings = frappe.get_doc("Shop Settings")
+		settings.bank_accounts[0].branch_code_label = "Branch number"
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+		self.assertIn("Branch number: 2", totals.bank_accounts()[0].details)
+
 	def test_with_tax_the_summary_adds_up_and_fees_include_the_tax(self):
 		self.without_tax()
 		self.set(show_prices_with_tax=1, transfer_fee_item=service("TEST-TRANSFER-FEE", self.company))

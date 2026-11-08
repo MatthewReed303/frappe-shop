@@ -199,7 +199,8 @@ def card_fee_note(export: bool, row=None) -> str:
 
 
 def branch_code_label(currency: str) -> str:
-	"""What a bank branch code is called where the currency is used."""
+	"""What a bank branch code is usually called where the currency is used, when the store hasn't
+	named it on the bank account."""
 	return {
 		"USD": _("ACH routing number"),
 		"AUD": _("BSB"),
@@ -234,14 +235,16 @@ def bank_accounts(method: str = BANK) -> list[frappe._dict]:
 				label=row.label or currency,
 				conversion_fee_percent=flt(row.conversion_fee_percent),
 				transfer_fee=flt(row.swift_transfer_fee if method == SWIFT else row.local_transfer_fee),
-				details=bank_account_details(account, currency, method)
+				details=bank_account_details(account, currency, method, row.get("branch_code_label"))
 				+ [line.strip() for line in (row.instructions or "").splitlines() if line.strip()],
 			)
 		)
 	return rows
 
 
-def bank_account_details(account, currency: str, method: str = BANK) -> list[str]:
+def bank_account_details(
+	account, currency: str, method: str = BANK, branch_code_name: str | None = None
+) -> list[str]:
 	"""The lines a customer needs to pay into a Bank Account: from a bank in its own country, or
 	by Swift from anywhere."""
 	bank = frappe.get_cached_doc("Bank", account.bank) if account.bank else None
@@ -254,7 +257,7 @@ def bank_account_details(account, currency: str, method: str = BANK) -> list[str
 	lines = [
 		(_("Account name"), holder),
 		(_("Bank"), bank.bank_name if bank else None),
-		(branch_code_label(currency), account.branch_code if method == BANK else None),
+		(branch_code_name or branch_code_label(currency), account.branch_code if method == BANK else None),
 		(_("Account number"), account.bank_account_no),
 		(_("IBAN"), account.iban),
 		(_("BIC/SWIFT"), bank.swift_number if bank else None),
