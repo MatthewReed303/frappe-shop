@@ -285,6 +285,8 @@ class TestCheckoutTotals(IntegrationTestCase):
 	# --- online payment gateways ---------------------------------------------
 
 	def test_each_online_gateway_is_offered_with_its_own_fee(self):
+		from shop.storefront import pricing
+
 		wallet = self.two_gateways()
 		card = totals.gateway_method(gateway(self.company))
 		methods = {m["method"]: m for m in totals.payment_methods()}
@@ -292,6 +294,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(methods[wallet]["label"], "Wallet")
 		self.assertTrue(methods[card]["fee_note"].startswith("Card fee 2.65%"), methods[card]["fee_note"])
 		self.assertEqual(methods[wallet]["fee_note"], "Wallet fee 4%, added to the total")
+		# a fixed fee is in the store's currency, said so when other currencies are shown
+		if len(pricing.display_currencies()) > 1:
+			self.assertIn(f"0.30 {self.company_currency}", methods[card]["fee_note"])
 
 		by_card = totals.compute(self.basket(), self.home_address, None, card)
 		by_wallet = totals.compute(cart.resolve_cart(), self.home_address, None, wallet)

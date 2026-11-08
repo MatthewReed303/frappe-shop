@@ -191,7 +191,10 @@ def card_fee_note(export: bool, row=None) -> str:
 	if percent:
 		parts.append(f"{flt(percent * 100, 2):g}%")
 	if fixed:
-		parts.append(fmt_money(fixed, currency=company_currency()))
+		from shop.storefront.pricing import with_code
+
+		# in the store's currency, said so when shoppers can see prices in others
+		parts.append(with_code(fmt_money(fixed, currency=company_currency()), company_currency()))
 	return _("{0} {1}, added to the total").format(fee_label(row), " + ".join(parts))
 
 
