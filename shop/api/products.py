@@ -314,6 +314,8 @@ def get_item_groups() -> dict:
 
 
 def receive_stock(item_code: str, qty: float, rate: float, settings) -> None:
+	from shop.api.inventory import valuation_rate
+
 	entry = frappe.get_doc(
 		{
 			"doctype": "Stock Entry",
@@ -324,7 +326,8 @@ def receive_stock(item_code: str, qty: float, rate: float, settings) -> None:
 					"item_code": item_code,
 					"qty": qty,
 					"t_warehouse": settings.default_warehouse,
-					"basic_rate": rate * 0.6,
+					# valued as ERPNext values the item, never made up from the selling price
+					"basic_rate": valuation_rate(item_code, settings.default_warehouse),
 					"allow_zero_valuation_rate": 1,
 				}
 			],

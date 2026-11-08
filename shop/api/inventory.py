@@ -88,25 +88,32 @@ def stock_map(item_codes: list[str], warehouse: str) -> dict:
 	return {row.item_code: row.actual_qty for row in rows}
 
 
+def valuation_rate(item_code: str, warehouse: str) -> float:
+	"""What ERPNext values the item at: its current valuation in the warehouse, else the Valuation
+	Rate set on the Item."""
+	current = frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "valuation_rate")
+	return flt(current) or flt(frappe.db.get_value("Item", item_code, "valuation_rate"))
+
+
 @frappe.whitelist(methods=["POST"])
 def set_stock(item_code: str, qty: float) -> dict:
 	"""Reconcile an item to an exact quantity."""
 	only_managers()
 	settings = frappe.get_cached_doc("Shop Settings")
-	rate = (pricing.get_price(item_code) or {}).get("rate") or 1
+	row = {"item_code": item_code, "warehouse": settings.default_warehouse, "qty": flt(qty)}
+	# valued as ERPNext values it, never made up from the selling price
+	rate = valuation_rate(item_code, settings.default_warehouse)
+	if rate:
+		row["valuation_rate"] = rate
+	else:
+		# no cost known yet: ERPNext's zero valuation, until a Valuation Rate is set on the Item
+		row["allow_zero_valuation_rate"] = 1
 	reconciliation = frappe.get_doc(
 		{
 			"doctype": "Stock Reconciliation",
 			"company": settings.company,
 			"purpose": "Stock Reconciliation",
-			"items": [
-				{
-					"item_code": item_code,
-					"warehouse": settings.default_warehouse,
-					"qty": flt(qty),
-					"valuation_rate": flt(rate) * 0.6,
-				}
-			],
+			"items": [row],
 		}
 	)
 	reconciliation.flags.ignore_permissions = True
