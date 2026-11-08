@@ -22,6 +22,7 @@ const themes: Record<string, string> = {
 	Rejected: 'red',
 	Draft: 'gray',
 	Unfulfilled: 'gray',
+	Credited: 'gray',
 }
 
 const theme = computed(() => (themes[props.label] || 'blue') as any)

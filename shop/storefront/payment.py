@@ -46,12 +46,26 @@ def is_paid(order) -> bool:
 
 def payment_status(order) -> str:
 	"""Paid, Part paid or Unpaid: from what ERPNext records on the order, and for an order paid on
-	account, from its invoices."""
+	account, from its invoices. An invoice a credit note settled with nothing received is Credited."""
 	if is_paid(order) or invoices_paid(order.name):
-		return "Paid"
+		return "Paid" if money_received(order) else "Credited"
 	if flt(order.advance_paid) > 0:
 		return "Part paid"
 	return "Unpaid"
+
+
+def money_received(order) -> bool:
+	"""Whether any payment came in for the order or its invoices."""
+	invoices = frappe.get_all(
+		"Sales Invoice Item", filters={"sales_order": order.name, "docstatus": 1}, pluck="parent", distinct=True
+	)
+	names = [order.name, *invoices]
+	return bool(
+		frappe.db.exists(
+			"Payment Entry Reference",
+			{"reference_name": ["in", names], "docstatus": 1, "parenttype": "Payment Entry"},
+		)
+	)
 
 
 def invoices_paid(order_name: str) -> bool:

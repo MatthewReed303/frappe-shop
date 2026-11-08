@@ -67,7 +67,7 @@
 					<FulfillmentPanel
 						:key="panelVersion"
 						:order="doc.name"
-						:docstatus="doc.docstatus"
+						:docstatus="doc.display_status === 'Cancelled' ? 2 : doc.docstatus"
 						@changed="order.reload()"
 					/>
 				</div>

@@ -404,6 +404,8 @@ class TestTradeAccounts(IntegrationTestCase):
 			payment.cancel_by_store(order.name)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount"), 0)
 		self.assertEqual(payment.refunds_due(order.name), [])
+		# nothing was paid: it is credited, not paid
+		self.assertEqual(payment.payment_status(frappe.get_doc("Sales Order", order.name)), "Credited")
 
 	def test_credit_limit_holds_only_orders_on_account(self):
 		email = "limited.buyer@example.com"
