@@ -183,7 +183,7 @@ class TestReturns(IntegrationTestCase):
 			payment.refund_online("SO-1", "CN-1")
 		# what left the gateway's account, with ERPNext's exchange gain or loss for the rest
 		self.assertEqual(entry.paid_amount, 20.0)
-		entry.set_exchange_gain_loss.assert_called_once()
+		entry.set_amounts.assert_called_once()
 		gateway.refund.assert_called_once_with("Payment Request", "PR-1", 20.0, "CN-1")
 
 	def test_a_refund_is_in_the_currency_the_customer_paid_in(self):

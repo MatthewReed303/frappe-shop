@@ -290,12 +290,17 @@ def payment_entry_for(order, account: str | None, received: float | None = None)
 	rate = flt(payment_entry.target_exchange_rate) / flt(payment_entry.source_exchange_rate)
 	if received and flt(received, 2) != flt(amount_due(order), 2):
 		owed = {row.reference_name: flt(row.outstanding_amount) for row in payment_entry.references}
+		party_rate = rate
+		if payment_entry.paid_to_account_currency == order.currency:
+			# paid in the order's currency: it pays that much of the order, at the order's rate;
+			# ERPNext books the change in rate since as exchange gain or loss
+			party_rate = 1 if payment_entry.paid_from_account_currency == order.currency else flt(order.conversion_rate)
 		payment_entry = get_payment_entry(
 			"Sales Order",
 			order.name,
 			bank_account=account,
 			bank_amount=received,
-			party_amount=flt(received * rate, payment_entry.precision("paid_amount")),
+			party_amount=flt(received * party_rate, payment_entry.precision("paid_amount")),
 		)
 		for reference in payment_entry.references:
 			reference.outstanding_amount = owed[reference.reference_name]
@@ -542,6 +547,7 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 			credit_note,
 			bank_account=frappe.db.get_value("Bank Account", bank_account, "account"),
 		)
+		pay_back_exactly(entry, credit_note)
 		entry.bank_account = bank_account
 		entry.reference_no, entry.reference_date = credit_note, nowdate()
 		entry.flags.ignore_permissions = True
@@ -566,6 +572,14 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 	return name
 
 
+def pay_back_exactly(entry, credit_note: str) -> None:
+	"""A refund from an account in the credit note's currency pays back exactly what it owes there;
+	ERPNext books the change in rate since the payment as exchange gain or loss."""
+	if entry.paid_from_account_currency == frappe.db.get_value("Sales Invoice", credit_note, "currency"):
+		entry.paid_amount = owed(credit_note)
+		entry.set_amounts()
+
+
 def refund_online(order_name: str, credit_note: str) -> str | None:
 	"""Refund a credit note's amount through the gateway that took the order's online payment, when
 	the gateway can, and record it as ERPNext's Payment Entry against the credit note."""
@@ -577,11 +591,7 @@ def refund_online(order_name: str, credit_note: str) -> str | None:
 	payment_request, controller = found
 	amount = owed(credit_note)
 	entry = get_payment_entry("Sales Invoice", credit_note, bank_account=payment_request.payment_account)
-	if entry.paid_from_account_currency == frappe.db.get_value("Sales Invoice", credit_note, "currency"):
-		# the gateway pays back exactly what the customer paid; ERPNext books the change in rate since
-		entry.paid_amount = amount
-		entry.set_amounts()
-		entry.set_exchange_gain_loss()
+	pay_back_exactly(entry, credit_note)
 	entry.reference_no, entry.reference_date = credit_note, nowdate()
 	entry.flags.ignore_permissions = True
 	entry.insert(ignore_permissions=True)

@@ -605,6 +605,51 @@ class TestCheckoutTotals(IntegrationTestCase):
 			totals.money(payment.amount_due(order), order.currency), sendmail.call_args.kwargs["message"]
 		)
 
+	def rate_moves_to(self, rate):
+		from frappe.utils import nowdate
+
+		for source, target, value in (
+			(self.foreign, self.company_currency, rate),
+			(self.company_currency, self.foreign, 1 / rate),
+		):
+			filters = {"date": nowdate(), "from_currency": source, "to_currency": target}
+			frappe.db.delete("Currency Exchange", filters)
+			rate_doc = frappe.get_doc(
+				{"doctype": "Currency Exchange", **filters, "exchange_rate": value, "for_selling": 1}
+			).insert(ignore_permissions=True)
+			self.addCleanup(frappe.db.delete, "Currency Exchange", {"name": rate_doc.name})
+		self.addCleanup(lambda: setattr(frappe.local, "cache", {}))
+		frappe.local.cache = {}
+
+	def test_a_short_payment_in_another_currency_pays_that_much_of_the_order(self):
+		self.basket(1)
+		name = self.place(payment_method="bank", address=self.abroad_address, currency=self.foreign)
+		order = frappe.get_doc("Sales Order", name)
+		owed = payment.amount_due(order)
+		# the rate moves before the customer pays, then they send 13.04 less than owed
+		self.rate_moves_to(flt(order.conversion_rate) * 1.1)
+		transaction = self.bank_deposit(order, flt(owed - 13.04, 2), 0, name)
+		with patch("frappe.sendmail"):
+			entry = frappe.get_doc("Payment Entry", payment.pay_from_bank_transaction(transaction.name))
+		order.reload()
+		self.assertAlmostEqual(payment.amount_due(order), 13.04, delta=0.02)
+		self.assertFalse(payment.is_paid(order))
+		self.assertTrue([row for row in entry.deductions if row.is_exchange_gain_loss])
+
+	def test_a_refund_from_a_bank_account_pays_back_what_the_customer_paid(self):
+		self.basket(1)
+		name = self.place(payment_method="bank", address=self.abroad_address, currency=self.foreign)
+		order = frappe.get_doc("Sales Order", name)
+		owed = payment.amount_due(order)
+		payment.pay_from_bank_transaction(self.bank_deposit(order, owed, 0, name).name)
+		with patch("frappe.sendmail"):
+			credit_note = payment.cancel_by_store(name)["credit_note"]
+		self.rate_moves_to(flt(order.conversion_rate) * 1.1)
+		account = totals.bank_account(self.foreign, "bank").bank_account
+		with patch("shop.storefront.emails.send"):
+			entry = frappe.get_doc("Payment Entry", payment.refund(name, credit_note, account))
+		self.assertEqual((entry.paid_amount, entry.paid_from_account_currency), (owed, self.foreign))
+
 	def test_more_than_owed_is_kept_as_the_customers_advance(self):
 		self.basket(1)
 		name = self.place(currency=self.company_currency)
