@@ -238,6 +238,20 @@ class TestAdminApi(IntegrationTestCase):
 		self.assertTrue(listed["formatted_total"].endswith(" USD"))
 		self.assertEqual(analytics.get_overview(days=1)["revenue"], before)
 
+	def test_markup_typed_by_a_customer_is_never_shown_as_markup(self):
+		storefront_cart.add_item("SHOP-DEMO-003")
+		typed = '"<img src=x onerror=alert(1)>"'
+		name = checkout.place_order(
+			customer=dict(BUYER, full_name=f"Ann {typed}"), address=dict(ADDRESS, address_line1=f"1 Road {typed}")
+		)["sales_order"]
+		order = frappe.get_doc("Sales Order", name)
+		self.assertNotIn("<img", frappe.db.get_value("Address", order.shipping_address_name, "address_line1"))
+		self.assertNotIn("<img", order.customer_name)
+
+		# an address saved with markup some other way is escaped in the admin
+		frappe.db.set_value("Address", order.shipping_address_name, "address_line1", typed)
+		self.assertNotIn("<img", orders.get_order(name)["address"])
+
 	def test_erpnext_order_defaults_are_set_from_shop_settings(self):
 		group = frappe.db.get_single_value("Selling Settings", "customer_group")
 		rounding = frappe.db.get_single_value("Global Defaults", "disable_rounded_total")

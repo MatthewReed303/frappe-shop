@@ -109,9 +109,9 @@ def addresses(customer: str) -> list[dict]:
 	)
 	if not names:
 		return []
-	from frappe.contacts.doctype.address.address import get_address_display
+	from shop.api.orders import safe_address_display
 
-	return [{"name": name, "display": get_address_display(name)} for name in names]
+	return [{"name": name, "display": safe_address_display(name)} for name in names]
 
 
 def reviews(email: str | None) -> list[dict]:

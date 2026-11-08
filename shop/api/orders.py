@@ -236,9 +236,19 @@ def delivery_notes(order_name: str) -> list[str]:
 def address_display(name: str | None) -> str | None:
 	if not name:
 		return None
+	return safe_address_display(name)
+
+
+def safe_address_display(name: str) -> str:
+	"""ERPNext's address display, with what the customer typed escaped (Frappe doesn't clean
+	values that read as JSON, and the template prints them as they are)."""
 	from frappe.contacts.doctype.address.address import get_address_display
 
-	return get_address_display(name)
+	address = frappe.get_doc("Address", name).as_dict()
+	for field, value in address.items():
+		if isinstance(value, str):
+			address[field] = frappe.utils.escape_html(value)
+	return get_address_display(address)
 
 
 def bank_accounts(order) -> list[dict]:

@@ -37,7 +37,7 @@ def register(full_name: str, email: str, accept_terms: int = 0) -> dict:
 	is emailed."""
 	check_terms(accept_terms)
 	email = (email or "").strip().lower()
-	full_name = (full_name or "").strip()
+	full_name = frappe.utils.strip_html(full_name or "").strip()
 	validate_email_address(email, throw=True)
 	if not full_name:
 		frappe.throw(_("Please enter your name"))
@@ -122,7 +122,7 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 	"""A business applies for a trade account: an ERPNext Lead (UTM Source "Store Trade Application")
 	with its contact, address and the terms they accepted. Staff approve it from the Lead."""
 	check_terms(accept_terms)
-	values = {field: cstr(application.get(field)).strip() for field in TRADE_FIELDS}
+	values = {field: frappe.utils.strip_html(cstr(application.get(field))).strip() for field in TRADE_FIELDS}
 	values["email"] = values["email"].lower()
 	validate_email_address(values["email"], throw=True)
 	for field, label in (

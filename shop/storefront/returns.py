@@ -20,7 +20,8 @@ def create_request(
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 	if request_type not in ("Return", "Replacement"):
 		frappe.throw(_("Choose return or replacement"))
-	if not (reason or "").strip():
+	reason = frappe.utils.strip_html(reason or "").strip()
+	if not reason:
 		frappe.throw(_("Please tell us what went wrong"))
 	doc = frappe.get_doc("Sales Order", order)
 	validate_item(doc, item_code, qty)

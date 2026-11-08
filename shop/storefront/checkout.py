@@ -171,7 +171,9 @@ def saved_addresses() -> list[dict]:
 		limit=6,
 	)
 	for row in rows:
-		row.line = ", ".join(str(row[field]) for field in ("address_line1", "city", "pincode") if row.get(field))
+		row.line = frappe.utils.escape_html(
+			", ".join(str(row[field]) for field in ("address_line1", "city", "pincode") if row.get(field))
+		)
 	rows.append(frappe._dict({"name": "", "line": _("Enter a new address")}))
 	return rows
 
@@ -207,6 +209,7 @@ def place_order(
 	business_buyer: int = 0,
 	expected_total: float | None = None,
 ) -> dict:
+	customer, address = plain_text(customer), plain_text(address)
 	cart = cart_module.resolve_cart()
 	validate_order(cart, customer, payment_method, accept_terms)
 	with elevated():
@@ -488,6 +491,14 @@ def set_primary_contact(party: str, contact) -> None:
 			"mobile_no": contact.mobile_no,
 		},
 	)
+
+
+def plain_text(values: dict | None) -> dict:
+	"""What a customer typed, without markup, as staff see it in the admin, Desk and emails."""
+	return {
+		key: frappe.utils.strip_html(value).strip() if isinstance(value, str) else value
+		for key, value in (values or {}).items()
+	}
 
 
 def create_address(party: str, customer: dict, address: dict):

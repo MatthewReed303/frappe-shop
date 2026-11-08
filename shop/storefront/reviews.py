@@ -70,8 +70,8 @@ def add_review(product: str, rating: int, title: str | None = None, review: str 
 		{
 			"product": product,
 			"rating": cint(rating),
-			"title": title,
-			"review": review,
+			"title": frappe.utils.strip_html(title or ""),
+			"review": frappe.utils.strip_html(review or ""),
 			"reviewer_name": frappe.utils.get_fullname(frappe.session.user),
 			"user": frappe.session.user,
 			"verified": 1 if has_purchased(product) else 0,

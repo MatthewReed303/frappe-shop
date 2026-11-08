@@ -19,8 +19,10 @@ def request_quote(
 	customer: dict, address: dict, shipping_option: str | None = None, message: str | None = None
 ) -> dict:
 	from shop.storefront.accounts import staff_emails
-	from shop.storefront.checkout import create_address, elevated, get_or_create_customer
+	from shop.storefront.checkout import create_address, elevated, get_or_create_customer, plain_text
 
+	customer, address = plain_text(customer), plain_text(address)
+	message = frappe.utils.strip_html(message or "")
 	if not frappe.get_cached_doc("Shop Settings").get("allow_quote_requests"):
 		frappe.throw(_("This store doesn't take quote requests"))
 	cart = cart_module.resolve_cart()
