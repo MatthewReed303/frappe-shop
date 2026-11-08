@@ -157,6 +157,14 @@ const stats = computed(() => [
 	},
 ])
 
+// the picker shows the warehouse the page is showing (the store's first, until another is picked)
+watch(
+	() => inventory.data?.warehouse,
+	(shown) => {
+		if (shown && !warehouse.value) warehouse.value = shown
+	},
+)
+
 watch([search, lowOnly, warehouse], () => {
 	start.value = 0
 	inventory.reload()
