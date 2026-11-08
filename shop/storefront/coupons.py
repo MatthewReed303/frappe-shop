@@ -38,5 +38,7 @@ def check_minimum(coupon: dict, subtotal: float) -> None:
 	"""Say how much more to add when the coupon's Pricing Rule has a minimum amount."""
 	if coupon.min_amt and subtotal < coupon.min_amt:
 		frappe.throw(
-			_("Add items worth {0} to use this coupon").format(pricing.display_amount(coupon.min_amt))
+			_("This coupon is for orders of {0} or more: add {1} more to use it").format(
+				pricing.display_amount(coupon.min_amt), pricing.display_amount(coupon.min_amt - subtotal)
+			)
 		)
