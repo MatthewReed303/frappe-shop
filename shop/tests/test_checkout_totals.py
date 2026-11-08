@@ -696,6 +696,21 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(note.discount_amount, -flt(invoice.discount_amount / 2, 2))
 		self.assertFalse([tax for tax in note.taxes if tax.charge_type == "Actual"])
 
+	def test_a_deposit_for_a_cancelled_order_is_left_for_staff(self):
+		self.basket(1)
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		owed = payment.amount_due(order)
+		with patch("frappe.sendmail"):
+			payment.cancel_by_store(name)
+		transaction = self.bank_deposit(order, owed, 0, name)
+		self.assertIsNone(payment.pay_from_bank_transaction(transaction.name))
+		self.assertTrue(
+			frappe.db.exists(
+				"Comment", {"reference_name": name, "content": ["like", f"%{transaction.name}%cancelled%"]}
+			)
+		)
+
 	def test_more_than_owed_is_kept_as_the_customers_advance(self):
 		self.basket(1)
 		name = self.place(currency=self.company_currency)
