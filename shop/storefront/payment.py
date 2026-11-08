@@ -294,7 +294,9 @@ def payment_entry_for(order, account: str | None, received: float | None = None)
 		if payment_entry.paid_to_account_currency == order.currency:
 			# paid in the order's currency: it pays that much of the order, at the order's rate;
 			# ERPNext books the change in rate since as exchange gain or loss
-			party_rate = 1 if payment_entry.paid_from_account_currency == order.currency else flt(order.conversion_rate)
+			party_rate = (
+				1 if payment_entry.paid_from_account_currency == order.currency else flt(order.conversion_rate)
+			)
 		payment_entry = get_payment_entry(
 			"Sales Order",
 			order.name,
@@ -503,7 +505,8 @@ def refunds_due(order_name: str) -> list[dict]:
 	)
 	# credited beyond what was still owed on it: the invoice itself has money to pay back
 	if flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) < 0:
-		notes.insert(0, frappe._dict(name=invoice, currency=frappe.db.get_value("Sales Invoice", invoice, "currency")))
+		currency = frappe.db.get_value("Sales Invoice", invoice, "currency")
+		notes.insert(0, frappe._dict(name=invoice, currency=currency))
 	online = bool(online_refund_controller(order_name))
 	return [
 		{
