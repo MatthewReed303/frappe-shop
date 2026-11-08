@@ -316,6 +316,13 @@ def statement_run(company: str, group: str, store_name: str) -> str | None:
 	"""ERPNext's Process Statement Of Accounts emailing the group a statement each month, once the
 	group has a customer. The store keeps its customer list in step with the group
 	(shop.storefront.statements.sync_customer)."""
+	# the group's run, whatever the store was called when it was made
+	existing = frappe.db.get_value(
+		"Process Statement Of Accounts",
+		{"company": company, "customer_collection": "Customer Group", "collection_name": group},
+	)
+	if existing:
+		return existing
 	name = f"{store_name} statements"
 	if frappe.db.exists("Process Statement Of Accounts", name):
 		return name

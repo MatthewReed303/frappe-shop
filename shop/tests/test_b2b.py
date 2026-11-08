@@ -649,6 +649,19 @@ class TestStatements(IntegrationTestCase):
 		customer.save(ignore_permissions=True)
 		self.assertNotIn(customer.name, [r.customer for r in self.rows()])
 
+	def test_the_last_customer_leaving_stops_the_statements_and_one_run_is_kept(self):
+		self.stays.customer_group = self.OTHER
+		self.stays.save(ignore_permissions=True)
+		self.assertFalse(frappe.db.get_value("Process Statement Of Accounts", self.RUN, "enable_auto_email"))
+		# renaming the store doesn't make a second run for the group
+		from shop.setup_store import statement_run
+
+		company = frappe.get_cached_doc("Shop Settings").company
+		self.assertEqual(statement_run(company, self.GROUP, "A Renamed Store"), self.RUN)
+		self.stays.customer_group = self.GROUP
+		self.stays.save(ignore_permissions=True)
+		self.assertTrue(frappe.db.get_value("Process Statement Of Accounts", self.RUN, "enable_auto_email"))
+
 	def test_statement_needs_a_signed_in_customer(self):
 		from shop.storefront import statements
 

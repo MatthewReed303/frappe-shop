@@ -100,15 +100,19 @@ def sync_customer(doc, method=None) -> None:
 	)
 	for name in frappe.get_all(
 		"Process Statement Of Accounts",
-		filters={"enable_auto_email": 1, "customer_collection": "Customer Group", "collection_name": group},
+		filters={"customer_collection": "Customer Group", "collection_name": group},
 		pluck="name",
 	):
 		run = frappe.get_doc("Process Statement Of Accounts", name)
 		customers = run_customers(group, run.primary_mandatory)
 		if customers:
 			run.set("customers", customers)
-			run.flags.ignore_permissions = True
-			run.save()
+			run.enable_auto_email = 1
+		else:
+			# the group's last customer left: no one is sent statements
+			run.enable_auto_email = 0
+		run.flags.ignore_permissions = True
+		run.save()
 
 
 def run_customers(group: str, primary_mandatory: int) -> list[dict]:

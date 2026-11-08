@@ -239,8 +239,8 @@ def pay_from_bank_transaction(bank_transaction: str) -> str | None:
 
 
 def note_deposit_for_closed_order(transaction) -> None:
-	"""A deposit naming a store order that was cancelled or closed is left for staff, and said on
-	the order, where the admin shows it, once."""
+	"""A deposit naming a store order it can't pay (cancelled, closed, on hold, already paid, or in
+	another currency) is left for staff, and said on the order, where the admin shows it, once."""
 	text = compact(f"{transaction.reference_number or ''} {transaction.description or ''}")
 	for name in frappe.get_all(
 		"Sales Order",
@@ -249,16 +249,25 @@ def note_deposit_for_closed_order(transaction) -> None:
 			"shop_payment_method": ["in", list(totals.BANK_METHODS)],
 			"docstatus": ["in", [1, 2]],
 		},
-		or_filters={"docstatus": 2, "status": "Closed"},
 		pluck="name",
 	):
 		if not re.search(rf"{compact(name)}(?!\d)", text):
 			continue
-		note = _("Bank deposit {0} of {1} names this order, which is cancelled. Refund it or record it.").format(
-			transaction.name, money_text(flt(transaction.unallocated_amount), transaction.currency)
+		order = frappe.get_doc("Sales Order", name)
+		if order.docstatus == 2:
+			state = _("cancelled")
+		elif order.status in ("Closed", "On Hold"):
+			state = _(order.status).lower()
+		elif is_paid(order):
+			state = _("already paid")
+		elif order.currency != transaction.currency:
+			state = _("in {0}").format(order.currency)
+		else:
+			continue
+		note = _("Bank deposit {0} of {1} names this order, which is {2}. Match, refund or record it.").format(
+			transaction.name, money_text(flt(transaction.unallocated_amount), transaction.currency), state
 		)
-		if not frappe.db.exists("Comment", {"reference_name": name, "content": note}):
-			frappe.get_doc("Sales Order", name).add_comment("Info", note)
+		note_once(order, note)
 		return
 
 

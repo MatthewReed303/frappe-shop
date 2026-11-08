@@ -84,11 +84,15 @@ def notify_customer(fulfillment, status: str) -> None:
 		return
 	if not frappe.db.get_value("Sales Order", fulfillment.sales_order, "contact_email"):
 		return
+	from shop.routes import store_url
 	from shop.storefront import emails
-	from shop.storefront.orders import order_url
+	from shop.storefront.orders import access_token, order_url
 
 	order = frappe.get_doc("Sales Order", fulfillment.sales_order)
-	link = frappe.utils.get_url(order_url(order.name))
+	# an order entered in Desk has no link a guest can open: the email links to their account
+	link = frappe.utils.get_url(
+		order_url(order.name) if access_token(order.name) else store_url("account/orders")
+	)
 	if status == "Shipped":
 		emails.send(
 			"order_shipped", order.contact_email, order, order_url=link, tracking_url=fulfillment.tracking_url,
@@ -107,10 +111,17 @@ def record_delivery(fulfillment) -> None:
 	)
 	if not order or order.docstatus != 1 or flt(order.per_delivered) >= 100:
 		return
+	# a Delivery Note that fails half way isn't left behind as a draft
+	frappe.db.savepoint("shop_record_delivery")
 	try:
 		fulfill(fulfillment.sales_order)
 	except Exception:
-		frappe.log_error(title="Fulfillment delivery note failed")
+		frappe.db.rollback(save_point="shop_record_delivery")
+		frappe.log_error(
+			title="Fulfillment delivery note failed",
+			reference_doctype="Sales Order",
+			reference_name=fulfillment.sales_order,
+		)
 
 
 def auto_send(order_name: str) -> None:
