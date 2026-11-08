@@ -167,6 +167,17 @@ class TestReturns(IntegrationTestCase):
 			[result["credit_note"]],
 		)
 
+	def test_a_refund_is_in_the_currency_the_customer_paid_in(self):
+		from shop.storefront import payment
+
+		note = frappe._dict(
+			outstanding_amount=-150.0, currency="USD", party_account_currency="NZD", conversion_rate=1.5
+		)
+		with patch("frappe.db.get_value", return_value=note):
+			self.assertEqual(payment.owed("CN-1"), 100.0)
+		with patch("frappe.db.get_value", return_value=frappe._dict(note, party_account_currency="USD")):
+			self.assertEqual(payment.owed("CN-1"), 150.0)
+
 	def test_completed_return_credits_and_staff_approve_the_card_refund(self):
 		from shop.api import orders as orders_api
 		from shop.storefront import payment

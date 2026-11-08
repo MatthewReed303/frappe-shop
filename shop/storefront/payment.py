@@ -566,16 +566,31 @@ def refund_online(order_name: str, credit_note: str) -> str | None:
 	if not found:
 		return None
 	payment_request, controller = found
+	amount = owed(credit_note)
 	entry = get_payment_entry("Sales Invoice", credit_note, bank_account=payment_request.payment_account)
 	entry.reference_no, entry.reference_date = credit_note, nowdate()
 	entry.flags.ignore_permissions = True
 	entry.insert(ignore_permissions=True)
 	entry.submit()
-	# the gateway is asked last, for what the Payment Entry pays back, so nothing can undo the
-	# recorded refund once the money has gone back
-	reference = controller.refund("Payment Request", payment_request.name, entry.paid_amount, credit_note)
+	# the gateway is asked last, so nothing can undo the recorded refund once the money has gone back
+	reference = controller.refund("Payment Request", payment_request.name, amount, credit_note)
 	entry.db_set("reference_no", reference)
 	return entry.name
+
+
+def owed(credit_note: str) -> float:
+	"""What a credit note still owes the customer, in its own currency (the currency they paid in):
+	ERPNext keeps the outstanding amount in the customer's account currency."""
+	note = frappe.db.get_value(
+		"Sales Invoice",
+		credit_note,
+		["outstanding_amount", "currency", "party_account_currency", "conversion_rate"],
+		as_dict=True,
+	)
+	amount = abs(flt(note.outstanding_amount))
+	if (note.party_account_currency or note.currency) != note.currency:
+		amount = amount / (flt(note.conversion_rate) or 1)
+	return flt(amount, 2)
 
 
 CANCELLED_BY_STORE = "Cancelled by the store."
