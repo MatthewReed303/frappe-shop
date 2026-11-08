@@ -195,6 +195,7 @@ class TestReturns(IntegrationTestCase):
 			[row["credit_note"] for row in orders_api.get_order(order)["refunds_due"]], [credit_note.name]
 		)
 
+		owed = abs(flt(credit_note.outstanding_amount))
 		with (
 			patch(
 				"frappe.db.get_value",
@@ -208,9 +209,11 @@ class TestReturns(IntegrationTestCase):
 			orders_api.refund(order, credit_note.name)
 		self.assertEqual(
 			gateway.refund.call_args.args[:3],
-			("Payment Request", "PR-TEST", abs(flt(credit_note.grand_total))),
+			("Payment Request", "PR-TEST", owed),
 		)
 		refund = frappe.db.get_value("Shop Return Request", created["name"], "refund")
+		self.assertEqual(frappe.db.get_value("Payment Entry", refund, "docstatus"), 1)
+		self.assertEqual(flt(frappe.db.get_value("Payment Entry", refund, "paid_amount")), owed)
 		self.assertEqual(frappe.db.get_value("Payment Entry", refund, "reference_no"), "re_test_refund")
 		self.assertEqual(frappe.db.get_value("Sales Invoice", credit_note.name, "outstanding_amount"), 0)
 		subjects = [call.kwargs["subject"] for call in sendmail.call_args_list]

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests import IntegrationTestCase
 
@@ -105,7 +107,12 @@ class TestFulfillment(IntegrationTestCase):
 		order = self.place_order()
 		from shop.api.orders import mark_paid
 
-		mark_paid(order)
+		with patch("frappe.enqueue") as enqueue:
+			mark_paid(order)
+		self.assertEqual(enqueue.call_args.kwargs["order_name"], order)
+		self.assertTrue(enqueue.call_args.kwargs["enqueue_after_commit"])
+		self.assertIsNone(service.for_order(order))
+		service.send_paid_order(order)
 		record = service.for_order(order)
 		self.assertIsNotNone(record)
 		self.assertEqual(record["status"], "Accepted")
@@ -131,9 +138,28 @@ class TestFulfillment(IntegrationTestCase):
 		self.assertIn("PRG-1", summary["shipment"]["tracking_url"])
 		self.assertIsNone(summary["awaiting_shipment"])
 
+	def test_a_provider_failure_keeps_the_failure_and_undoes_its_work(self):
+		from shop.fulfillment.providers.manual import ManualProvider
+
+		self.enable_auto_send()
+		order = self.place_order()
+
+		def half_done(provider, sales_order, items):
+			frappe.get_doc("Sales Order", sales_order.name).add_comment("Info", "half done")
+			frappe.throw("The provider is down")
+
+		with patch.object(ManualProvider, "create_shipment", half_done):
+			service.send_paid_order(order)
+		record = service.for_order(order)
+		self.assertEqual(record["status"], "Failed")
+		self.assertIn("The provider is down", record["error"])
+		self.assertFalse(
+			frappe.db.exists("Comment", {"reference_name": order, "content": "half done"})
+		)
+
 	def test_orders_are_not_sent_twice_by_the_automatic_route(self):
 		self.enable_auto_send()
 		order = self.place_order()
 		service.send(order, "manual")
-		service.auto_send(order)
+		service.send_paid_order(order)
 		self.assertEqual(frappe.db.count("Shop Fulfillment", {"sales_order": order}), 1)

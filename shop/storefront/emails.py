@@ -60,21 +60,21 @@ TEMPLATES = {
 		"Shop: Return Requested",
 		ORDER,
 		"We've received your request for order {{ doc.name }}",
-		"<p>We've received your {{ request_type|lower }} request for {{ qty }} × {{ item_name }} from order "
+		"<p>We've received your {{ request_type|lower }} request for {{ qty }} \u00d7 {{ item_name }} from order "
 		"{{ doc.name }}. We'll reply once we've looked at it.</p>",
 	),
 	"return_staff": (
 		"Shop: Return Requested (Staff)",
 		ORDER,
 		"{{ request_type }} requested for order {{ doc.name }}",
-		"<p>{{ doc.customer_name }} asked for a {{ request_type|lower }} of {{ qty }} × {{ item_name }} from order "
+		"<p>{{ doc.customer_name }} asked for a {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name }} from order "
 		"{{ doc.name }}.</p><p>Reason: {{ reason }}</p><p>Review it in the store admin under Returns.</p>",
 	),
 	"return_approved": (
 		"Shop: Return Approved",
 		ORDER,
 		"Your {{ request_type|lower }} for order {{ doc.name }} is approved",
-		"<p>We've approved your {{ request_type|lower }} of {{ qty }} × {{ item_name }} from order {{ doc.name }}.</p>"
+		"<p>We've approved your {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
 		"{% if note %}<p>{{ note }}</p>{% endif %}"
 		"<p>Please send the item back with your order number, {{ doc.name }}. Reply to this email if you need our "
 		"return address.</p>",
@@ -90,7 +90,7 @@ TEMPLATES = {
 		"Shop: Return Completed",
 		ORDER,
 		"Your {{ request_type|lower }} for order {{ doc.name }} is complete",
-		"<p>We've received {{ qty }} × {{ item_name }} from order {{ doc.name }}.</p>"
+		"<p>We've received {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
 		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached. We'll let you "
 		"know when the refund is on its way.</p>{% endif %}"
 		"{% if note %}<p>{{ note }}</p>{% endif %}",
@@ -149,6 +149,12 @@ TEMPLATES = {
 		"Quote request {{ doc.name }} from {{ customer_name | e }}",
 		"<p>{{ customer_name | e }} ({{ email | e }}) asked for a quote.</p><p>{{ message | e }}</p>"
 		'<p><a href="{{ desk_url }}">Open the quotation</a></p>',
+	),
+	"quote_changed_staff": (
+		"Shop: Quote Prices Changed",
+		QUOTATION,
+		"Quote {{ doc.name }} can't be accepted: prices have changed",
+		'<p>{{ note | e }}</p><p><a href="{{ desk_url }}">Open the quotation</a></p>',
 	),
 	"quote_ready": (
 		"Shop: Quote Ready",

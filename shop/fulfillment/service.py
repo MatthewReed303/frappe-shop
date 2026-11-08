@@ -30,22 +30,15 @@ def send(order_name: str, provider_key: str | None = None) -> str:
 		for row in order.items
 		if not is_charge_item(row.item_code)
 	]
-	fulfillment = frappe.get_doc(
-		{
-			"doctype": "Shop Fulfillment",
-			"sales_order": order_name,
-			"provider": key,
-			"status": "Pending",
-			"items": items,
-		}
-	)
-	fulfillment.insert(ignore_permissions=True)
+	record = {"doctype": "Shop Fulfillment", "sales_order": order_name, "provider": key, "items": items}
+	frappe.db.savepoint("shop_send")
+	fulfillment = frappe.get_doc({**record, "status": "Pending"}).insert(ignore_permissions=True)
 	try:
 		apply_result(fulfillment, provider.create_shipment(order, items))
 	except Exception as error:
-		fulfillment.status = "Failed"
-		fulfillment.error = str(error)[:500]
-		fulfillment.save(ignore_permissions=True)
+		# what the provider made before failing (a Delivery Note, say) is undone; the failure is kept
+		frappe.db.rollback(save_point="shop_send")
+		frappe.get_doc({**record, "status": "Failed", "error": str(error)[:500]}).insert(ignore_permissions=True)
 		raise
 	return fulfillment.name
 
@@ -121,16 +114,32 @@ def record_delivery(fulfillment) -> None:
 
 
 def auto_send(order_name: str) -> None:
-	"""Hand a paid order over without waiting to be asked, when the store wants that."""
-	settings = frappe.get_cached_doc("Shop Settings")
-	if not settings.get("auto_send_to_fulfillment"):
+	"""Hand a paid order over without waiting to be asked, when the store wants that: once the
+	payment is saved, so a provider never gets an order whose payment was rolled back."""
+	if not frappe.get_cached_doc("Shop Settings").get("auto_send_to_fulfillment"):
+		return
+	frappe.enqueue(
+		"shop.fulfillment.service.send_paid_order",
+		order_name=order_name,
+		job_id=f"shop-send-{order_name}",
+		deduplicate=True,
+		enqueue_after_commit=True,
+	)
+
+
+def send_paid_order(order_name: str) -> None:
+	if not frappe.get_cached_doc("Shop Settings").get("auto_send_to_fulfillment"):
 		return
 	if frappe.db.exists("Shop Fulfillment", {"sales_order": order_name, "status": ["in", OPEN_STATUSES]}):
+		return
+	if frappe.db.get_value("Sales Order", order_name, "docstatus") != 1:
 		return
 	try:
 		send(order_name)
 	except Exception:
-		frappe.log_error(title="Automatic fulfillment failed")
+		frappe.log_error(
+			title="Automatic fulfillment failed", reference_doctype="Sales Order", reference_name=order_name
+		)
 
 
 def configured_provider() -> str:

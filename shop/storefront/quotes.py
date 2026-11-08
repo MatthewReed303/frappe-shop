@@ -298,6 +298,33 @@ def is_export(quotation) -> bool:
 	return bool(country and country != totals.company_country())
 
 
+def tell_staff_prices_changed(quotation: str, order_total: float) -> None:
+	"""A customer couldn't accept a quote because its order would now cost something else: staff
+	are told once, on the quotation and by email, to send a new quote."""
+	from shop.storefront import emails
+	from shop.storefront.accounts import staff_emails
+
+	doc = frappe.get_doc("Quotation", quotation)
+	note = _(
+		"The customer tried to accept this quote, but its order would now cost {0} instead of {1}: prices or pricing rules changed after it was sent. Send them a new quote."
+	).format(
+		frappe.utils.fmt_money(order_total, currency=doc.currency),
+		frappe.utils.fmt_money(totals.order_total(doc), currency=doc.currency),
+	)
+	if frappe.db.exists(
+		"Comment", {"reference_doctype": "Quotation", "reference_name": quotation, "content": note}
+	):
+		return
+	doc.add_comment("Info", note)
+	emails.send(
+		"quote_changed_staff",
+		staff_emails(),
+		doc,
+		note=note,
+		desk_url=frappe.utils.get_url("/desk/quotation/" + quotation),
+	)
+
+
 def make_order(quotation):
 	from erpnext.selling.doctype.quotation.quotation import make_sales_order
 
@@ -334,6 +361,21 @@ def accept_quote(
 		if payment_method not in [m["method"] for m in summary["payment_methods"]]:
 			frappe.throw(_("This payment method is not available"))
 		order = make_order(quotation)
+		if flt(totals.order_total(order), 2) != flt(totals.order_total(quotation), 2):
+			# ERPNext prices the order as prices are today; it is never placed for other than quoted
+			frappe.enqueue(
+				"shop.storefront.quotes.tell_staff_prices_changed",
+				quotation=quotation.name,
+				order_total=totals.order_total(order),
+				job_id=f"shop-quote-changed-{quotation.name}",
+				deduplicate=True,
+			)
+			frappe.throw(
+				_(
+					"Our prices have changed since this quote was sent, so it can't be accepted as it is. "
+					"We've let our team know and they'll send you an updated quote."
+				)
+			)
 		order.contact_email = quotation.contact_email
 		order.shop_access_token = frappe.generate_hash(length=32)
 		order_quote = frappe._dict(

@@ -394,6 +394,38 @@ class TestCheckoutTotals(IntegrationTestCase):
 		order.submit()
 		self.assertEqual(flt(order.grand_total), flt(quotation.grand_total))
 
+	def test_a_quote_isnt_accepted_at_other_prices(self):
+		from shop.storefront import quotes
+
+		rule = self.quantity_break(3, 15)
+		self.set(allow_quote_requests=1)
+		self.basket(3)
+		result = quotes.request_quote(customer=BUYER, address=self.home_address)
+		quotation = frappe.get_doc("Quotation", result["quote"])
+		quotation.submit()
+		# after the quote is sent, the store raises the price and ends the quantity break
+		price = frappe.db.get_value(
+			"Item Price", {"item_code": ITEM, "price_list": frappe.get_cached_doc("Shop Settings").price_list}
+		)
+		frappe.db.set_value("Item Price", price, "price_list_rate", self.price * 2)
+		self.addCleanup(frappe.db.set_value, "Item Price", price, "price_list_rate", self.price)
+		frappe.db.set_value("Pricing Rule", rule, "disable", 1)
+
+		orders = frappe.db.count("Sales Order")
+		with patch("frappe.enqueue") as enqueue, self.set_user("Guest"):
+			with self.assertRaisesRegex(frappe.ValidationError, "prices have changed"):
+				quotes.accept_quote(quotation.name, quotation.shop_access_token, "bank")
+		self.assertEqual(frappe.db.count("Sales Order"), orders)
+		staff = enqueue.call_args.kwargs
+		self.assertEqual(staff["quotation"], quotation.name)
+
+		quotes.tell_staff_prices_changed(quotation.name, staff["order_total"])
+		quotes.tell_staff_prices_changed(quotation.name, staff["order_total"])
+		notes = frappe.get_all(
+			"Comment", filters={"reference_name": quotation.name, "content": ["like", "%would now cost%"]}
+		)
+		self.assertEqual(len(notes), 1)
+
 	def test_international_transfer_adds_the_banks_fee(self):
 		basket = self.basket(1)
 		local = totals.compute(basket, self.abroad_address, None, "bank", self.foreign)
