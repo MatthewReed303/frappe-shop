@@ -76,6 +76,13 @@ class AmazonProvider(FulfillmentProvider):
 	def create_shipment(self, order, items: list[dict]) -> dict:
 		address = shipping_address(order)
 		fulfillment_order_id = self.fulfillment_order_id(order.name)
+		# a request that timed out may still have reached Amazon: that order is the one to follow
+		existing = self.request("GET", f"{BASE_PATH}/{fulfillment_order_id}", missing_ok=True)
+		existing_status = ((existing or {}).get("payload") or {}).get("fulfillmentOrder", {}).get(
+			"fulfillmentOrderStatus"
+		)
+		if existing_status and STATUS_MAP.get(status_key(existing_status)) not in ("Cancelled", "Failed"):
+			return {"status": "Accepted", "external_id": fulfillment_order_id, "raw": existing}
 		payload = {
 			"sellerFulfillmentOrderId": fulfillment_order_id,
 			"displayableOrderId": order.name[:40],
@@ -133,7 +140,7 @@ class AmazonProvider(FulfillmentProvider):
 		response = self.request("PUT", f"{BASE_PATH}/{fulfillment.external_id}/cancel")
 		return {"status": "Cancelled", "raw": response}
 
-	def request(self, method: str, path: str, payload: dict | None = None) -> dict:
+	def request(self, method: str, path: str, payload: dict | None = None, missing_ok: bool = False) -> dict:
 		import requests
 
 		host = (SANDBOX_HOSTS if self.settings.use_sandbox else HOSTS)[self.settings.region or "eu"]
@@ -147,6 +154,8 @@ class AmazonProvider(FulfillmentProvider):
 			data=json.dumps(payload) if payload else None,
 			timeout=30,
 		)
+		if missing_ok and response.status_code == 404:
+			return {}
 		if response.status_code >= 400:
 			frappe.throw(
 				frappe._("Amazon rejected the request: {0}").format(response.text[:500]),

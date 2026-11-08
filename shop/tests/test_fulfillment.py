@@ -112,7 +112,11 @@ class TestFulfillment(IntegrationTestCase):
 		sent = []
 		with (
 			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
-			patch.object(amazon.AmazonProvider, "request", lambda provider, *args: sent.append(args) or {}),
+			patch.object(
+				amazon.AmazonProvider,
+				"request",
+				lambda provider, *args, **kwargs: (args[0] != "GET" and sent.append(args)) or {},
+			),
 		):
 			provider = amazon.AmazonProvider()
 			result = provider.create_shipment(order, [{"item_code": "SHOP-DEMO-003", "qty": 2.0}] * 2)
@@ -137,6 +141,16 @@ class TestFulfillment(IntegrationTestCase):
 				}
 			).insert(ignore_permissions=True)
 			self.assertEqual(provider.create_shipment(order, [])["external_id"], f"{order.name}-2")
+
+		# the first request timed out after Amazon took it: sending again follows that order
+		taken = {"payload": {"fulfillmentOrder": {"fulfillmentOrderStatus": "RECEIVED"}}}
+		with (
+			patch.object(amazon.AmazonProvider, "__init__", lambda provider: setattr(provider, "settings", settings)),
+			patch.object(amazon.AmazonProvider, "request", return_value=taken) as request,
+		):
+			again = amazon.AmazonProvider().create_shipment(frappe.get_doc("Sales Order", self.place_order()), [])
+		self.assertEqual(again["status"], "Accepted")
+		self.assertEqual([call.args[0] for call in request.call_args_list], ["GET"])
 
 		shipped = {
 			"payload": {
