@@ -82,6 +82,18 @@ class TestFulfillment(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			service.send(order, "does-not-exist")
 
+	def test_a_late_update_doesnt_move_a_shipped_parcel_back(self):
+		order = self.place_order()
+		name = service.send(order, "manual")
+		fulfillment = frappe.get_doc("Shop Fulfillment", name)
+		with patch.object(service, "notify_customer") as notify:
+			service.apply_result(fulfillment, {"status": "Shipped"})
+			service.apply_result(fulfillment, {"status": "Accepted"})
+			service.apply_result(fulfillment, {"status": "Shipped"})
+		self.assertEqual(fulfillment.status, "Shipped")
+		# the customer is told once
+		self.assertEqual(notify.call_count, 1)
+
 	def test_amazon_maps_provider_statuses(self):
 		from shop.fulfillment.providers.amazon import STATUS_MAP, status_key
 
