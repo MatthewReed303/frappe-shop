@@ -8,7 +8,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, nowdate
 
 from shop.storefront import cart, checkout, payment, totals
-from shop.tests.utils import company_bank_account, service, template, terms_record
+from shop.tests.utils import company_bank_account, sellable, service, template, terms_record
 
 BUYER = {"email": "totals.buyer@example.com", "full_name": "Totals Buyer", "phone": "021000000"}
 ITEM = "SHOP-DEMO-003"
@@ -95,6 +95,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.original = {field: settings.get(field) for field in SETTINGS_FIELDS}
 		self.original_banks = [row.as_dict() for row in settings.bank_accounts]
 		self.company = settings.company
+		sellable(ITEM, 20)
 		self.company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
 		self.home = frappe.get_cached_value("Company", self.company, "country")
 		self.other = "United States" if self.home != "United States" else "Australia"
@@ -425,6 +426,20 @@ class TestCheckoutTotals(IntegrationTestCase):
 			"Comment", filters={"reference_name": quotation.name, "content": ["like", "%would now cost%"]}
 		)
 		self.assertEqual(len(notes), 1)
+
+	def test_stock_an_order_waits_for_isnt_sold_again(self):
+		from shop.storefront import stock
+
+		left = stock.available_qty(ITEM)
+		self.assertGreater(left, 0)
+		self.basket(int(left))
+		order = self.place()
+		self.addCleanup(lambda: frappe.get_doc("Sales Order", order).cancel())
+		self.assertEqual(stock.available_qty(ITEM), 0)
+		self.assertEqual(stock.availability(ITEM)["stock_state"], "out")
+		frappe.db.delete("Shop Cart")
+		with self.assertRaisesRegex(frappe.ValidationError, "out of stock"):
+			cart.add_item(ITEM)
 
 	def amount_coupon(self, code: str, amount: float, apply_discount_on: str) -> str:
 		if not frappe.db.exists("Coupon Code", {"coupon_code": code}):

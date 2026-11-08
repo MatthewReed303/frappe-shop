@@ -102,3 +102,30 @@ def terms_record() -> str:
 			}
 		).insert(ignore_permissions=True)
 	return "_Test Store Terms"
+
+
+def sellable(item_code: str, qty: float) -> None:
+	"""At least this many of the item to sell, whatever earlier tests' orders are waiting for."""
+	from shop.storefront import stock
+
+	short = qty - stock.get_stock([item_code], sellable=True).get(item_code, 0)
+	if short <= 0:
+		return
+	settings = frappe.get_cached_doc("Shop Settings")
+	entry = frappe.get_doc(
+		{
+			"doctype": "Stock Entry",
+			"stock_entry_type": "Material Receipt",
+			"company": settings.company,
+			"items": [
+				{
+					"item_code": item_code,
+					"qty": short,
+					"t_warehouse": settings.default_warehouse,
+					"basic_rate": 1,
+				}
+			],
+		}
+	)
+	entry.insert(ignore_permissions=True)
+	entry.submit()

@@ -156,7 +156,9 @@ def collection_counts(collections: list[str]) -> dict:
 	tree = published_collections()
 	if not any(name in tree for name in collections):
 		return {}
-	inside = {name: [row.name for row in with_descendants(tree, tree[name])] for name in collections if name in tree}
+	inside = {
+		name: [row.name for row in with_descendants(tree, tree[name])] for name in collections if name in tree
+	}
 	members = {}
 	for row in frappe.get_all(
 		"Shop Product Collection",
@@ -164,9 +166,7 @@ def collection_counts(collections: list[str]) -> dict:
 		fields=["collection", "parent"],
 	):
 		members.setdefault(row.collection, set()).add(row.parent)
-	return {
-		name: len(set().union(*(members.get(n, set()) for n in names))) for name, names in inside.items()
-	}
+	return {name: len(set().union(*(members.get(n, set()) for n in names))) for name, names in inside.items()}
 
 
 def search_filters(search: str | None) -> list | None:
@@ -240,11 +240,17 @@ def display_prices(products: list, customer: str | None = "session") -> dict:
 	shows its lowest. One lookup for the page."""
 	simple = [p.item for p in products if not p.has_variants]
 	variants = variants_by_template([p.item for p in products if p.has_variants])
-	prices = pricing.get_prices(simple + [code for codes in variants.values() for code in codes], customer=customer)
+	prices = pricing.get_prices(
+		simple + [code for codes in variants.values() for code in codes], customer=customer
+	)
 	for template, codes in variants.items():
 		rates = [prices[code]["rate"] for code in codes if code in prices]
 		if rates:
-			prices[template] = {"rate": min(rates), "formatted": pricing.format_amount(min(rates)), **pricing.display_fields(min(rates), template)}
+			prices[template] = {
+				"rate": min(rates),
+				"formatted": pricing.format_amount(min(rates)),
+				**pricing.display_fields(min(rates), template),
+			}
 	return prices
 
 
@@ -256,8 +262,12 @@ def display_stock(products: list) -> dict:
 	templates = [p.item for p in products if p.has_variants]
 	variants = variants_by_template(templates)
 	codes = simple + [code for group in variants.values() for code in group]
-	stocked = set(frappe.get_all("Item", filters={"name": ["in", codes], "is_stock_item": 1}, pluck="name")) if codes else set()
-	quantities = stock.get_stock([code for code in codes if code in stocked])
+	stocked = (
+		set(frappe.get_all("Item", filters={"name": ["in", codes], "is_stock_item": 1}, pluck="name"))
+		if codes
+		else set()
+	)
+	quantities = stock.get_stock([code for code in codes if code in stocked], sellable=True)
 	# services aren't counted in stock
 	available = {code: code not in stocked or quantities.get(code, 0) > 0 for code in codes}
 	availability = {code: available[code] for code in simple}
@@ -269,9 +279,7 @@ def display_stock(products: list) -> dict:
 def variants_by_template(templates: list[str]) -> dict[str, list[str]]:
 	if not templates:
 		return {}
-	rows = frappe.get_all(
-		"Item", filters={"variant_of": ["in", templates]}, fields=["name", "variant_of"]
-	)
+	rows = frappe.get_all("Item", filters={"variant_of": ["in", templates]}, fields=["name", "variant_of"])
 	grouped = {}
 	for row in rows:
 		grouped.setdefault(row.variant_of, []).append(row.name)
