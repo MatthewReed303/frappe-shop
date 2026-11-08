@@ -106,9 +106,7 @@ def find_cart():
 		if name:
 			return frappe.get_doc("Shop Cart", name)
 	if not is_guest():
-		name = frappe.db.get_value(
-			"Shop Cart", {"user": frappe.session.user, "status": "Active"}
-		)
+		name = frappe.db.get_value("Shop Cart", {"user": frappe.session.user, "status": "Active"})
 		if name:
 			return frappe.get_doc("Shop Cart", name)
 	return None
@@ -235,11 +233,24 @@ def preview_coupon(cart):
 	from shop.storefront import totals
 	from shop.storefront.checkout import elevated
 
+	customer, currency = pricing.session_customer(), totals.company_currency()
+	# priced with the store's tax, as checkout prices it, so a discount on the Grand Total is right
+	template = totals.tax_template_for(None)
 	with elevated():
-		order = totals.new_order(cart, pricing.session_customer(), totals.company_currency(), None)
+		order = totals.new_order(cart, customer, currency, template)
 		totals.calculate(order)
 		coupon = totals.apply_coupon(order)
-		return coupon, totals.coupon_discount(order) if coupon else 0.0
+		if not coupon:
+			return None, 0.0
+		code, cart.coupon_code = cart.coupon_code, None
+		try:
+			without = totals.new_order(cart, customer, currency, template)
+		finally:
+			cart.coupon_code = code
+		totals.calculate(without)
+	# what comes off the cart's subtotal, which includes tax when the store's prices do
+	field = "grand_total" if frappe.get_cached_doc("Shop Settings").prices_include_tax else "net_total"
+	return coupon, flt(flt(without.get(field)) - flt(order.get(field)), order.precision(field))
 
 
 def display_qty(qty: float) -> float | int:
@@ -263,31 +274,25 @@ def product_details(cart) -> dict:
 
 
 def variant_name(item_code: str, product_name: str | None) -> dict:
-	"""A variant's line names its options: "Zip Hoodie – Medium / Charcoal"."""
+	"""A variant's line names its options: "Zip Hoodie - Medium / Charcoal" (an en dash)."""
 	values = frappe.get_all(
 		"Item Variant Attribute", filters={"parent": item_code}, pluck="attribute_value", order_by="idx asc"
 	)
 	if not values or not product_name:
 		return {}
-	return {"product_name": f"{product_name} – {' / '.join(values)}"}
+	return {"product_name": f"{product_name} \u2013 {' / '.join(values)}"}
 
 
 def first_image(shop_product: str) -> str | None:
-	return frappe.db.get_value(
-		"Shop Product Image", {"parent": shop_product}, "image", order_by="idx asc"
-	)
+	return frappe.db.get_value("Shop Product Image", {"parent": shop_product}, "image", order_by="idx asc")
 
 
 def validate_purchasable(item_code: str) -> str:
-	item = frappe.db.get_value(
-		"Item", item_code, ["has_variants", "variant_of", "disabled"], as_dict=True
-	)
+	item = frappe.db.get_value("Item", item_code, ["has_variants", "variant_of", "disabled"], as_dict=True)
 	if not item or item.disabled or item.has_variants:
 		frappe.throw(_("Item {0} is not available").format(item_code))
 	published_item = item.variant_of or item_code
-	shop_product = frappe.db.get_value(
-		"Shop Product", {"item": published_item, "published": 1}
-	)
+	shop_product = frappe.db.get_value("Shop Product", {"item": published_item, "published": 1})
 	if not shop_product:
 		frappe.throw(_("Item {0} is not available").format(item_code))
 	return shop_product
@@ -315,9 +320,7 @@ def find_row(cart, item_code: str):
 
 def set_cart_cookie(cart):
 	if hasattr(frappe.local, "cookie_manager"):
-		frappe.local.cookie_manager.set_cookie(
-			CART_COOKIE, cart.token, httponly=True, samesite="Lax"
-		)
+		frappe.local.cookie_manager.set_cookie(CART_COOKIE, cart.token, httponly=True, samesite="Lax")
 
 
 def request_token() -> str | None:

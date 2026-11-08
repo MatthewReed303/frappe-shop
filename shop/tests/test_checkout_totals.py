@@ -426,6 +426,53 @@ class TestCheckoutTotals(IntegrationTestCase):
 		)
 		self.assertEqual(len(notes), 1)
 
+	def amount_coupon(self, code: str, amount: float, apply_discount_on: str) -> str:
+		if not frappe.db.exists("Coupon Code", {"coupon_code": code}):
+			rule = frappe.get_doc(
+				{
+					"doctype": "Pricing Rule",
+					"title": f"Test {code}",
+					"apply_on": "Transaction",
+					"selling": 1,
+					"coupon_code_based": 1,
+					"rate_or_discount": "Discount Amount",
+					"discount_amount": amount,
+					"apply_discount_on": apply_discount_on,
+					"company": self.company,
+					"currency": self.company_currency,
+				}
+			).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Coupon Code",
+					"coupon_name": code,
+					"coupon_code": code,
+					"coupon_type": "Promotional",
+					"pricing_rule": rule.name,
+				}
+			).insert(ignore_permissions=True)
+		return code
+
+	def test_the_cart_takes_off_what_checkout_takes_off(self):
+		coupons = [
+			self.free_coupon(),
+			self.amount_coupon("TESTNET20", 20, "Net Total"),
+			self.amount_coupon("TESTGRAND20", 20, "Grand Total"),
+		]
+		for prices_include_tax in (1, 0):
+			if not prices_include_tax:
+				self.without_tax()
+			for code in coupons:
+				frappe.db.delete("Shop Cart")
+				self.basket(1)
+				shown = cart.apply_coupon(code)
+				quote = totals.compute(cart.resolve_cart(), self.home_address, None, "bank")
+				if prices_include_tax:
+					self.assertAlmostEqual(shown["total"], quote.total, delta=0.01, msg=code)
+				else:
+					# without tax the cart shows the order before its tax is added
+					self.assertAlmostEqual(shown["total"], flt(quote.order.net_total), delta=0.01, msg=code)
+
 	def test_international_transfer_adds_the_banks_fee(self):
 		basket = self.basket(1)
 		local = totals.compute(basket, self.abroad_address, None, "bank", self.foreign)
