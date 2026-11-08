@@ -650,6 +650,52 @@ class TestCheckoutTotals(IntegrationTestCase):
 			entry = frappe.get_doc("Payment Entry", payment.refund(name, credit_note, account))
 		self.assertEqual((entry.paid_amount, entry.paid_from_account_currency), (owed, self.foreign))
 
+	def test_returning_part_of_an_order_credits_that_part(self):
+		from shop.storefront import returns
+
+		account = frappe.db.get_value(
+			"Account", {"company": self.company, "root_type": "Income", "is_group": 0}
+		)
+		self.set(shipping_item=None, shipping_account=account, flat_shipping_rate=10)
+		rule = frappe.get_doc(
+			{
+				"doctype": "Pricing Rule",
+				"title": "Part return 50 off",
+				"apply_on": "Transaction",
+				"selling": 1,
+				"coupon_code_based": 1,
+				"rate_or_discount": "Discount Amount",
+				"discount_amount": 50,
+				"company": self.company,
+				"currency": self.company_currency,
+			}
+		).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Pricing Rule", rule.name, force=True)
+		coupon = frappe.get_doc(
+			{
+				"doctype": "Coupon Code",
+				"coupon_name": "PARTRETURN",
+				"coupon_code": "PARTRETURN",
+				"coupon_type": "Promotional",
+				"pricing_rule": rule.name,
+			}
+		).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Coupon Code", coupon.name, force=True)
+		self.basket(2)
+		cart.apply_coupon("PARTRETURN")
+		name = self.place(currency=self.company_currency)
+		order = frappe.get_doc("Sales Order", name)
+		payment.pay_from_bank_transaction(self.bank_deposit(order, payment.amount_due(order), 0, name).name)
+		invoice = frappe.get_doc("Sales Invoice", payment.invoice_paid_order(order.reload() or order))
+
+		request = frappe._dict(sales_order=name, item_code=ITEM, item_name=ITEM, qty=1, credit_note=None)
+		request.db_set = lambda field, value: request.update({field: value})
+		returns.credit(request)
+		note = frappe.get_doc("Sales Invoice", request.credit_note)
+		# half the coupon comes back with one of the two, and the shipping charge isn't refunded
+		self.assertEqual(note.discount_amount, -flt(invoice.discount_amount / 2, 2))
+		self.assertFalse([tax for tax in note.taxes if tax.charge_type == "Actual"])
+
 	def test_more_than_owed_is_kept_as_the_customers_advance(self):
 		self.basket(1)
 		name = self.place(currency=self.company_currency)

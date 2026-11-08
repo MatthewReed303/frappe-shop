@@ -193,6 +193,17 @@ def return_lines(doc, request) -> None:
 	row = rows[0]
 	row.qty = -min(flt(request.qty), abs(flt(row.qty)))
 	doc.items = [row]
+	if doc.doctype != "Sales Invoice":
+		return
+	# ERPNext's return copies the whole order's discount and charges: a returned item takes back
+	# only its share of the discount, and shipping and other fixed charges aren't refunded
+	original = frappe.get_doc("Sales Invoice", doc.return_against)
+	if original.additional_discount_percentage:
+		doc.discount_amount = 0
+	elif flt(original.discount_amount) and flt(original.total):
+		share = abs(flt(row.qty) * flt(row.rate)) / flt(original.total)
+		doc.discount_amount = -flt(abs(flt(original.discount_amount)) * share, doc.precision("discount_amount"))
+	doc.taxes = [tax for tax in doc.taxes if tax.charge_type != "Actual"]
 
 
 def return_stock(request) -> None:
