@@ -315,7 +315,7 @@
 							v-model="row.ship_from_address"
 							type="select"
 							label="Ship from"
-							:options="[{ label: 'The warehouse\'s address', value: '' }, ...(data.addresses || [])]"
+							:options="[{ label: 'The warehouse\'s address, else the provider\'s', value: '' }, ...(data.addresses || [])]"
 							class="col-span-3"
 						/>
 						<Switch
@@ -323,6 +323,7 @@
 							label="Send paid orders automatically"
 							class="col-span-2 self-end"
 						/>
+						<p v-if="row.warning" class="col-span-6 text-p-sm text-ink-amber-8">{{ row.warning }}</p>
 						<div class="col-span-1 flex items-end justify-end gap-1">
 							<Button
 								variant="ghost"
@@ -626,6 +627,7 @@ type LocationRow = {
 	fulfillment_provider: string
 	ship_from_address: string
 	auto_send: boolean
+	warning?: string | null
 }
 
 const fulfillment = reactive({ fulfillment_locations: [] as LocationRow[] })

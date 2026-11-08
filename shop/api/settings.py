@@ -111,7 +111,11 @@ def get_settings() -> dict:
 				"Payment Gateway Account", fields=["name", "payment_gateway", "currency"]
 			),
 			"fulfillment_locations": [
-				{field: row.get(field) for field in LOCATION_FIELDS} for row in settings.fulfillment_locations
+				{
+					**{field: row.get(field) for field in LOCATION_FIELDS},
+					"warning": settings.ship_from_warning(row),
+				}
+				for row in settings.fulfillment_locations
 			],
 			"addresses": company_addresses(settings.company),
 			"payment_gateways": [

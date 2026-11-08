@@ -219,3 +219,23 @@ class TestLocations(IntegrationTestCase):
 			settings.validate_fulfillment_locations()
 		self.assertTrue(warned.called)
 		self.assertIn(self.second, warned.call_args.args[0])
+		# shown with the location in the admin; none when the provider has an address to fall back on
+		with (
+			patch.object(ManualProvider, "needs_ship_from", True, create=True),
+			patch.object(ManualProvider, "default_ship_from", return_value=None),
+		):
+			from shop.api import settings as settings_api
+
+			rows = settings_api.get_settings()["fulfillment_locations"]
+		self.assertIn(self.second, rows[1]["warning"])
+		company_address = frappe.db.get_value(
+			"Dynamic Link",
+			{"parenttype": "Address", "link_doctype": "Company", "link_name": settings.company},
+			"parent",
+		)
+		if company_address:
+			with (
+				patch.object(ManualProvider, "needs_ship_from", True, create=True),
+				patch.object(ManualProvider, "default_ship_from", return_value=company_address),
+			):
+				self.assertIsNone(settings.ship_from_warning(settings.fulfillment_locations[1]))

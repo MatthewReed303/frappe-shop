@@ -107,23 +107,27 @@ class ShopSettings(Document):
 			self.check_ship_from(row)
 
 	def check_ship_from(self, row) -> None:
-		"""A provider that sends from the location needs an address the company ships from, as
-		ERPNext's Shipment does: one linked to the company."""
-		from shop.fulfillment.provider import get_provider
+		warning = self.ship_from_warning(row)
+		if warning:
+			frappe.msgprint(warning, indicator="orange", alert=True)
+
+	def ship_from_warning(self, row) -> str | None:
+		"""Why a location's provider can't send from it: it has no address, or one that isn't the
+		company's (ERPNext's Shipment sends only from the company's addresses)."""
+		from shop.fulfillment.provider import get_provider, registry
 		from shop.storefront.stock import warehouse_address
 
-		if not getattr(get_provider(row.fulfillment_provider), "needs_ship_from", False):
-			return
-		address = row.ship_from_address or warehouse_address(row.warehouse)
+		if (row.fulfillment_provider or "manual") not in registry():
+			return None
+		provider = get_provider(row.fulfillment_provider or "manual")
+		if not getattr(provider, "needs_ship_from", False):
+			return None
+		address = row.ship_from_address or warehouse_address(row.warehouse) or provider.default_ship_from()
 		if not address:
-			frappe.msgprint(
-				_(
-					"{0} has no address to send parcels from. Add one to the warehouse, or pick a Ship From Address."
-				).format(frappe.bold(row.warehouse)),
-				indicator="orange",
-				alert=True,
-			)
-		elif self.company and not frappe.db.exists(
+			return _(
+				"{0} has no address to send parcels from. Add one to the warehouse, or pick a Ship From Address."
+			).format(row.warehouse)
+		if self.company and not frappe.db.exists(
 			"Dynamic Link",
 			{
 				"parenttype": "Address",
@@ -132,13 +136,10 @@ class ShopSettings(Document):
 				"link_name": self.company,
 			},
 		):
-			frappe.msgprint(
-				_(
-					"Address {0} isn't linked to {1}: ERPNext ships only from the company's addresses. Link it in Desk."
-				).format(frappe.bold(address), frappe.bold(self.company)),
-				indicator="orange",
-				alert=True,
-			)
+			return _(
+				"Address {0} isn't linked to {1}: ERPNext ships only from the company's addresses. Link it in Desk."
+			).format(address, self.company)
+		return None
 
 	def validate_order_naming_series(self):
 		if not self.order_naming_series:

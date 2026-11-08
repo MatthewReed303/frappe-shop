@@ -17,6 +17,10 @@ class FulfillmentProvider:
 	# from its own warehouses)
 	needs_ship_from = False
 
+	def default_ship_from(self) -> str | None:
+		"""The Address it sends from when a location has none of its own."""
+		return None
+
 	def is_configured(self) -> bool:
 		"""Whether credentials are present, so the panel can explain what is missing."""
 		return True
