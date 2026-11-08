@@ -95,6 +95,9 @@ def get_settings() -> dict:
 	payload = {field: settings.get(field) for field in EDITABLE}
 	payload.update(
 		{
+			# ERPNext's own settings, shown here because every web order uses them
+			"new_customer_group": frappe.db.get_single_value("Selling Settings", "customer_group"),
+			"round_order_totals": not cint(frappe.db.get_single_value("Global Defaults", "disable_rounded_total")),
 			"company": settings.company,
 			"currency": settings.currency,
 			"active_theme": settings.active_theme,
@@ -190,7 +193,19 @@ def save_settings(payload: dict) -> dict:
 			],
 		)
 	settings.save(ignore_permissions=True)
+	save_erpnext_settings(payload)
 	return get_settings()
+
+
+def save_erpnext_settings(payload: dict) -> None:
+	if "new_customer_group" in payload:
+		selling = frappe.get_single("Selling Settings")
+		selling.customer_group = payload["new_customer_group"]
+		selling.save(ignore_permissions=True)
+	if "round_order_totals" in payload:
+		defaults = frappe.get_single("Global Defaults")
+		defaults.disable_rounded_total = 0 if payload["round_order_totals"] else 1
+		defaults.save(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])

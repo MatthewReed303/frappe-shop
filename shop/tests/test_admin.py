@@ -185,6 +185,18 @@ class TestAdminApi(IntegrationTestCase):
 		with patch.object(orders, "fulfillment_label", return_value="Shipped"):
 			self.assertEqual(orders.display_status(order), "Fulfilled")
 
+	def test_erpnext_order_defaults_are_set_from_shop_settings(self):
+		group = frappe.db.get_single_value("Selling Settings", "customer_group")
+		rounding = frappe.db.get_single_value("Global Defaults", "disable_rounded_total")
+		self.addCleanup(
+			settings.save_erpnext_settings, {"new_customer_group": group, "round_order_totals": not rounding}
+		)
+		other = frappe.db.get_value("Customer Group", {"is_group": 0, "name": ["!=", group or ""]})
+		result = settings.save_settings({"new_customer_group": other, "round_order_totals": False})
+		self.assertEqual(result["new_customer_group"], other)
+		self.assertFalse(result["round_order_totals"])
+		self.assertEqual(frappe.db.get_single_value("Global Defaults", "disable_rounded_total"), 1)
+
 	def test_product_lifecycle(self):
 		created = products.create_product(
 			product_name="Test Desk Lamp", price=1500, opening_stock=3, published=True

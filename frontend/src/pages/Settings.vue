@@ -347,6 +347,11 @@
 					class="max-w-sm"
 				/>
 				<Switch
+					v-model="orders.round_order_totals"
+					label="Round order totals"
+					description="ERPNext's Rounded Total: the total is rounded to whole currency units and the customer pays the rounded amount. Off charges the exact amount."
+				/>
+				<Switch
 					v-model="orders.invoice_paid_orders"
 					label="Invoice paid orders"
 					description="Make the Sales Invoice when an order is paid in full, and email it to the customer."
@@ -408,6 +413,14 @@
 						description="Leave empty to use the store's terms page."
 					/>
 				</div>
+				<FormControl
+					v-model="accounts.new_customer_group"
+					type="select"
+					label="Customer group for new customers"
+					description="ERPNext's default Customer Group (Selling Settings): customers who sign up or order online join it, with its prices and pricing rules."
+					:options="[{ label: 'Not set', value: '' }, ...listOptions(data.customer_groups)]"
+					class="max-w-sm"
+				/>
 				<FormControl
 					v-model="accounts.trade_customer_group"
 					type="select"
@@ -492,6 +505,7 @@ const shipping = reactive({
 	shipping_item: '',
 })
 const orders = reactive({
+	round_order_totals: true,
 	invoice_paid_orders: false,
 	cancel_unpaid_orders: false,
 	online_payment_days: 2,
@@ -501,6 +515,7 @@ const orders = reactive({
 	send_shipping_emails: false,
 })
 const accounts = reactive({
+	new_customer_group: '',
 	require_terms: false,
 	terms_and_conditions: '',
 	terms_url: '',
@@ -565,6 +580,7 @@ function hydrate(doc: Record<string, any>) {
 		cancel_unpaid_orders: !!doc.cancel_unpaid_orders,
 		online_payment_days: doc.online_payment_days || 2,
 		order_naming_series: doc.order_naming_series || '',
+		round_order_totals: !!doc.round_order_totals,
 		payment_reminder_hours: doc.payment_reminder_hours ?? 1,
 		return_window_days: doc.return_window_days ?? 14,
 		send_shipping_emails: !!doc.send_shipping_emails,
@@ -574,6 +590,7 @@ function hydrate(doc: Record<string, any>) {
 		terms_and_conditions: doc.terms_and_conditions || '',
 		terms_url: doc.terms_url || '',
 		trade_customer_group: doc.trade_customer_group || '',
+		new_customer_group: doc.new_customer_group || '',
 		email_statements: !!doc.email_statements,
 		allow_quote_requests: !!doc.allow_quote_requests,
 		quote_valid_days: doc.quote_valid_days || 30,
