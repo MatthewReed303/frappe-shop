@@ -244,21 +244,31 @@ def shows_store_currency() -> bool:
 def display_amount(amount: float, tax_rate: float | None = None) -> str:
 	"""A price-list amount as the shopper sees it: in the store currency as the price list has it,
 	or with tax when the store shows prices with tax. In another currency the buyer pays no local
-	tax: the price without tax, converted at ERPNext's rate and marked approximate."""
+	tax unless the store shows other currencies with tax: converted at ERPNext's rate and marked
+	approximate."""
 	including, excluding = with_and_without_tax(amount, tax_rate)
 	if shows_store_currency():
 		shown = including if shows_tax() else flt(amount)
 		return with_code(fmt_money(flt(shown, 2), currency=store_currency()), store_currency())
 	currency = display_currency()
-	return f"≈ {fmt_money(excluding * display_rate(currency), currency=currency)} {currency}"
+	shown = including if other_currencies_with_tax() else excluding
+	return f"≈ {fmt_money(shown * display_rate(currency), currency=currency)} {currency}"
+
+
+def other_currencies_with_tax() -> bool:
+	return bool(frappe.get_cached_doc("Shop Settings").get("other_currencies_with_tax"))
 
 
 def display_price(amount: float, tax_rate: float | None = None) -> str:
-	"""A product's headline price: display_amount, saying it includes tax when it does."""
+	"""A product's headline price: display_amount, saying whether it includes tax."""
 	shown = display_amount(amount, tax_rate)
-	if shows_store_currency() and shows_tax() and tax_rate != 0:
+	if tax_rate == 0 or not domestic_tax_rate():
+		return shown
+	if shows_store_currency():
+		return _("{0} incl. {1}").format(shown, tax_name()) if shows_tax() else shown
+	if other_currencies_with_tax():
 		return _("{0} incl. {1}").format(shown, tax_name())
-	return shown
+	return _("{0} excl. {1}").format(shown, tax_name())
 
 
 def display_price_without_tax(amount: float, tax_rate: float | None = None) -> str | None:

@@ -320,6 +320,11 @@
 					label="Show prices with tax"
 					description="Show prices with the tax template's tax, and the price without tax under them."
 				/>
+				<Switch
+					v-model="catalog.other_currencies_with_tax"
+					label="Show other currencies with tax"
+					description="Off: prices in another currency are shown without tax, as for a buyer abroad. Checkout always charges the tax for the delivery address."
+				/>
 				<FormControl
 					v-model="catalog.export_tax_template"
 					type="select"
@@ -548,6 +553,7 @@ const catalog = reactive({
 	allow_out_of_stock: false,
 	prices_include_tax: false,
 	show_prices_with_tax: false,
+	other_currencies_with_tax: false,
 })
 
 const settings = createResource({
@@ -622,6 +628,7 @@ function hydrate(doc: Record<string, any>) {
 		allow_out_of_stock: !!doc.allow_out_of_stock,
 		prices_include_tax: !!doc.prices_include_tax,
 		show_prices_with_tax: !!doc.show_prices_with_tax,
+		other_currencies_with_tax: !!doc.other_currencies_with_tax,
 	})
 }
 

@@ -1,6 +1,7 @@
 """The store's emails are Frappe Email Templates, so they can be edited in the desk.
 
-Each template is made once with the wording below and never overwritten. It is rendered with
+Each template is made with the wording below. A template staff haven't edited follows that wording
+when it changes; an edited one is never overwritten. It is rendered with
 `doc` (the order, quotation or lead), `store_name` and the pieces each email needs, already
 formatted (`lines_html`, `payment_html`, `order_url`...). Subjects are plain text; bodies escape
 what shoppers typed. A failed email is logged and never stops the action that sends it.
@@ -12,6 +13,9 @@ from frappe.model.document import Document
 ORDER = "Sales Order"
 QUOTATION = "Quotation"
 LEAD = "Lead"
+
+# the default wording last written to each template
+DEFAULTS_KEY = "shop_email_template_defaults"
 
 # key: (Email Template name, reference doctype, subject, body)
 TEMPLATES = {
@@ -199,25 +203,46 @@ TEMPLATES = {
 
 
 def ensure_templates() -> None:
-	"""Make any missing store Email Template with its default wording; existing ones are left as edited."""
+	"""Make any missing store Email Template with its default wording, and bring the ones staff
+	haven't edited up to the current wording."""
 	if not frappe.db.table_exists("Email Template"):
 		return
+	written = frappe.parse_json(frappe.db.get_global(DEFAULTS_KEY) or "{}")
 	for name, reference_doctype, subject, body in TEMPLATES.values():
+		wording = fingerprint(subject, body)
 		if frappe.db.exists("Email Template", name):
-			continue
-		doc = frappe.new_doc("Email Template")
-		doc.update(
-			{
-				"__newname": name,
-				"subject": subject,
-				"use_html": 1,
-				"response_html": body,
-				"reference_doctype": reference_doctype
-				if frappe.db.exists("DocType", reference_doctype)
-				else None,
-			}
-		)
-		doc.insert(ignore_permissions=True)
+			doc = frappe.get_doc("Email Template", name)
+			current = fingerprint(doc.subject, doc.response_html)
+			# a template made before its wording was recorded is unedited if it was never saved again
+			unedited = current == written.get(name) if name in written else doc.modified == doc.creation
+			if not unedited:
+				continue
+			if current != wording:
+				doc.subject = subject
+				doc.response_html = body
+				doc.save(ignore_permissions=True)
+		else:
+			doc = frappe.new_doc("Email Template")
+			doc.update(
+				{
+					"__newname": name,
+					"subject": subject,
+					"use_html": 1,
+					"response_html": body,
+					"reference_doctype": reference_doctype
+					if frappe.db.exists("DocType", reference_doctype)
+					else None,
+				}
+			)
+			doc.insert(ignore_permissions=True)
+		written[name] = wording
+	frappe.db.set_global(DEFAULTS_KEY, frappe.as_json(written))
+
+
+def fingerprint(subject: str | None, body: str | None) -> str:
+	from hashlib import sha256
+
+	return sha256(f"{subject or ''}\0{body or ''}".encode()).hexdigest()
 
 
 def render(key: str, doc, **context) -> tuple[str, str]:

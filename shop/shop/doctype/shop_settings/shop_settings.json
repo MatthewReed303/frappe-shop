@@ -21,6 +21,7 @@
   "allow_out_of_stock",
   "prices_include_tax",
   "show_prices_with_tax",
+  "other_currencies_with_tax",
   "shipping_section",
   "flat_shipping_rate",
   "free_shipping_above",
@@ -438,6 +439,13 @@
    "label": "Show Prices With Tax"
   },
   {
+   "default": "0",
+   "description": "Show prices in another currency with the store's tax, as for a buyer at home. Off, they are shown without it, as for a buyer abroad. Checkout always charges the tax for the delivery address, from the Tax Rules or the Export Tax Template.",
+   "fieldname": "other_currencies_with_tax",
+   "fieldtype": "Check",
+   "label": "Show Other Currencies With Tax"
+  },
+  {
    "default": "Pay Online",
    "description": "What checkout calls paying through the payment gateway.",
    "fieldname": "online_payment_label",
@@ -521,7 +529,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-08 14:00:00.000000",
+ "modified": "2026-11-09 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

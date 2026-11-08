@@ -42,6 +42,7 @@ SETTINGS_FIELDS = (
 	"payment_gateway_account",
 	"invoice_paid_orders",
 	"cancel_unpaid_orders",
+	"other_currencies_with_tax",
 )
 
 TEST_PROVIDER = "shop.tests.test_checkout_totals.test_rates"
@@ -108,6 +109,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.set(
 			prices_include_tax=1,
 			show_prices_with_tax=0,
+			other_currencies_with_tax=0,
 			tax_template=template(self.company, "Test VAT 15 included", 15, 1),
 			export_tax_template=self.export_template,
 			shipping_item=service("TEST-SHIPPING", self.company),
@@ -719,7 +721,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		from shop.storefront import pricing, stock
 
 		if not frappe.db.exists("UOM", "_Test Box of 10"):
-			frappe.get_doc({"doctype": "UOM", "uom_name": "_Test Box of 10", "must_be_whole_number": 1}).insert()
+			frappe.get_doc(
+				{"doctype": "UOM", "uom_name": "_Test Box of 10", "must_be_whole_number": 1}
+			).insert()
 		item = frappe.get_doc("Item", ITEM)
 		item.append("uoms", {"uom": "_Test Box of 10", "conversion_factor": 10})
 		item.sales_uom = "_Test Box of 10"
@@ -1050,9 +1054,18 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.with_currency_cookie(self.foreign)
 		rate = pricing.display_rate(self.foreign)
 		self.assertEqual(
-			pricing.display_price(100), f"≈ {fmt_money(100 * rate, currency=self.foreign)} {self.foreign}"
+			pricing.display_price(100),
+			f"≈ {fmt_money(100 * rate, currency=self.foreign)} {self.foreign} excl. VAT",
 		)
 		self.assertIsNone(pricing.display_price_without_tax(100))
+		self.assertEqual(
+			pricing.display_price(100, 0), f"≈ {fmt_money(100 * rate, currency=self.foreign)} {self.foreign}"
+		)
+		self.set(other_currencies_with_tax=1)
+		self.assertEqual(
+			pricing.display_price(100),
+			f"≈ {fmt_money(115 * rate, currency=self.foreign)} {self.foreign} incl. VAT",
+		)
 
 	def test_currency_code_is_shown_only_when_the_store_has_several(self):
 		from frappe.utils import fmt_money
@@ -1232,7 +1245,9 @@ class TestCheckoutTotals(IntegrationTestCase):
 		order = frappe.get_doc("Sales Order", deposited)
 		# the deposit is in the bank, not matched yet (here: in another currency than the order)
 		transaction = self.bank_deposit(order, payment.amount_due(order), 0, deposited)
-		self.assertGreater(flt(frappe.db.get_value("Bank Transaction", transaction.name, "unallocated_amount")), 0)
+		self.assertGreater(
+			flt(frappe.db.get_value("Bank Transaction", transaction.name, "unallocated_amount")), 0
+		)
 
 		with patch("frappe.sendmail"), patch("frappe.db.commit"):
 			payment.cancel_overdue_orders()
@@ -1351,6 +1366,42 @@ class TestCheckoutTotals(IntegrationTestCase):
 		self.assertEqual(
 			frappe.db.get_value("Email Template", "Shop: Order Cancelled", "subject"), template_doc.subject
 		)
+
+	def test_unedited_email_templates_follow_new_wording(self):
+		from shop.storefront import emails
+
+		name, _doctype, subject, _body = emails.TEMPLATES["order_shipped"]
+		frappe.delete_doc("Email Template", name, force=True, ignore_permissions=True)
+		old = dict(emails.TEMPLATES)
+		emails.TEMPLATES["order_shipped"] = (name, _doctype, "Old wording {{ doc.name }}", "<p>old</p>")
+		try:
+			emails.ensure_templates()
+		finally:
+			emails.TEMPLATES.clear()
+			emails.TEMPLATES.update(old)
+		self.assertEqual(frappe.db.get_value("Email Template", name, "subject"), "Old wording {{ doc.name }}")
+		emails.ensure_templates()  # the store's wording changed and staff never edited it
+		self.assertEqual(frappe.db.get_value("Email Template", name, "subject"), subject)
+
+		edited = frappe.get_doc("Email Template", name)
+		edited.response_html = "<p>Our own words</p>"
+		edited.save(ignore_permissions=True)
+		emails.TEMPLATES["order_shipped"] = (name, _doctype, "Newer wording", "<p>newer</p>")
+		try:
+			emails.ensure_templates()
+		finally:
+			emails.TEMPLATES.clear()
+			emails.TEMPLATES.update(old)
+		self.assertEqual(frappe.db.get_value("Email Template", name, "response_html"), "<p>Our own words</p>")
+
+		# made before the wording was recorded, and never saved again
+		frappe.db.set_global(emails.DEFAULTS_KEY, "{}")
+		created = frappe.db.get_value("Email Template", name, "creation")
+		frappe.db.set_value(
+			"Email Template", name, {"subject": "Before", "modified": created}, update_modified=False
+		)
+		emails.ensure_templates()
+		self.assertEqual(frappe.db.get_value("Email Template", name, "subject"), subject)
 
 	def test_shopper_text_is_escaped_in_emails(self):
 		from shop.storefront import emails

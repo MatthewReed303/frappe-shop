@@ -48,6 +48,7 @@ class ShopSettings(Document):
 		online_payment_days: DF.Int
 		online_payment_label: DF.Data | None
 		order_naming_series: DF.Data | None
+		other_currencies_with_tax: DF.Check
 		payment_gateway_account: DF.Link | None
 		payment_reminder_hours: DF.Int
 		price_list: DF.Link | None
