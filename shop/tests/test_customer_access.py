@@ -145,3 +145,21 @@ class TestCustomerAccess(IntegrationTestCase):
 		frappe.clear_cache(doctype="Shop Settings")
 		accounts.sync_customer_home_page()
 		self.assertFalse(frappe.db.get_value("Role", "Customer", "home_page"))
+
+	def test_frappes_account_page_sends_customers_to_the_store(self):
+		original = frappe.db.get_single_value("Shop Settings", "customers_land_in_store")
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "customers_land_in_store", original)
+		self.addCleanup(setattr, frappe.flags, "redirect_location", None)
+		frappe.db.set_single_value("Shop Settings", "customers_land_in_store", 1)
+		customers_api.add_person(self.company, "Pat Person", PERSON)
+		frappe.set_user(PERSON)
+		with self.assertRaises(frappe.Redirect) as raised:
+			accounts.account_page_redirect(frappe._dict(path="me"))
+		self.assertEqual(raised.exception.http_status_code, 302)
+		self.assertTrue(frappe.flags.redirect_location.endswith("account/orders"))
+		accounts.account_page_redirect(frappe._dict(path="about"))
+		frappe.set_user(STAFF)
+		accounts.account_page_redirect(frappe._dict(path="me"))
+		frappe.set_user(PERSON)
+		frappe.db.set_single_value("Shop Settings", "customers_land_in_store", 0)
+		accounts.account_page_redirect(frappe._dict(path="me"))

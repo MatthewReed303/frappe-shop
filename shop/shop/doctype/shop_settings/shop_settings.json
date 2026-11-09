@@ -122,7 +122,7 @@
    "fieldname": "customers_land_in_store",
    "fieldtype": "Check",
    "label": "Customers Land in the Store",
-   "description": "After signing in or setting a password, customers go to their store account rather than the site's home page (the Customer role's home page)"
+   "description": "After signing in or setting a password, customers go to their store account rather than the site's home page (the Customer role's home page), and Frappe's /me page sends them there too"
   },
   {
    "default": "0",

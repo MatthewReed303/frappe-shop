@@ -24,6 +24,7 @@ website_route_rules = [
 ]
 
 web_include_js = ["/assets/shop/js/login_signup.js"]
+update_website_context = "shop.storefront.accounts.account_page_redirect"
 
 doctype_js = {"Quotation": "public/js/quotation.js", "Lead": "public/js/lead.js"}
 

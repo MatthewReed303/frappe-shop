@@ -30,6 +30,19 @@ def sync_customer_home_page() -> None:
 		frappe.cache.delete_key("home_page")
 
 
+def account_page_redirect(context) -> None:
+	"""Frappe's own account page (/me) sends a customer to their store account while the store keeps
+	customers in the store; staff keep it."""
+	if context.get("path") != "me" or frappe.session.user == "Guest":
+		return
+	if not frappe.db.get_single_value("Shop Settings", "customers_land_in_store"):
+		return
+	if frappe.get_cached_value("User", frappe.session.user, "user_type") != "Website User":
+		return
+	frappe.flags.redirect_location = store_url(ACCOUNT_PATH)
+	raise frappe.Redirect(302)
+
+
 def check_terms(accept_terms) -> None:
 	from shop.storefront import terms
 

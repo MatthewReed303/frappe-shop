@@ -922,7 +922,7 @@
 				<Switch
 					v-model="storefront.customers_land_in_store"
 					label="Customers land in the store"
-					description="After signing in or setting a password, customers go to their store account, not the site's home page."
+					description="After signing in or setting a password, customers go to their store account, not the site's home page. Frappe's /me page sends them there too."
 					class="!w-auto"
 				/>
 				<template #footer>
