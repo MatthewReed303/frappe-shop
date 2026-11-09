@@ -288,6 +288,74 @@
 			</CatalogSection>
 
 			<CatalogSection
+				title="Duties and import fees"
+				description="Countries you send orders to duties paid: checkout charges their duty and your carrier's fees for it as one line."
+			>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div
+						v-for="(row, index) in duties.import_duties"
+						:key="index"
+						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+					>
+						<FormControl
+							v-model="row.country"
+							type="select"
+							label="Country"
+							:options="countryOptions"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model.number="row.duty_rate"
+							type="number"
+							label="Duty %"
+							description="Of the goods, before shipping."
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model.number="row.fee_on_duty"
+							type="number"
+							label="Fee on duty %"
+							description="What the carrier charges for paying the duty."
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.fee_per_parcel"
+							type="number"
+							:label="`Fee per parcel (${data.company_currency})`"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.duty_free_up_to"
+							type="number"
+							:label="`Duty free up to (${data.company_currency})`"
+							description="0 means every order pays."
+							class="col-span-2"
+						/>
+						<Button variant="ghost" class="col-span-2 self-end" @click="duties.import_duties.splice(index, 1)">
+							Remove
+						</Button>
+					</div>
+					<div>
+						<Button @click="addDuty">Add country</Button>
+					</div>
+				</div>
+				<FormControl
+					v-model="duties.duties_item"
+					type="select"
+					label="Duties item"
+					:options="feeItemOptions('No duties item')"
+					description="The order line duties are charged on, named as the item is."
+					class="max-w-sm"
+				/>
+				<NewServiceItem suggestion="Duties and Import Fees" @created="(name) => useItem('duties_item', name)" />
+				<template #footer>
+					<Button variant="solid" :loading="saving === 'duties'" @click="saveSection('duties', duties)">
+						Save
+					</Button>
+				</template>
+			</CatalogSection>
+
+			<CatalogSection
 				title="Fulfillment"
 				description="The warehouses you sell from and who ships from each, first to last."
 			>
@@ -626,6 +694,7 @@ const shipping = reactive({
 	shipping_account: '',
 	shipping_item: '',
 })
+const duties = reactive({ duties_item: '', import_duties: [] as DutyRow[] })
 const orders = reactive({
 	round_order_totals: true,
 	invoice_paid_orders: false,
@@ -646,6 +715,30 @@ const accounts = reactive({
 	allow_quote_requests: false,
 	quote_valid_days: 30,
 })
+type DutyRow = {
+	country: string
+	duty_rate: number
+	fee_on_duty: number
+	fee_per_parcel: number
+	duty_free_up_to: number
+}
+
+const countryOptions = computed(() => listOptions(data.value.countries))
+
+function addDuty() {
+	const used = duties.import_duties.map((row) => row.country)
+	const next = (data.value.countries || []).find(
+		(country: string) => country !== data.value.company_country && !used.includes(country),
+	)
+	duties.import_duties.push({
+		country: next || '',
+		duty_rate: 0,
+		fee_on_duty: 0,
+		fee_per_parcel: 0,
+		duty_free_up_to: 0,
+	})
+}
+
 type LocationRow = {
 	warehouse: string
 	display_name: string
@@ -724,6 +817,10 @@ function hydrate(doc: Record<string, any>) {
 		free_shipping_above: doc.free_shipping_above || 0,
 		shipping_account: doc.shipping_account || '',
 		shipping_item: doc.shipping_item || '',
+	})
+	Object.assign(duties, {
+		duties_item: doc.duties_item || '',
+		import_duties: (doc.import_duties || []).map((row: DutyRow) => ({ ...row })),
 	})
 	Object.assign(orders, {
 		invoice_paid_orders: !!doc.invoice_paid_orders,
@@ -883,9 +980,13 @@ const taxOptions = computed(() => [
 ])
 
 // a new service item joins the choices and is picked; the section is saved as usual
-function useItem(field: 'card_fee_item' | 'transfer_fee_item' | 'conversion_fee_item' | 'shipping_item', name: string) {
+function useItem(
+	field: 'card_fee_item' | 'transfer_fee_item' | 'conversion_fee_item' | 'shipping_item' | 'duties_item',
+	name: string,
+) {
 	settings.data.service_items = [...(settings.data.service_items || []), name]
 	if (field === 'shipping_item') shipping.shipping_item = name
+	else if (field === 'duties_item') duties.duties_item = name
 	else payments[field] = name
 	toast.success(`${name} created. Save to use it.`)
 }

@@ -1,5 +1,5 @@
 """Checkout totals worked out by ERPNext: tax in or on top of prices, exports, coupons, shipping,
-card and conversion fees, other currencies, and what happens once an order is placed."""
+import duties, card and conversion fees, other currencies, and what happens once an order is placed."""
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -39,6 +39,7 @@ SETTINGS_FIELDS = (
 	"invoice_paid_orders",
 	"cancel_unpaid_orders",
 	"other_currencies_with_tax",
+	"duties_item",
 )
 
 TEST_PROVIDER = "shop.tests.test_checkout_totals.test_rates"
@@ -212,6 +213,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		settings.payment_gateways = []
 		for row in self.original_gateways:
 			settings.append("payment_gateways", row)
+		settings.import_duties = []
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 
@@ -281,6 +283,92 @@ class TestCheckoutTotals(IntegrationTestCase):
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 		return totals.gateway_method(other)
+
+	# --- import duties -------------------------------------------------------
+
+	def with_duties(self, **row):
+		"""Orders sent to the other country pay its duty: 15%, a 5% fee on it and 5.00 a parcel."""
+		settings = frappe.get_doc("Shop Settings")
+		settings.duties_item = service("TEST-DUTIES", self.company)
+		frappe.db.set_value("Item", "TEST-DUTIES", "item_name", "Duties and Import Fees")
+		settings.import_duties = []
+		settings.append(
+			"import_duties",
+			{"country": self.other, "duty_rate": 15, "fee_on_duty": 5, "fee_per_parcel": 5} | row,
+		)
+		settings.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Shop Settings")
+
+	def test_an_order_sent_duties_paid_pays_duty_and_fees_as_one_line(self):
+		self.with_duties()
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
+		goods = flt(self.price / 1.15, 2)
+		self.assertEqual(line(quote, "duties"), [flt(goods * 0.15 * 1.05 + 5, 2)])
+		self.assertEqual(fee_row(quote, "TEST-DUTIES").description, "Duties and Import Fees")
+		self.assertEqual(grand(quote), flt(goods + goods * 0.15 * 1.05 + 5, 2))
+		self.assertIn(
+			"Duties are paid before delivery: there is nothing more to pay when it arrives.",
+			totals.payload(quote)["notes"],
+		)
+
+	def test_duties_are_only_for_the_countries_listed(self):
+		self.with_duties()
+		home = totals.compute(self.basket(1), self.home_address, None, "bank")
+		self.assertEqual(line(home, "duties"), [])
+		elsewhere = dict(self.abroad_address, country="Antarctica")
+		other = totals.compute(cart.resolve_cart(), elsewhere, None, "bank", self.company_currency)
+		self.assertEqual(line(other, "duties"), [])
+		collected = totals.compute(
+			cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency, collected=True
+		)
+		self.assertEqual(line(collected, "duties"), [])
+
+	def test_goods_worth_up_to_the_duty_free_value_pay_no_duty(self):
+		self.with_duties(duty_free_up_to=flt(self.price / 1.15, 2))
+		one = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
+		self.assertEqual(line(one, "duties"), [])
+		cart.add_item(ITEM, qty=1)
+		two = totals.compute(cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency)
+		self.assertEqual(line(two, "duties"), [flt(2 * flt(self.price / 1.15, 2) * 0.15 * 1.05 + 5, 2)])
+
+	def test_the_fee_per_parcel_is_in_the_stores_currency(self):
+		self.with_duties()
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "swift", self.foreign)
+		self.assertEqual(quote.currency, self.foreign)
+		goods = sum(row.net_amount for row in quote.order.items if row.item_code == ITEM)
+		# 5.00 in the store's currency is 2.50 in the foreign one
+		self.assertAlmostEqual(line(quote, "duties")[0], goods * 0.15 * 1.05 + 2.5, delta=0.01)
+
+	def test_the_card_fee_covers_the_duties_paid_by_card(self):
+		self.with_duties()
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "gateway")
+		self.assertTrue(line(quote, "duties"))
+		self.assertAlmostEqual(
+			fee_row(quote, "TEST-CARD-FEE").amount, 0.035 * grand(quote) + 0.30, delta=0.01
+		)
+
+	def test_a_placed_order_keeps_the_duties_line(self):
+		self.with_duties()
+		quote = totals.compute(self.basket(1), self.abroad_address, None, "bank", self.company_currency)
+		order = frappe.get_doc(
+			"Sales Order",
+			self.place(
+				address=self.abroad_address, currency=self.company_currency, expected_total=quote.total
+			),
+		)
+		duties = [row for row in order.items if row.item_code == "TEST-DUTIES"]
+		self.assertEqual([row.amount for row in duties], line(quote, "duties"))
+		self.assertEqual(totals.order_total(order), quote.total)
+
+	def test_import_duties_need_a_duties_item_and_one_row_a_country(self):
+		settings = frappe.get_doc("Shop Settings")
+		settings.duties_item = None
+		settings.import_duties = []
+		settings.append("import_duties", {"country": self.other, "duty_rate": 10})
+		self.assertRaises(frappe.ValidationError, settings.save)
+		settings.duties_item = service("TEST-DUTIES", self.company)
+		settings.append("import_duties", {"country": self.other, "duty_rate": 12})
+		self.assertRaises(frappe.ValidationError, settings.save)
 
 	# --- online payment gateways ---------------------------------------------
 

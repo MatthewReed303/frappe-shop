@@ -30,6 +30,9 @@
   "shipping_item",
   "fulfillment_section",
   "fulfillment_locations",
+  "duties_section",
+  "duties_item",
+  "import_duties",
   "payments_section",
   "enable_cod",
   "column_break_payments",
@@ -190,6 +193,25 @@
    "fieldname": "low_stock_threshold",
    "fieldtype": "Int",
    "label": "Low Stock Threshold"
+  },
+  {
+   "fieldname": "duties_section",
+   "fieldtype": "Section Break",
+   "label": "Duties and Import Fees",
+   "description": "For countries the store sends duties paid: the order pays the duty and the carrier's fees for it as one line, the duties item's"
+  },
+  {
+   "fieldname": "duties_item",
+   "fieldtype": "Link",
+   "label": "Duties Item",
+   "options": "Item",
+   "description": "The order line the duties and fees are charged on, named as the item is, e.g. \"Duties and Import Fees\""
+  },
+  {
+   "fieldname": "import_duties",
+   "fieldtype": "Table",
+   "label": "Import Duties",
+   "options": "Shop Import Duty"
   },
   {
    "fieldname": "payments_section",

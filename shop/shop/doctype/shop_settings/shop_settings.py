@@ -17,6 +17,7 @@ class ShopSettings(Document):
 		from shop.shop.doctype.shop_fulfillment_location.shop_fulfillment_location import (
 			ShopFulfillmentLocation,
 		)
+		from shop.shop.doctype.shop_import_duty.shop_import_duty import ShopImportDuty
 		from shop.shop.doctype.shop_payment_gateway.shop_payment_gateway import ShopPaymentGateway
 		from shop.shop.doctype.shop_theme_page.shop_theme_page import ShopThemePage
 
@@ -33,6 +34,7 @@ class ShopSettings(Document):
 		company: DF.Link | None
 		conversion_fee_item: DF.Link | None
 		currency: DF.Link | None
+		duties_item: DF.Link | None
 		email_statements: DF.Check
 		enable_bank_transfer: DF.Check
 		enable_cod: DF.Check
@@ -40,6 +42,7 @@ class ShopSettings(Document):
 		flat_shipping_rate: DF.Currency
 		fulfillment_locations: DF.Table[ShopFulfillmentLocation]
 		free_shipping_above: DF.Currency
+		import_duties: DF.Table[ShopImportDuty]
 		invoice_paid_orders: DF.Check
 		low_stock_threshold: DF.Int
 		onboarding_complete: DF.Check
@@ -72,6 +75,7 @@ class ShopSettings(Document):
 	def validate(self):
 		self.validate_order_naming_series()
 		self.validate_fulfillment_locations()
+		self.validate_import_duties()
 		self.route_prefix = normalize_prefix(self.route_prefix)
 		first_segment = self.route_prefix.split("/")[0] if self.route_prefix else ""
 		if first_segment in STOREFRONT_SEGMENTS:
@@ -105,6 +109,15 @@ class ShopSettings(Document):
 					)
 				)
 			self.check_ship_from(row)
+
+	def validate_import_duties(self):
+		seen = set()
+		for row in self.import_duties:
+			if row.country in seen:
+				frappe.throw(_("{0} is listed twice in Import Duties").format(frappe.bold(row.country)))
+			seen.add(row.country)
+		if self.import_duties and not self.duties_item:
+			frappe.throw(_("Set the Duties Item that charges import duties on orders"))
 
 	def check_ship_from(self, row) -> None:
 		warning = self.ship_from_warning(row)

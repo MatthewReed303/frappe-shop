@@ -411,6 +411,13 @@ def compute(
 		return compute(cart, address, shipping_option, payment_method, currency, collected=True)
 
 	fees = []
+	if order.flags.shop_export:
+		sent = [
+			group
+			for group in groups
+			if group.parcel and not (group.chosen and shipping_module.is_pickup(group.chosen))
+		]
+		fees += add_duties(order, address.get("country"), len(sent))
 	if is_gateway(method):
 		fees += add_card_fee(order, export, gateway_row(method))
 	elif method in BANK_METHODS:
@@ -691,6 +698,36 @@ def set_charge(row, rate: float) -> None:
 	row.update({"price_list_rate": rate, "rate": rate, "discount_percentage": 0, "discount_amount": 0})
 
 
+def import_duty(country: str | None):
+	"""The store's import duties for a country it sends orders to duties paid."""
+	s = settings()
+	if not country or not s.get("duties_item"):
+		return None
+	return next((row for row in s.import_duties if row.country == country), None)
+
+
+def add_duties(order, country: str | None, parcel_count: int) -> list[frappe._dict]:
+	"""The country's duty on the goods, the carrier's fee on that duty and its fee per parcel, as one
+	line on the order. Goods worth no more than the country's duty-free value pay none."""
+	s = settings()
+	duty = import_duty(country)
+	if not duty or not parcel_count:
+		return []
+	calculate(order)
+	goods = [item for item in order.items if not is_charge_item(item.item_code)]
+	free_up_to = flt(duty.duty_free_up_to)
+	if free_up_to and sum(flt(item.base_net_amount) for item in goods) <= free_up_to:
+		return []
+	amount = sum(flt(item.net_amount) for item in goods) * flt(duty.duty_rate) / 100
+	amount += amount * flt(duty.fee_on_duty) / 100
+	amount += flt(duty.fee_per_parcel) * parcel_count / flt(order.conversion_rate)
+	if amount <= 0:
+		return []
+	label = frappe.get_cached_value("Item", s.duties_item, "item_name") or _("Duties and import fees")
+	add_line(order, s.duties_item, flt(amount, order.precision("grand_total")), label)
+	return [frappe._dict(kind="duties", label=label, item=s.duties_item)]
+
+
 def add_card_fee(order, export: bool, gateway=None) -> list[frappe._dict]:
 	"""The online gateway's fee as a line on the order. What the store keeps of it, after any tax on
 	the fee, pays the provider's charge on the final total: percent of the total plus the fixed
@@ -780,6 +817,7 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 		s.get("card_fee_item"): "card_fee",
 		s.get("conversion_fee_item"): "conversion_fee",
 		s.get("transfer_fee_item"): "transfer_fee",
+		s.get("duties_item"): "duties",
 	}
 	for item in order.items:
 		if is_charge_item(item.item_code):
@@ -792,6 +830,8 @@ def summary_lines(order) -> tuple[list[dict], list[str]]:
 				}
 			)
 	notes = []
+	if any(line["kind"] == "duties" for line in lines):
+		notes.append(_("Duties are paid before delivery: there is nothing more to pay when it arrives."))
 	for tax in order.taxes:
 		amount = flt(tax.tax_amount_after_discount_amount)
 		if not amount:
@@ -993,5 +1033,5 @@ def payload(quote: frappe._dict) -> dict:
 def is_charge_item(item_code: str) -> bool:
 	"""Shipping and fee lines, which are not products."""
 	s = settings()
-	charges = ("shipping_item", "card_fee_item", "conversion_fee_item", "transfer_fee_item")
+	charges = ("shipping_item", "card_fee_item", "conversion_fee_item", "transfer_fee_item", "duties_item")
 	return item_code in {s.get(field) for field in charges} - {None, ""}

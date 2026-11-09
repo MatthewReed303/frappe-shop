@@ -24,6 +24,7 @@ EDITABLE = (
 	"bank_transfer_days",
 	"conversion_fee_item",
 	"transfer_fee_item",
+	"duties_item",
 	"bank_charges_account",
 	"invoice_paid_orders",
 	"cancel_unpaid_orders",
@@ -85,6 +86,7 @@ GATEWAY_FIELDS = (
 	"fee_percent_international",
 	"fee_fixed_international",
 )
+DUTY_FIELDS = ("country", "duty_rate", "fee_on_duty", "fee_per_parcel", "duty_free_up_to")
 BANK_ACCOUNT_FIELDS = (
 	"bank_account",
 	"label",
@@ -130,6 +132,10 @@ def get_settings() -> dict:
 			"payment_gateways": [
 				{field: row.get(field) for field in GATEWAY_FIELDS} for row in settings.payment_gateways
 			],
+			"import_duties": [
+				{field: row.get(field) for field in DUTY_FIELDS} for row in settings.import_duties
+			],
+			"countries": frappe.get_all("Country", pluck="name", order_by="name"),
 			"tax_templates": frappe.get_all("Sales Taxes and Charges Template", pluck="name"),
 			"income_accounts": frappe.get_all(
 				"Account",
@@ -250,6 +256,15 @@ def save_settings(payload: dict) -> dict:
 				{field: row.get(field) for field in GATEWAY_FIELDS}
 				for row in payload["payment_gateways"] or []
 				if row.get("payment_gateway")
+			],
+		)
+	if "import_duties" in payload:
+		settings.set(
+			"import_duties",
+			[
+				{field: row.get(field) for field in DUTY_FIELDS}
+				for row in payload["import_duties"] or []
+				if row.get("country")
 			],
 		)
 	if "bank_accounts" in payload:
