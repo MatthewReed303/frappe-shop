@@ -27,6 +27,16 @@ def store_css(refs, radius: str = "2px"):
 @media (max-width: 640px) {{ input, select, textarea {{ font-size:16px !important; }} }}
 .visually-hidden {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }}
 .store-currency:empty {{ display:none; }}
+.shop-select-list {{ position:absolute; z-index:1000; box-sizing:border-box; max-width:min(420px, calc(100vw - 16px)); padding:4px; background:{paper}; color:{ink}; border:1px solid {line}; border-radius:min({radius}, 10px); box-shadow:0 14px 34px rgba(0,0,0,.12); font-size:14px; }}
+.shop-select-list [role="listbox"] {{ max-height:300px; overflow-y:auto; outline:none; }}
+.shop-select-list [role="option"] {{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:8px 10px; border-radius:min({radius}, 6px); cursor:pointer; white-space:nowrap; }}
+.shop-select-list [role="option"][data-active="true"] {{ background:{card}; }}
+.shop-select-list [role="option"][aria-selected="true"] {{ font-weight:600; }}
+.shop-select-list [role="option"][aria-selected="true"]::after {{ content:""; width:5px; height:9px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg) translate(-2px, -2px); flex-shrink:0; }}
+.shop-select-list [role="option"][aria-disabled="true"] {{ color:{muted}; cursor:default; }}
+.shop-select-search {{ display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:min({radius}, 6px); outline:none; }}
+.shop-select-search:focus {{ border-color:{ink}; }}
+.shop-select-empty {{ margin:0; padding:8px 10px; color:{muted}; }}
 [data-shop="stock-status"] {{ color:{ok}; }}
 [data-shop="stock-status"] .stock-dot {{ background:{ok}; }}
 [data-shop="stock-status"][data-stock-state="out"], [data-shop="stock-status"][data-stock-state="unavailable"] {{ color:{muted}; }}

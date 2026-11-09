@@ -1173,6 +1173,171 @@
 		});
 	}
 
+	// A select's list in the theme's style on a desktop; phones and tablets keep their own picker. The
+	// select stays what forms and the store's scripts use: choosing sets it and fires its change event.
+	function initSelectLists() {
+		const desktop = window.matchMedia("(hover: hover) and (pointer: fine)");
+		let open = null;
+
+		const usable = (select) =>
+			select instanceof HTMLSelectElement &&
+			desktop.matches &&
+			!select.multiple &&
+			select.size <= 1 &&
+			!select.disabled &&
+			!select.closest("[data-native-select]");
+
+		function close(refocus) {
+			if (!open) return;
+			const { select, list } = open;
+			list.remove();
+			select.setAttribute("aria-expanded", "false");
+			open = null;
+			if (refocus) select.focus();
+		}
+
+		function choose(select, value) {
+			if (select.value !== value) {
+				select.value = value;
+				select.dispatchEvent(new Event("input", { bubbles: true }));
+				select.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+			close(true);
+		}
+
+		function place(select, list) {
+			const box = select.getBoundingClientRect();
+			list.style.minWidth = `${Math.max(box.width, 160)}px`;
+			const height = list.offsetHeight;
+			const below = window.innerHeight - box.bottom;
+			const top = below < height + 8 && box.top > below ? box.top - height - 4 : box.bottom + 4;
+			list.style.top = `${top + window.scrollY}px`;
+			const left = Math.min(box.left, window.innerWidth - list.offsetWidth - 8);
+			list.style.left = `${Math.max(8, left) + window.scrollX}px`;
+		}
+
+		function show(select) {
+			close(false);
+			const style = getComputedStyle(select);
+			const list = document.createElement("div");
+			list.className = "shop-select-list";
+			list.style.fontFamily = style.fontFamily;
+			list.style.letterSpacing = style.letterSpacing;
+			list.style.textTransform = style.textTransform;
+			const id = `shop-select-list-${Date.now()}`;
+			const options = [...select.options].filter((option) => !option.hidden);
+			const searchable = options.length > 10;
+			list.innerHTML = `
+				${searchable ? `<input type="text" class="shop-select-search" autocomplete="off" placeholder="${esc(__("Search"))}" aria-label="${esc(__("Search"))}" aria-controls="${id}">` : ""}
+				<div role="listbox" id="${id}" tabindex="-1" aria-label="${esc(select.getAttribute("aria-label") || select.name || "")}">
+					${options
+						.map(
+							(option, index) =>
+								`<div role="option" id="${id}-${index}" data-value="${esc(option.value)}" aria-selected="${option.selected}"${option.disabled ? ' aria-disabled="true"' : ""}>${esc(option.textContent.trim())}</div>`
+						)
+						.join("")}
+				</div>
+				<p class="shop-select-empty" hidden>${esc(__("Nothing matches"))}</p>`;
+			document.body.appendChild(list);
+			const listbox = list.querySelector('[role="listbox"]');
+			const search = list.querySelector(".shop-select-search");
+			const rows = [...list.querySelectorAll('[role="option"]')];
+			const visible = () => rows.filter((row) => !row.hidden && row.getAttribute("aria-disabled") !== "true");
+			const focusTarget = search || listbox;
+			let active = rows.find((row) => row.getAttribute("aria-selected") === "true") || visible()[0];
+			const activate = (row) => {
+				rows.forEach((item) => item.removeAttribute("data-active"));
+				active = row;
+				if (!row) return focusTarget.removeAttribute("aria-activedescendant");
+				row.dataset.active = "true";
+				focusTarget.setAttribute("aria-activedescendant", row.id);
+				row.scrollIntoView({ block: "nearest" });
+			};
+			list.addEventListener("mousedown", (event) => {
+				if (event.target !== search) event.preventDefault();
+			});
+			list.addEventListener("mousemove", (event) => {
+				const row = event.target.closest('[role="option"]');
+				if (row && row !== active && row.getAttribute("aria-disabled") !== "true") activate(row);
+			});
+			list.addEventListener("click", (event) => {
+				const row = event.target.closest('[role="option"]');
+				if (row && row.getAttribute("aria-disabled") !== "true") choose(select, row.dataset.value);
+			});
+			let typed = "";
+			let typedAt = 0;
+			list.addEventListener("keydown", (event) => {
+				const shown = visible();
+				const at = shown.indexOf(active);
+				if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+					event.preventDefault();
+					const step = event.key === "ArrowDown" ? 1 : -1;
+					activate(shown[Math.min(Math.max(at + step, 0), shown.length - 1)] || shown[0]);
+				} else if (event.key === "Home" || event.key === "End") {
+					if (event.target === search) return;
+					event.preventDefault();
+					activate(event.key === "Home" ? shown[0] : shown[shown.length - 1]);
+				} else if (event.key === "Enter") {
+					event.preventDefault();
+					if (active && !active.hidden) choose(select, active.dataset.value);
+				} else if (event.key === "Escape") {
+					event.preventDefault();
+					close(true);
+				} else if (event.key === "Tab") {
+					close(false);
+				} else if (!search && event.key.length === 1) {
+					typed = Date.now() - typedAt > 700 ? event.key : typed + event.key;
+					typedAt = Date.now();
+					const match = shown.find((row) => row.textContent.trim().toLowerCase().startsWith(typed.toLowerCase()));
+					if (match) activate(match);
+				}
+			});
+			if (search)
+				search.addEventListener("input", () => {
+					const words = search.value.trim().toLowerCase();
+					rows.forEach((row) => (row.hidden = !!words && !row.textContent.toLowerCase().includes(words)));
+					list.querySelector(".shop-select-empty").hidden = visible().length > 0;
+					activate(visible()[0]);
+				});
+			select.setAttribute("aria-expanded", "true");
+			select.setAttribute("aria-controls", id);
+			open = { select, list };
+			place(select, list);
+			activate(active);
+			focusTarget.focus({ preventScroll: true });
+		}
+
+		document.addEventListener(
+			"mousedown",
+			(event) => {
+				const select = event.target.closest && event.target.closest("select");
+				if (open && !open.list.contains(event.target) && open.select !== select) close(false);
+				if (!usable(select) || event.button !== 0) return;
+				event.preventDefault();
+				select.focus({ preventScroll: true });
+				if (open && open.select === select) close(false);
+				else show(select);
+			},
+			true
+		);
+		document.addEventListener("keydown", (event) => {
+			const select = event.target;
+			if (!usable(select) || open) return;
+			const opens = [" ", "Enter", "ArrowDown", "ArrowUp", "F4"].includes(event.key);
+			if (!opens) return;
+			event.preventDefault();
+			show(select);
+		});
+		window.addEventListener("resize", () => close(false));
+		document.addEventListener(
+			"scroll",
+			(event) => {
+				if (open && !open.list.contains(event.target)) place(open.select, open.list);
+			},
+			true
+		);
+	}
+
 	function init() {
 		initCurrencyPicker();
 		initBuyingFor();
@@ -1186,6 +1351,7 @@
 		initFilters();
 		initLinkSelects();
 		initCatalogMenu();
+		initSelectLists();
 		document
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));

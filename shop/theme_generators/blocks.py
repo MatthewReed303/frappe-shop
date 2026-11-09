@@ -55,14 +55,19 @@ def repeater(key: str, child: dict, styles: dict, element: str = "div", **kwargs
 	)
 
 
-def save_if_changed(doc, values: dict) -> None:
+# client scripts the generator changed; Builder exports a script's file with the pages using it
+changed_scripts = set()
+
+
+def save_if_changed(doc, values: dict, force: bool = False) -> bool:
 	"""Save the record only when the generator changed it: Builder writes a template's file on every
 	save, so saving one that is the same would change its file for nothing."""
 	before = None if doc.is_new() else content(doc)
 	doc.update(values)
-	if before is not None and content(doc) == before:
-		return
+	if not force and before is not None and content(doc) == before:
+		return False
 	doc.save(ignore_permissions=True)
+	return True
 
 
 def content(doc) -> str:
@@ -156,7 +161,7 @@ def upsert_page(
 	}
 	if page.is_new():
 		values["page_name"] = page_name
-	save_if_changed(page, values)
+	save_if_changed(page, values, force=bool(changed_scripts & set(client_scripts or [])))
 	return page
 
 
@@ -195,7 +200,8 @@ def upsert_client_script(name: str, script_type: str, script: str) -> str:
 		else frappe.new_doc("Builder Client Script")
 	)
 	if existing:
-		save_if_changed(doc, {"script_type": script_type, "script": script})
+		if save_if_changed(doc, {"script_type": script_type, "script": script}):
+			changed_scripts.add(doc.name)
 	else:
 		doc.update({"script_type": script_type, "script": script, "name": name})
 		doc.insert(ignore_permissions=True, set_name=name)
