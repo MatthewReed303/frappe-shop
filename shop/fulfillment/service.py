@@ -2,7 +2,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, fmt_money
 
 from shop.fulfillment.provider import get_provider
 
@@ -315,7 +315,21 @@ def summary(fulfillment) -> dict:
 		"delivered_on": str(fulfillment.delivered_on)[:16] if fulfillment.delivered_on else None,
 		"error": fulfillment.error,
 		"items": [{"item_code": row.item_code, "item_name": row.item_name, "qty": row.qty} for row in fulfillment.items],
+		"courier": courier(fulfillment),
 	}
+
+
+def courier(fulfillment) -> dict | None:
+	"""Where the parcel's courier booking and label stand, when its provider books couriers."""
+	from shop.fulfillment.provider import registry
+
+	if fulfillment.provider not in registry() or fulfillment.status in ("Cancelled", "Failed"):
+		return None
+	provider = get_provider(fulfillment.provider)
+	state = provider.courier(fulfillment) if hasattr(provider, "courier") else None
+	if state and state.get("amount") is not None:
+		state["formatted_amount"] = fmt_money(state["amount"], currency=state.get("currency"))
+	return state
 
 
 def provider_label(key: str) -> str:

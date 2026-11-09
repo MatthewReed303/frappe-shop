@@ -46,6 +46,17 @@ class FulfillmentProvider:
 	def cancel(self, fulfillment) -> dict:
 		raise NotImplementedError
 
+	# A provider that books a courier and prints its label for a parcel overrides courier() and has
+	# courier_services(fulfillment) -> [{"id", "provider", "carrier", "service", "amount",
+	# "currency", "preferred"}], book_courier(fulfillment, service_id) -> a result as
+	# create_shipment returns, print_label(fulfillment) -> the same with "files" (the label files'
+	# URLs, bought the first time) and labels(fulfillment) -> the label files' URLs printed so far.
+
+	def courier(self, fulfillment) -> dict | None:
+		"""Where the parcel's courier booking and label stand: {"booked", "provider", "service",
+		"amount", "currency", "labels", "can_book", "can_print_label"}, or None."""
+		return None
+
 
 def registry() -> dict:
 	"""Every provider available on this site, keyed by its slug.

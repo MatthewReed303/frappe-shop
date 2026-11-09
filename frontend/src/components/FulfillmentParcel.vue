@@ -39,6 +39,14 @@
 				</div>
 			</dl>
 
+			<FulfillmentCourier
+				v-if="shipment.courier"
+				:fulfillment="shipment.name"
+				:courier="shipment.courier"
+				:open="isOpen"
+				@changed="afterAction"
+			/>
+
 			<p
 				v-if="shipment.status === 'Failed' && shipment.error"
 				class="mt-4 rounded bg-surface-red-1 px-3 py-2 text-sm text-ink-red-8"
@@ -125,6 +133,7 @@ import { FormControl, call, dialog, toast } from 'frappe-ui'
 import LucideExternalLink from '~icons/lucide/external-link'
 import LucideRefreshCw from '~icons/lucide/refresh-cw'
 
+import FulfillmentCourier, { type Courier } from '@/components/FulfillmentCourier.vue'
 import FulfillmentShipDialog from '@/components/FulfillmentShipDialog.vue'
 import FulfillmentStatusBadge from '@/components/FulfillmentStatusBadge.vue'
 import { formatDateTime } from '@/utils/format'
@@ -143,6 +152,7 @@ export interface FulfillmentSummary {
 	shipped_on?: string
 	delivered_on?: string
 	error?: string
+	courier?: Courier | null
 }
 
 export interface Parcel {
