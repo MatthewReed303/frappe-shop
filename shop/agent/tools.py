@@ -6,6 +6,7 @@ assistant can only do what a Shop Manager could do by hand.
 
 import frappe
 from flow import tool
+from frappe import _
 
 from shop.api import analytics, carts, customers, discounts, inventory
 from shop.api import orders as orders_api
@@ -324,7 +325,14 @@ def record_shipment(
 	from shop.fulfillment import service
 
 	parcels = service.order_parcels(order)
-	parcel = next((row for row in parcels if row["warehouse"] == warehouse), None) or (parcels[0] if parcels else None)
+	if warehouse:
+		parcel = next((row for row in parcels if row["warehouse"] == warehouse), None)
+		if not parcel:
+			frappe.throw(_("Order {0} has no parcel from {1}").format(order, warehouse))
+	else:
+		parcel = parcels[0] if parcels else None
 	existing = parcel and parcel["fulfillment"]
+	if existing and existing.get("status") not in service.OPEN_STATUSES:
+		existing = None
 	name = existing["name"] if existing else service.send(order, "manual", parcel and parcel["warehouse"])
 	return mark_shipped(name, carrier=carrier, tracking_number=tracking_number)

@@ -16,7 +16,7 @@ class ShopFulfillment(Document):
 	def apply_status(self, status: str) -> None:
 		"""Record a provider status and stamp the moment it first happened. A parcel that has shipped
 		doesn't go back to being prepared when a late or repeated update arrives."""
-		if status == self.status:
+		if status == self.status or self.status == "Cancelled":
 			return
 		if self.status in ("Shipped", "Delivered") and status in ("Pending", "Accepted"):
 			return

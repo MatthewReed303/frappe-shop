@@ -43,11 +43,22 @@ def cancel_fulfillment(fulfillment: str) -> dict:
 	return service.cancel(fulfillment)
 
 
+def open_fulfillment(name: str):
+	"""A fulfillment that can still move on: not cancelled or failed, on an order not cancelled."""
+	doc = frappe.get_doc("Shop Fulfillment", name)
+	if (
+		doc.status not in service.OPEN_STATUSES
+		or frappe.db.get_value("Sales Order", doc.sales_order, "docstatus") != 1
+	):
+		frappe.throw(_("This fulfillment is {0} and can't be updated").format(_(doc.status).lower()))
+	return doc
+
+
 @frappe.whitelist(methods=["POST"])
 def mark_shipped(fulfillment: str, carrier: str | None = None, tracking_number: str | None = None) -> dict:
 	"""Record a shipment you packed yourself, with optional tracking."""
 	only_managers()
-	doc = frappe.get_doc("Shop Fulfillment", fulfillment)
+	doc = open_fulfillment(fulfillment)
 	provider = get_provider(doc.provider)
 	if not hasattr(provider, "mark_shipped"):
 		frappe.throw(_("{0} reports shipping automatically").format(provider.label))
@@ -59,7 +70,7 @@ def mark_shipped(fulfillment: str, carrier: str | None = None, tracking_number: 
 def mark_delivered(fulfillment: str) -> dict:
 	"""Record that a parcel you send yourself arrived, or that the customer collected it."""
 	only_managers()
-	doc = frappe.get_doc("Shop Fulfillment", fulfillment)
+	doc = open_fulfillment(fulfillment)
 	provider = get_provider(doc.provider)
 	if not hasattr(provider, "mark_delivered"):
 		frappe.throw(_("{0} reports delivery automatically").format(provider.label))

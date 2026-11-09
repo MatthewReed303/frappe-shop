@@ -29,10 +29,11 @@ def parcels(order) -> dict[str | None, list[dict]]:
 
 
 def parcel_provider(warehouse: str | None) -> str:
-	"""Who sends from a warehouse: its location's provider, else the store's first location's."""
+	"""Who sends from a warehouse: its location's provider. A warehouse that isn't one of the
+	store's locations (an order made in Desk, a location since removed) is sent by hand."""
 	from shop.storefront.stock import location, locations
 
-	row = location(warehouse) or next(iter(locations()), None)
+	row = location(warehouse) if warehouse else next(iter(locations()), None)
 	return row.provider if row else "manual"
 
 
@@ -92,11 +93,20 @@ def send(order_name: str, provider_key: str | None = None, warehouse: str | None
 	try:
 		apply_result(fulfillment, create_shipment(provider, order, items, fulfillment))
 	except Exception as error:
-		# what the provider made before failing (a Delivery Note, say) is undone; the failure is kept
+		# what the provider made before failing (a Delivery Note, say) is undone; the failure is kept,
+		# also when the request that sent it is rolled back
 		frappe.db.rollback(save_point="shop_send")
-		frappe.get_doc({**record, "status": "Failed", "error": str(error)[:500]}).insert(ignore_permissions=True)
+		failed = {**record, "status": "Failed", "error": str(error)[:500]}
+		name = frappe.get_doc(failed).insert(ignore_permissions=True).name
+		frappe.db.after_rollback.add(lambda: keep_failure(name, failed))
 		raise
 	return fulfillment.name
+
+
+def keep_failure(name: str, record: dict) -> None:
+	if not frappe.db.exists("Shop Fulfillment", name):
+		frappe.get_doc(record).insert(ignore_permissions=True)
+		frappe.db.commit()  # nosemgrep: the failed request's own transaction was rolled back
 
 
 def is_pickup(option: dict | None) -> bool:
@@ -143,24 +153,30 @@ def apply_result(fulfillment, result: dict) -> None:
 			fulfillment.set(field, result[field])
 	if result.get("raw") is not None:
 		fulfillment.last_response = json.dumps(result["raw"], indent=1, default=str)[:100000]
-	status = result.get("status")
-	became_shipped = status in ("Shipped", "Delivered") and fulfillment.status not in ("Shipped", "Delivered")
-	became_delivered = status == "Delivered" and fulfillment.status != "Delivered"
-	if status:
-		fulfillment.apply_status(status)
+	before = fulfillment.status
+	if result.get("status"):
+		fulfillment.apply_status(result["status"])
 	fulfillment.save(ignore_permissions=True)
-	if became_shipped:
+	sent = ("Shipped", "Delivered")
+	became_shipped = fulfillment.status in sent and before not in sent
+	became_delivered = fulfillment.status == "Delivered" and before != "Delivered"
+	# a collected parcel leaves the store when the customer takes it, not when it is made ready
+	if became_delivered if fulfillment.provider == "pickup" else became_shipped:
 		record_delivery(fulfillment)
-		notify_customer(fulfillment, "Shipped")
 	if became_delivered:
 		notify_customer(fulfillment, "Delivered")
+	elif became_shipped:
+		notify_customer(fulfillment, "Shipped")
 
 
 def notify_customer(fulfillment, status: str) -> None:
 	"""Tell the customer their order has shipped (with tracking) or been delivered."""
 	if not frappe.get_cached_doc("Shop Settings").get("send_shipping_emails"):
 		return
-	if not frappe.db.get_value("Sales Order", fulfillment.sales_order, "contact_email"):
+	email, docstatus = frappe.db.get_value(
+		"Sales Order", fulfillment.sales_order, ["contact_email", "docstatus"]
+	) or (None, None)
+	if not email or docstatus != 1:
 		return
 	from shop.routes import store_url
 	from shop.storefront import emails
@@ -254,7 +270,8 @@ def send_paid_order(order_name: str) -> None:
 		return
 	first = next(iter(locations()), None)
 	for warehouse in parcels(frappe.get_doc("Sales Order", order_name)):
-		place = location(warehouse) or first
+		# only a store location sends automatically; an order without warehouses is the first's
+		place = location(warehouse) if warehouse else first
 		if not place or not place.auto_send:
 			continue
 		# only the first hand-over of a parcel is automatic: one sent before (even if that was
