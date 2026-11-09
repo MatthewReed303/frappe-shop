@@ -105,11 +105,8 @@ class TestRates(IntegrationTestCase):
 		self.assertEqual([self.price(BOLT, c) for c in (self.alpha, self.beta, self.retail)], [85, 85, 100])
 		self.save("customer", "Item Group", HARDWARE, (1, "discount", 20), customer=self.alpha)
 		self.assertEqual([self.price(BOLT, c) for c in (self.alpha, self.beta)], [80, 85])
-		# the trade rate is shown beside the customer's own
 		rates = pricing_api.get_rates("customer", self.alpha)
 		self.assertEqual(rates["rates"][0]["tiers"][0]["label"], "20% off")
-		self.assertIn(HARDWARE, [entry["target"] for entry in rates["trade_rates"]])
-		self.assertEqual(pricing_api.get_rates("customer", self.retail)["trade_rates"], [])
 
 	def test_the_most_specific_rate_applies(self):
 		self.save("trade", "Item Group", HARDWARE, (1, "discount", 15))
@@ -207,3 +204,16 @@ class TestRates(IntegrationTestCase):
 		pricing_api.remove_rates("trade", "Item Group", "_Test Rates Fasteners")
 		products.delete_item_group("_Test Rates Fasteners")
 		self.assertFalse(frappe.db.exists("Item Group", "_Test Rates Fasteners"))
+
+	def test_staff_see_and_move_the_products_in_an_item_group(self):
+		from shop.api import products
+
+		group = products.get_item_group(TOOLS)
+		self.assertEqual([p["item_code"] for p in group["products"]], [TOOL])
+		self.assertEqual(products.get_item_group(HARDWARE)["groups_inside"], [TOOLS])
+		moved = products.move_products([TOOL], HARDWARE)
+		self.assertIn(TOOL, [p["item_code"] for p in moved["products"]])
+		self.assertEqual(products.get_item_group(TOOLS)["products"], [])
+		products.move_products([TOOL], TOOLS)
+		with self.assertRaises(frappe.ValidationError):
+			products.move_products([TOOL], "_Test No Such Group")

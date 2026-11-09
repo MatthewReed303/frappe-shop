@@ -33,7 +33,7 @@
 							scope="customer"
 							:customer="doc.name"
 							title="Their own rates"
-							description="Percent off or a set price for an Item Group or a product, with quantity breaks, for this customer only."
+							description="Percent off or a set price for an Item Group or a product, with quantity breaks, for this customer only. Their own rate replaces the trade rate for the same Item Group or product."
 						/>
 					</div>
 				</div>

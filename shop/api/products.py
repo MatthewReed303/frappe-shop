@@ -34,7 +34,6 @@ def get_products(
 	return {"products": products, "total": frappe.db.count("Shop Product", filters=filters)}
 
 
-
 def display_names(item_codes: list[str]) -> dict[str, str]:
 	"""Human names for items; variants become "Parent · Value / Value" instead of code-ish item names."""
 	if not item_codes:
@@ -43,10 +42,16 @@ def display_names(item_codes: list[str]) -> dict[str, str]:
 		"Item", filters={"name": ["in", item_codes]}, fields=["name", "item_name", "variant_of"]
 	)
 	parents = {item.variant_of for item in items if item.variant_of}
-	parent_names = {
-		row.name: row.item_name
-		for row in frappe.get_all("Item", filters={"name": ["in", list(parents)]}, fields=["name", "item_name"])
-	} if parents else {}
+	parent_names = (
+		{
+			row.name: row.item_name
+			for row in frappe.get_all(
+				"Item", filters={"name": ["in", list(parents)]}, fields=["name", "item_name"]
+			)
+		}
+		if parents
+		else {}
+	)
 	values = {}
 	for row in frappe.get_all(
 		"Item Variant Attribute",
@@ -58,10 +63,13 @@ def display_names(item_codes: list[str]) -> dict[str, str]:
 	names = {}
 	for item in items:
 		if item.variant_of and values.get(item.name):
-			names[item.name] = f"{parent_names.get(item.variant_of, item.variant_of)} · {' / '.join(values[item.name])}"
+			names[item.name] = (
+				f"{parent_names.get(item.variant_of, item.variant_of)} · {' / '.join(values[item.name])}"
+			)
 		else:
 			names[item.name] = item.item_name
 	return names
+
 
 def decorate(products: list) -> None:
 	for product in products:
@@ -73,6 +81,9 @@ def decorate(products: list) -> None:
 		rates = [entry["rate"] for entry in prices.values()]
 		product["formatted_price"] = pricing.format_amount(min(rates)) if rates else None
 		product["stock"] = sum(stock.get_stock(codes).values())
+		product["item_group"] = (
+			frappe.get_cached_value("Item", product.item, "item_group") if product.item else None
+		)
 
 
 def sellable_codes(item: str, has_variants: bool) -> list[str]:
@@ -494,3 +505,68 @@ def delete_item_group(name: str) -> list[dict]:
 		frappe.throw(_("Move the products in {0} to another Item Group first").format(frappe.bold(name)))
 	frappe.delete_doc("Item Group", name, ignore_permissions=True)
 	return get_item_group_tree()
+
+
+@frappe.whitelist()
+def get_item_group(name: str) -> dict:
+	"""An Item Group's products (with their store product, when listed) and the groups inside it."""
+	only_managers()
+	if not frappe.db.exists("Item Group", name):
+		frappe.throw(_("Item Group {0} not found").format(name), frappe.DoesNotExistError)
+	items = frappe.get_all(
+		"Item",
+		filters={"item_group": name, "variant_of": ["is", "not set"]},
+		fields=["name", "item_name", "disabled", "has_variants", "image"],
+		order_by="item_name",
+	)
+	listed = {
+		row.item: row
+		for row in frappe.get_all(
+			"Shop Product",
+			filters={"item": ["in", [item.name for item in items] or [""]]},
+			fields=["name", "item", "product_name", "published"],
+		)
+	}
+	return {
+		"name": name,
+		"parent": frappe.db.get_value("Item Group", name, "parent_item_group"),
+		"groups_inside": frappe.get_all(
+			"Item Group", filters={"parent_item_group": name}, order_by="lft", pluck="name"
+		),
+		"products": [
+			{
+				"item_code": item.name,
+				"name": (listed.get(item.name) or {}).get("product_name") or item.item_name,
+				"product": (listed.get(item.name) or {}).get("name"),
+				"published": (listed.get(item.name) or {}).get("published", 0),
+				"disabled": item.disabled,
+				"has_variants": item.has_variants,
+				"image": product_image((listed.get(item.name) or {}).get("name")) or item.image,
+			}
+			for item in items
+		],
+	}
+
+
+def product_image(product: str | None) -> str | None:
+	if not product:
+		return None
+	return frappe.db.get_value("Shop Product Image", {"parent": product}, "image", order_by="idx")
+
+
+@frappe.whitelist(methods=["POST"])
+def move_products(item_codes: list[str], item_group: str) -> dict:
+	"""Put products in an Item Group, their variants with them."""
+	only_managers()
+	if not frappe.db.exists("Item Group", item_group):
+		frappe.throw(_("Choose an Item Group"))
+	for code in item_codes or []:
+		if frappe.db.get_value("Item", code, "variant_of"):
+			continue
+		for name in [code, *frappe.get_all("Item", filters={"variant_of": code}, pluck="name")]:
+			item = frappe.get_doc("Item", name)
+			if item.item_group != item_group:
+				item.item_group = item_group
+				item.flags.ignore_permissions = True
+				item.save(ignore_permissions=True)
+	return get_item_group(item_group)

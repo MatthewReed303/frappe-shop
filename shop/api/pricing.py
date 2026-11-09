@@ -232,23 +232,15 @@ def scope_rules(scope: str, customer: str | None = None) -> list:
 
 @frappe.whitelist()
 def get_rates(scope: str, customer: str | None = None, item: str | None = None) -> dict:
-	"""A scope's rates by what they apply to, the trade accounts' too for a trade customer, and how
-	many of its rules are set up in Desk in some other way. item narrows it to one product."""
+	"""A scope's rates by what they apply to, and how many of its rules are set up in Desk in some
+	other way. item narrows it to one product."""
 	only_managers()
 	rules = scope_rules(scope, customer)
 	simple = [rule for rule in rules if is_simple(rule)]
 	if item:
 		simple = [rule for rule in simple if rule.target_type == PRODUCT and rule.targets[0] == item]
-	trade_rates = []
-	if (
-		scope == "customer"
-		and trade_group()
-		and frappe.db.get_value("Customer", customer, "customer_group") == trade_group()
-	):
-		trade_rates = grouped([rule for rule in scope_rules("trade") if is_simple(rule)])
 	return {
 		"rates": grouped(simple),
-		"trade_rates": trade_rates,
 		"set_in_desk": 0 if item else len(rules) - len(simple),
 		"currency": company_currency(),
 		"item_groups": [{"name": name, "depth": depth} for name, depth in item_group_depths().items()],

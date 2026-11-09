@@ -39,22 +39,6 @@
 			</div>
 		</div>
 
-		<div v-if="tradeRows.length" class="mt-4">
-			<div class="text-sm font-medium text-ink-gray-7">Trade rates</div>
-			<p class="text-p-sm text-ink-gray-5">
-				What every trade account gets. A rate of their own for the same Item Group or product replaces it.
-			</p>
-			<div class="mt-2 space-y-1 text-sm text-ink-gray-6">
-				<div v-for="row in tradeRows" :key="row.target_type + row.target">
-					<span class="text-ink-gray-8">{{ row.label }}</span>
-					&middot;
-					<span v-for="(tier, index) in row.tiers" :key="tier.name">
-						{{ index ? ', ' : '' }}{{ tierStart(tier) }}: {{ tier.label }}
-					</span>
-				</div>
-			</div>
-		</div>
-
 		<p v-if="rates.data?.set_in_desk" class="mt-3 text-p-sm text-ink-gray-5">
 			{{ rates.data.set_in_desk }} more {{ rates.data.set_in_desk === 1 ? 'rule is' : 'rules are' }} set up in
 			Desk (Pricing Rule) in ways this page doesn't show.
@@ -196,7 +180,6 @@ const rates = createResource({
 	auto: true,
 })
 const rows = computed<RateRow[]>(() => rates.data?.rates || [])
-const tradeRows = computed<RateRow[]>(() => rates.data?.trade_rates || [])
 const groupOptions = computed(() =>
 	(rates.data?.item_groups || []).map((group: { name: string; depth: number }) => ({
 		label: `${'  '.repeat(Math.max(group.depth - 1, 0))}${group.name}`,
