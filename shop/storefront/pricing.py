@@ -284,32 +284,14 @@ def display_price_without_tax(amount: float, tax_rate: float | None = None) -> s
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=30, seconds=60)
 def set_currency(currency: str) -> str:
-	"""The shopper picks the currency prices are shown in. A signed-in customer keeps it as their
-	Billing Currency where ERPNext allows it for their account."""
+	"""The shopper picks the currency prices are shown in, kept in their browser. A customer's
+	Billing Currency in ERPNext is only the starting choice; picking one here doesn't change it."""
 	if currency not in display_currencies():
 		frappe.throw(_("Prices can't be shown in {0}").format(currency))
 	frappe.local.cookie_manager.set_cookie(
 		CURRENCY_COOKIE, currency, max_age=60 * 60 * 24 * 365, samesite="Lax"
 	)
-	customer = session_customer()
-	if customer and frappe.db.get_value("Customer", customer, "default_currency") != currency:
-		save_billing_currency(customer, currency)
 	return currency
-
-
-def save_billing_currency(customer: str, currency: str) -> None:
-	from shop.storefront.checkout import elevated
-
-	frappe.db.savepoint("shop_billing_currency")
-	try:
-		with elevated():
-			doc = frappe.get_doc("Customer", customer)
-			doc.default_currency = currency
-			doc.save(ignore_permissions=True)
-	except frappe.ValidationError:
-		# ERPNext only allows a Billing Currency the customer's accounts are kept in
-		frappe.db.rollback(save_point="shop_billing_currency")
-		frappe.clear_messages()
 
 
 def currency_picker_html() -> str:

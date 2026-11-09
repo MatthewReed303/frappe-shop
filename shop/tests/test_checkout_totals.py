@@ -1761,7 +1761,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			pricing.set_currency("XYZ")
 
-	def test_signed_in_customer_keeps_the_currency_as_billing_currency(self):
+	def test_a_customers_currency_choice_leaves_their_billing_currency(self):
 		from shop.storefront import accounts, pricing
 
 		email = "currency.keeper@example.com"
@@ -1772,11 +1772,12 @@ class TestCheckoutTotals(IntegrationTestCase):
 			if hasattr(frappe.local, "shop_session_customer"):
 				delattr(frappe.local, "shop_session_customer")
 			frappe.local.cookie_manager = frappe.auth.CookieManager()
-			pricing.set_currency(self.foreign)
 			party = pricing.session_customer()
-			self.assertEqual(frappe.db.get_value("Customer", party, "default_currency"), self.foreign)
+			billing = frappe.db.get_value("Customer", party, "default_currency")
+			pricing.set_currency(self.foreign)
 			self.assertEqual(frappe.local.cookie_manager.cookies["shop_currency"]["value"], self.foreign)
-			frappe.clear_cache(doctype="Customer")
+			self.assertEqual(frappe.db.get_value("Customer", party, "default_currency"), billing)
+			self.with_currency_cookie(self.foreign)
 			self.assertEqual(pricing.display_currency(), self.foreign)
 		finally:
 			frappe.set_user("Administrator")
