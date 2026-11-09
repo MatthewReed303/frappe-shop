@@ -10,7 +10,15 @@ from frappe.utils import add_days, flt, nowdate
 
 from shop.api.settings import GATEWAY_FIELDS
 from shop.storefront import cart, checkout, payment, totals
-from shop.tests.utils import company_bank_account, gateway, sellable, service, template, terms_record
+from shop.tests.utils import (
+	company_bank_account,
+	fresh_request,
+	gateway,
+	sellable,
+	service,
+	template,
+	terms_record,
+)
 
 BUYER = {"email": "totals.buyer@example.com", "full_name": "Totals Buyer", "phone": "021000000"}
 ITEM = "SHOP-DEMO-003"
@@ -88,8 +96,7 @@ def fee_row(quote, item):
 class TestCheckoutTotals(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 		# what the store works out once per request, kept across tests in one process otherwise
 		frappe.local.shop_customer_rates = {}
 		frappe.local.shop_item_tax_rates = {}

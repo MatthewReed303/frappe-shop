@@ -2,6 +2,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from shop.storefront import cart, checkout
+from shop.tests.utils import fresh_request
 
 BUYER = {"email": "payer@example.com", "full_name": "Pay Er", "phone": "9999900000"}
 ADDRESS = {"address_line1": "9 Gateway Rd", "city": "Bengaluru", "country": "India", "pincode": "560002"}
@@ -10,9 +11,9 @@ ADDRESS = {"address_line1": "9 Gateway Rd", "city": "Bengaluru", "country": "Ind
 class TestPayments(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 		self.settings = frappe.get_doc("Shop Settings")
+		# a Payment Request needs a gateway app's controller: the site's gateway account, if any
 		self.gateway_account = frappe.db.get_value("Payment Gateway Account", {}, "name")
 		self.original_gateways = [row.payment_gateway for row in self.settings.payment_gateways]
 
@@ -20,15 +21,15 @@ class TestPayments(IntegrationTestCase):
 		self.use_gateway(*self.original_gateways)
 
 	def use_gateway(self, *gateways):
-		"""Checkout offers these Payment Gateways, or the one of the test site's gateway account."""
+		"""Checkout offers these Payment Gateways, or the one of the site's gateway account."""
 		if not gateways:
 			gateways = (
 				frappe.db.get_value("Payment Gateway Account", self.gateway_account, "payment_gateway"),
 			)
 		settings = frappe.get_doc("Shop Settings")
 		settings.payment_gateways = []
-		for gateway in gateways:
-			settings.append("payment_gateways", {"payment_gateway": gateway})
+		for name in gateways:
+			settings.append("payment_gateways", {"payment_gateway": name})
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Shop Settings")
 
@@ -120,6 +121,8 @@ class TestPayments(IntegrationTestCase):
 		order = frappe.get_doc("Sales Order", name)
 
 		# the reminder only warns of cancelling when the store cancels unpaid orders
+		previous = frappe.db.get_single_value("Shop Settings", "cancel_unpaid_orders")
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "cancel_unpaid_orders", previous)
 		frappe.db.set_single_value("Shop Settings", "cancel_unpaid_orders", 0)
 		with patch("shop.storefront.emails.send") as send:
 			payment.remind(order)

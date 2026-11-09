@@ -9,7 +9,7 @@ from frappe.utils import flt
 
 from shop.api.settings import GATEWAY_FIELDS
 from shop.storefront import accounts, cart, checkout, pricing, quotes, totals
-from shop.tests.utils import gateway
+from shop.tests.utils import fresh_request, gateway, service
 
 ITEM = "SHOP-DEMO-003"
 ADDRESS = {"address_line1": "12 Industrial Way", "city": "Town", "pincode": "3204"}
@@ -28,8 +28,7 @@ def lead_for(email: str) -> str:
 class TestTradeAccounts(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 		for name in ("shop_session_customer", "shop_customer_rates"):
 			if hasattr(frappe.local, name):
 				delattr(frappe.local, name)
@@ -531,7 +530,9 @@ class TestTradeAccounts(IntegrationTestCase):
 				)
 
 	def test_card_fee_is_added_to_quotes_paid_by_card(self):
-		frappe.db.set_single_value("Shop Settings", "card_fee_item", "SHOP-DEMO-003")
+		frappe.db.set_single_value(
+			"Shop Settings", "card_fee_item", service("TEST-CARD-FEE", self.settings.company)
+		)
 		self.set_gateways(
 			{"payment_gateway": gateway(self.settings.company), "fee_percent": 2.65, "fee_fixed": 0.3}
 		)

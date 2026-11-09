@@ -3,6 +3,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, nowdate
 
 from shop.storefront import cart, checkout
+from shop.tests.utils import fresh_request
 
 BUYER = {"email": "coupon-buyer@example.com", "full_name": "Coupon Buyer"}
 ADDRESS = {"address_line1": "3 Offer Lane", "city": "Bengaluru", "country": "India"}
@@ -11,8 +12,7 @@ ADDRESS = {"address_line1": "3 Offer Lane", "city": "Bengaluru", "country": "Ind
 class TestCoupons(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 
 	def test_apply_and_checkout_discount(self):
 		cart.add_item("SHOP-DEMO-011")
@@ -126,8 +126,7 @@ def make_coupon(code, valid_upto=None, maximum_use=0, used=0):
 class TestCouponLifecycle(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 
 	def test_coupon_held_in_a_cart_can_still_be_deleted(self):
 		from shop.api import discounts

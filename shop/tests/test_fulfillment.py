@@ -7,6 +7,7 @@ from shop.api import fulfillment as fulfillment_api
 from shop.fulfillment import service
 from shop.fulfillment.provider import available, get_provider
 from shop.storefront import cart, checkout
+from shop.tests.utils import fresh_request
 
 BUYER = {"email": "fulfil-buyer@example.com", "full_name": "Fulfil Buyer"}
 ADDRESS = {
@@ -21,8 +22,7 @@ ADDRESS = {
 class TestFulfillment(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 
 	def place_order(self):
 		cart.add_item("SHOP-DEMO-003")

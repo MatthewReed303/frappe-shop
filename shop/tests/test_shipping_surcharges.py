@@ -12,7 +12,7 @@ from shop.shop.doctype.shop_shipping_surcharge.shop_shipping_surcharge import (
 	postcode_matches,
 )
 from shop.storefront import cart, shipping, stock, totals
-from shop.tests.utils import sellable, service, template, use_locations
+from shop.tests.utils import fresh_request, sellable, service, template, use_locations
 
 ITEM = "SHOP-DEMO-003"
 original_hooks = frappe.get_hooks
@@ -48,8 +48,7 @@ class TestShippingSurcharges(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
 		frappe.db.delete("Shop Shipping Surcharge")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 		settings = frappe.get_doc("Shop Settings")
 		fields = (
 			"flat_shipping_rate",

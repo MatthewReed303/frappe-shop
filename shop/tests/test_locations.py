@@ -11,7 +11,7 @@ from frappe.utils import flt
 from shop.api import fulfillment as fulfillment_api
 from shop.fulfillment import service
 from shop.storefront import cart, checkout, orders, stock, totals
-from shop.tests.utils import second_warehouse, sellable, use_locations
+from shop.tests.utils import fresh_request, second_warehouse, sellable, use_locations
 
 BUYER = {"email": "parcels-buyer@example.com", "full_name": "Parcel Buyer"}
 ADDRESS = {
@@ -44,8 +44,7 @@ def with_rates(hook=None, *args, **kwargs):
 class TestLocations(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 		self.first = stock.primary_warehouse()
 		self.second = second_warehouse(frappe.get_cached_doc("Shop Settings").company)
 		use_locations(

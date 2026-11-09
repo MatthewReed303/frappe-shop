@@ -7,7 +7,7 @@ from frappe.tests import IntegrationTestCase
 from shop.api import products as products_api
 from shop.api import settings as settings_api
 from shop.storefront import cart, checkout, shipping, stock, totals
-from shop.tests.utils import sellable, use_locations
+from shop.tests.utils import fresh_request, sellable, use_locations
 
 ITEM = "SHOP-DEMO-003"
 BUYER = {"email": "restricted-buyer@example.com", "full_name": "Restricted Buyer"}
@@ -17,8 +17,7 @@ ONLY_HOME, NOT_HOME = "_Test Domestic only", "_Test International only"
 class TestShippingRestrictions(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 		company = frappe.get_cached_doc("Shop Settings").company
 		self.home = frappe.get_cached_value("Company", company, "country")
 		self.other = "United States" if self.home != "United States" else "Australia"

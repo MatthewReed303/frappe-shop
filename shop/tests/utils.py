@@ -172,11 +172,10 @@ def second_warehouse(company: str) -> str:
 
 def use_locations(test, *rows: dict) -> None:
 	"""The store's fulfillment locations for one test, put back afterwards."""
+	from shop.api.settings import LOCATION_FIELDS
+
 	settings = frappe.get_doc("Shop Settings")
-	original = [
-		{f: row.get(f) for f in ("warehouse", "fulfillment_provider", "ship_from_address", "auto_send")}
-		for row in settings.fulfillment_locations
-	]
+	original = [{f: row.get(f) for f in LOCATION_FIELDS} for row in settings.fulfillment_locations]
 
 	def put(locations):
 		doc = frappe.get_doc("Shop Settings")
@@ -188,3 +187,22 @@ def use_locations(test, *rows: dict) -> None:
 
 	test.addCleanup(put, original)
 	put(rows)
+
+
+REQUEST_CACHES = (
+	"shop_session_customer",
+	"shop_customer_rates",
+	"shop_item_tax_rates",
+	"shop_display_rates",
+	"shop_domestic_taxes",
+	"shop_shopper",
+)
+
+
+def fresh_request() -> None:
+	"""A test starts as a new request: no request object, and none of what the store keeps for one."""
+	if hasattr(frappe.local, "request"):
+		del frappe.local.request
+	for name in REQUEST_CACHES:
+		if hasattr(frappe.local, name):
+			delattr(frappe.local, name)

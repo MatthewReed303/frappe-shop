@@ -7,6 +7,7 @@ from shop.api import analytics, carts, customers, discounts, inventory, orders, 
 from shop.storefront import cart as storefront_cart
 from shop.storefront import checkout
 from shop.storefront.orders import order_summary
+from shop.tests.utils import fresh_request
 
 BUYER = {"email": "admin-test-buyer@example.com", "full_name": "Admin Test Buyer"}
 ADDRESS = {"address_line1": "11 Admin Way", "city": "Bengaluru", "country": "India"}
@@ -15,8 +16,7 @@ ADDRESS = {"address_line1": "11 Admin Way", "city": "Bengaluru", "country": "Ind
 class TestAdminApi(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 
 	def place_order(self):
 		storefront_cart.add_item("SHOP-DEMO-003")
@@ -284,7 +284,7 @@ class TestAdminApi(IntegrationTestCase):
 			patch.object(payment, "invoice_paid_order", return_value=None),
 		):
 			orders.cancel_order(name)
-		self.assertEqual(frappe.db.get_value("Sales Order", name, "status") != "Closed", True)
+		self.assertNotEqual(frappe.db.get_value("Sales Order", name, "status"), "Closed")
 
 	def test_product_lifecycle(self):
 		created = products.create_product(

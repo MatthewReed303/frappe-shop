@@ -2,8 +2,10 @@
 
 import frappe
 from frappe.tests import IntegrationTestCase
+from frappe.utils.nestedset import get_root_of
 
 from shop import setup_store
+from shop.tests.utils import service
 
 
 class TestSetUpStore(IntegrationTestCase):
@@ -25,7 +27,7 @@ class TestSetUpStore(IntegrationTestCase):
 
 	def test_store_is_set_up_on_erpnext_records_and_again_changes_nothing(self):
 		settings = setup_store.set_up(
-			trade_group="_Test Setup Trade", trade_discounts={"All Item Groups": 10}, statements=True
+			trade_group="_Test Setup Trade", trade_discounts={get_root_of("Item Group"): 10}, statements=True
 		)
 		company = settings.company
 		for field, code, _name, account_name in setup_store.CHARGE_ITEMS:
@@ -48,10 +50,12 @@ class TestSetUpStore(IntegrationTestCase):
 
 		# an owner's changes are kept when set-up runs again
 		frappe.db.set_value("Pricing Rule", rule.name, "discount_percentage", 12)
-		frappe.db.set_single_value("Shop Settings", "shipping_item", "SHOP-DEMO-003")
+		frappe.db.set_single_value(
+			"Shop Settings", "shipping_item", service("TEST-SHIPPING", settings.company)
+		)
 		frappe.clear_cache(doctype="Shop Settings")
 		rules = frappe.db.count("Pricing Rule")
-		setup_store.set_up(trade_group="_Test Setup Trade", trade_discounts={"All Item Groups": 10})
+		setup_store.set_up(trade_group="_Test Setup Trade", trade_discounts={get_root_of("Item Group"): 10})
 		self.assertEqual(frappe.db.get_value("Pricing Rule", rule.name, "discount_percentage"), 12)
 		self.assertEqual(frappe.db.count("Pricing Rule"), rules)
-		self.assertEqual(frappe.db.get_single_value("Shop Settings", "shipping_item"), "SHOP-DEMO-003")
+		self.assertEqual(frappe.db.get_single_value("Shop Settings", "shipping_item"), "TEST-SHIPPING")

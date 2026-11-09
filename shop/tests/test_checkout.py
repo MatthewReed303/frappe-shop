@@ -4,6 +4,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from shop.storefront import cart, checkout, orders
+from shop.tests.utils import fresh_request
 
 BUYER = {"email": "jane@example.com", "full_name": "Jane Doe", "phone": "9999999999"}
 ADDRESS = {
@@ -18,8 +19,7 @@ ADDRESS = {
 class TestCheckout(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
-		if hasattr(frappe.local, "request"):
-			del frappe.local.request
+		fresh_request()
 
 	def test_place_order_cod(self):
 		cart.add_item("SHOP-DEMO-003", qty=2)
