@@ -86,6 +86,7 @@ GATEWAY_FIELDS = (
 	"fee_percent_international",
 	"fee_fixed_international",
 )
+SURCHARGE_FIELDS = ("label", "applies_to", "address_contains", "amount", "amount_includes_tax", "carrier")
 DUTY_FIELDS = ("country", "duty_rate", "fee_on_duty", "fee_per_parcel", "duty_free_up_to")
 BANK_ACCOUNT_FIELDS = (
 	"bank_account",
@@ -193,6 +194,9 @@ def get_settings() -> dict:
 			"addresses": company_addresses(settings.company),
 			"payment_gateways": [
 				{field: row.get(field) for field in GATEWAY_FIELDS} for row in settings.payment_gateways
+			],
+			"shipping_surcharges": [
+				{field: row.get(field) for field in SURCHARGE_FIELDS} for row in settings.shipping_surcharges
 			],
 			"import_duties": [
 				{field: row.get(field) for field in DUTY_FIELDS} for row in settings.import_duties
@@ -320,6 +324,15 @@ def save_settings(payload: dict) -> dict:
 				{field: row.get(field) for field in GATEWAY_FIELDS}
 				for row in payload["payment_gateways"] or []
 				if row.get("payment_gateway")
+			],
+		)
+	if "shipping_surcharges" in payload:
+		settings.set(
+			"shipping_surcharges",
+			[
+				{field: row.get(field) for field in SURCHARGE_FIELDS}
+				for row in payload["shipping_surcharges"] or []
+				if row.get("label") or row.get("address_contains")
 			],
 		)
 	if "import_duties" in payload:

@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-11-09 20:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "applies_to",
+  "address_contains",
+  "column_break_amount",
+  "amount",
+  "amount_includes_tax",
+  "carrier"
+ ],
+ "fields": [
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "reqd": 1,
+   "description": "What checkout adds to the service's name, e.g. \"Rural delivery\""
+  },
+  {
+   "default": "Within the store's country",
+   "fieldname": "applies_to",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Applies To",
+   "options": "Within the store's country\nAbroad\nEverywhere",
+   "reqd": 1
+  },
+  {
+   "fieldname": "address_contains",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Address Contains",
+   "reqd": 1,
+   "description": "Words found anywhere in the delivery address, any case; # stands for a number. \"RD #\" matches RD 4, rd4 and R.D. 12"
+  },
+  {
+   "fieldname": "column_break_amount",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Amount",
+   "description": "In the store's currency, added to each parcel's delivery price"
+  },
+  {
+   "default": "1",
+   "fieldname": "amount_includes_tax",
+   "fieldtype": "Check",
+   "label": "Amount Includes Tax"
+  },
+  {
+   "fieldname": "carrier",
+   "fieldtype": "Data",
+   "label": "Carrier",
+   "description": "Only for this carrier's services, as checkout names the carrier. Empty for every delivery service"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-09 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Shop",
+ "name": "Shop Shipping Surcharge",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

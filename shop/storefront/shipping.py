@@ -127,6 +127,7 @@ def get_options(
 	flat = flat_rate_option(subtotal)
 	if flat:
 		options.append(flat)
+	options = with_surcharges(options, address)
 	pickup = pickup_option(parcel)
 	if pickup:
 		options.append(pickup)
@@ -177,6 +178,58 @@ def unsendable(rows, country: str | None) -> list[str]:
 		if is_stock_item(code) and not can_send(code, country):
 			names.append(row.get("item_name") or frappe.get_cached_value("Item", code, "item_name") or code)
 	return list(dict.fromkeys(names))
+
+
+def surcharges_for(address: frappe._dict) -> list:
+	"""The store's shipping surcharges for deliveries to this address."""
+	settings = frappe.get_cached_doc("Shop Settings")
+	if not settings.shipping_surcharges:
+		return []
+	home = address.get("country") == frappe.get_cached_value("Company", settings.company, "country")
+	text = " ".join(str(address.get(key) or "") for key in ADDRESS_KEYS if key != "country")
+	return [
+		row
+		for row in settings.shipping_surcharges
+		if (row.applies_to == "Everywhere" or (row.applies_to == "Abroad") != home) and row.matches(text)
+	]
+
+
+def with_surcharges(options: list[dict], address: frappe._dict) -> list[dict]:
+	"""Delivery options with the surcharges for the address added to their price, per parcel, each
+	surcharge only to its carrier's services when it names one."""
+	rules = surcharges_for(address)
+	if not rules:
+		return options
+	result = []
+	for option in options:
+		carrier = (option.get("carrier") or "").lower()
+		applied = [rule for rule in rules if not rule.carrier or rule.carrier.strip().lower() in carrier]
+		if not applied:
+			result.append(option)
+			continue
+		extra = sum(surcharge_amount(rule, option) for rule in applied)
+		result.append(
+			dict(
+				option,
+				amount=flt(option["amount"]) + extra,
+				label=_("{0} (incl. {1})").format(option["label"], ", ".join(rule.label for rule in applied)),
+				surcharges=[rule.label for rule in applied],
+			)
+		)
+	return result
+
+
+def surcharge_amount(rule, option: dict) -> float:
+	"""The surcharge on the same footing as the option's price: with tax or without, as it is."""
+	from shop.storefront.totals import added_rate, included_rate
+
+	amount = flt(rule.amount)
+	if bool(rule.amount_includes_tax) == bool(option.get("tax_included")):
+		return amount
+	settings = frappe.get_cached_doc("Shop Settings")
+	rate = (included_rate if settings.prices_include_tax else added_rate)(settings.tax_template)
+	factor = 1 + rate / 100
+	return amount / factor if rule.amount_includes_tax else amount * factor
 
 
 def ships(cart) -> bool:

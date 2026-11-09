@@ -276,6 +276,59 @@
 					Shipping is charged as the shipping item's line, or on the shipping account when no item
 					is set. One of them is required for shipping charges to apply on orders.
 				</p>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div class="text-base font-medium text-ink-gray-8">Surcharges</div>
+					<p class="text-p-sm text-ink-gray-5">
+						Added to each parcel's delivery price when the address matches, such as a rural delivery
+						charge. Collection is never charged.
+					</p>
+					<div
+						v-for="(row, index) in shipping.shipping_surcharges"
+						:key="index"
+						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+					>
+						<FormControl
+							v-model="row.label"
+							label="Label"
+							placeholder="e.g. Rural delivery"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.applies_to"
+							type="select"
+							label="Applies to"
+							:options="surchargeScopes"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.address_contains"
+							label="Address contains"
+							placeholder="e.g. RD #"
+							description="Any case; # stands for a number."
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.amount"
+							type="number"
+							:label="`Amount (${data.company_currency})`"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.carrier"
+							label="Carrier"
+							placeholder="Every carrier"
+							description="Only this carrier's services, as checkout names it."
+							class="col-span-2"
+						/>
+						<div class="col-span-2 flex items-end justify-between gap-2">
+							<Switch v-model="row.amount_includes_tax" label="Includes tax" class="!w-auto" />
+							<Button variant="ghost" @click="shipping.shipping_surcharges.splice(index, 1)">Remove</Button>
+						</div>
+					</div>
+					<div>
+						<Button @click="addSurcharge">Add surcharge</Button>
+					</div>
+				</div>
 				<template #footer>
 					<Button
 						variant="solid"
@@ -790,6 +843,7 @@ const shipping = reactive({
 	free_shipping_above: 0,
 	shipping_account: '',
 	shipping_item: '',
+	shipping_surcharges: [] as SurchargeRow[],
 })
 const duties = reactive({ duties_item: '', import_duties: [] as DutyRow[] })
 const restrictions = reactive({
@@ -872,6 +926,32 @@ async function saveRestrictions() {
 	} finally {
 		saving.value = ''
 	}
+}
+
+type SurchargeRow = {
+	label: string
+	applies_to: string
+	address_contains: string
+	amount: number
+	amount_includes_tax: boolean
+	carrier: string
+}
+
+const surchargeScopes = [
+	{ label: "Within the store's country", value: "Within the store's country" },
+	{ label: 'Abroad', value: 'Abroad' },
+	{ label: 'Everywhere', value: 'Everywhere' },
+]
+
+function addSurcharge() {
+	shipping.shipping_surcharges.push({
+		label: '',
+		applies_to: "Within the store's country",
+		address_contains: '',
+		amount: 0,
+		amount_includes_tax: true,
+		carrier: '',
+	})
 }
 
 type DutyRow = {
@@ -976,6 +1056,11 @@ function hydrate(doc: Record<string, any>) {
 		free_shipping_above: doc.free_shipping_above || 0,
 		shipping_account: doc.shipping_account || '',
 		shipping_item: doc.shipping_item || '',
+		shipping_surcharges: (doc.shipping_surcharges || []).map((row: SurchargeRow) => ({
+			...row,
+			carrier: row.carrier || '',
+			amount_includes_tax: !!row.amount_includes_tax,
+		})),
 	})
 	Object.assign(restrictions, {
 		shipping_restrictions: (doc.shipping_restrictions || []).map((row: RestrictionRow) => ({
