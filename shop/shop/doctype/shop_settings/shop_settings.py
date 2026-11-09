@@ -19,7 +19,6 @@ class ShopSettings(Document):
 		)
 		from shop.shop.doctype.shop_import_duty.shop_import_duty import ShopImportDuty
 		from shop.shop.doctype.shop_payment_gateway.shop_payment_gateway import ShopPaymentGateway
-		from shop.shop.doctype.shop_shipping_surcharge.shop_shipping_surcharge import ShopShippingSurcharge
 		from shop.shop.doctype.shop_theme_page.shop_theme_page import ShopThemePage
 
 		active_theme: DF.Data | None
@@ -61,7 +60,6 @@ class ShopSettings(Document):
 		send_shipping_emails: DF.Check
 		shipping_account: DF.Link | None
 		shipping_item: DF.Link | None
-		shipping_surcharges: DF.Table[ShopShippingSurcharge]
 		show_prices_with_tax: DF.Check
 		store_logo: DF.AttachImage | None
 		store_name: DF.Data | None
@@ -78,7 +76,6 @@ class ShopSettings(Document):
 		self.validate_order_naming_series()
 		self.validate_fulfillment_locations()
 		self.validate_import_duties()
-		self.validate_shipping_surcharges()
 		self.route_prefix = normalize_prefix(self.route_prefix)
 		first_segment = self.route_prefix.split("/")[0] if self.route_prefix else ""
 		if first_segment in STOREFRONT_SEGMENTS:
@@ -112,15 +109,6 @@ class ShopSettings(Document):
 					)
 				)
 			self.check_ship_from(row)
-
-	def validate_shipping_surcharges(self):
-		for row in self.shipping_surcharges:
-			if not any(char.isalnum() or char == "#" for char in row.address_contains or ""):
-				frappe.throw(
-					_("Shipping surcharge {0}: say which words in the address it is for").format(
-						frappe.bold(row.label)
-					)
-				)
 
 	def validate_import_duties(self):
 		seen = set()

@@ -11,11 +11,10 @@ class ShopShippingRestriction(Document):
 
 	if TYPE_CHECKING:
 		from frappe.types import DF
-		from shop.shop.doctype.shop_shipping_restriction_country.shop_shipping_restriction_country import (
-			ShopShippingRestrictionCountry,
-		)
 
-		countries: DF.TableMultiSelect[ShopShippingRestrictionCountry]
+		from shop.shop.doctype.shop_country.shop_country import ShopCountry
+
+		countries: DF.TableMultiSelect[ShopCountry]
 		customer_note: DF.Data | None
 		restriction_name: DF.Data
 		ships_to: DF.Literal["Only to these countries", "Everywhere except these countries"]

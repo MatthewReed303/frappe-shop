@@ -127,7 +127,11 @@ def get_options(
 	flat = flat_rate_option(subtotal)
 	if flat:
 		options.append(flat)
-	options = with_surcharges(options, address)
+	options = with_surcharges(
+		options,
+		address,
+		parcel_goods(parcel["items"] if parcel else cart.items, parcel.subtotal if parcel else subtotal),
+	)
 	pickup = pickup_option(parcel)
 	if pickup:
 		options.append(pickup)
@@ -180,56 +184,53 @@ def unsendable(rows, country: str | None) -> list[str]:
 	return list(dict.fromkeys(names))
 
 
-def surcharges_for(address: frappe._dict) -> list:
-	"""The store's shipping surcharges for deliveries to this address."""
-	settings = frappe.get_cached_doc("Shop Settings")
-	if not settings.shipping_surcharges:
-		return []
-	home = address.get("country") == frappe.get_cached_value("Company", settings.company, "country")
-	text = " ".join(str(address.get(key) or "") for key in ADDRESS_KEYS if key != "country")
+def surcharges() -> list:
+	"""The store's enabled shipping surcharges."""
 	return [
-		row
-		for row in settings.shipping_surcharges
-		if (row.applies_to == "Everywhere" or (row.applies_to == "Abroad") != home) and row.matches(text)
+		frappe.get_cached_doc("Shop Shipping Surcharge", name)
+		for name in frappe.get_all(
+			"Shop Shipping Surcharge", filters={"enabled": 1}, pluck="name", order_by="surcharge_name"
+		)
 	]
 
 
-def with_surcharges(options: list[dict], address: frappe._dict) -> list[dict]:
-	"""Delivery options with the surcharges for the address added to their price, per parcel, each
-	surcharge only to its carrier's services when it names one."""
-	rules = surcharges_for(address)
+def parcel_goods(rows, value: float) -> dict:
+	"""What surcharges look at in a parcel: the weight of its goods and their value."""
+	weight = sum(
+		flt(row.get("qty")) * flt(frappe.get_cached_value("Item", row.get("item_code"), "weight_per_unit"))
+		for row in rows
+	)
+	return {"weight": weight, "value": flt(value)}
+
+
+def with_surcharges(options: list[dict], address: frappe._dict, goods: dict) -> list[dict]:
+	"""Delivery options with the surcharges that match them added to their price and named in
+	their label."""
+	rules = surcharges()
 	if not rules:
 		return options
+	settings = frappe.get_cached_doc("Shop Settings")
+	home = frappe.get_cached_value("Company", settings.company, "country")
+	from shop.storefront.totals import added_rate, included_rate
+
+	rate = (included_rate if settings.prices_include_tax else added_rate)(settings.tax_template)
+	tax_factor = 1 + rate / 100
 	result = []
 	for option in options:
-		carrier = (option.get("carrier") or "").lower()
-		applied = [rule for rule in rules if not rule.carrier or rule.carrier.strip().lower() in carrier]
+		applied = [rule for rule in rules if rule.matches(address, home, goods, option)]
 		if not applied:
 			result.append(option)
 			continue
-		extra = sum(surcharge_amount(rule, option) for rule in applied)
+		extra = sum(rule.charge(option, tax_factor) for rule in applied)
 		result.append(
 			dict(
 				option,
 				amount=flt(option["amount"]) + extra,
 				label=_("{0} (incl. {1})").format(option["label"], ", ".join(rule.label for rule in applied)),
-				surcharges=[rule.label for rule in applied],
+				surcharges=[rule.name for rule in applied],
 			)
 		)
 	return result
-
-
-def surcharge_amount(rule, option: dict) -> float:
-	"""The surcharge on the same footing as the option's price: with tax or without, as it is."""
-	from shop.storefront.totals import added_rate, included_rate
-
-	amount = flt(rule.amount)
-	if bool(rule.amount_includes_tax) == bool(option.get("tax_included")):
-		return amount
-	settings = frappe.get_cached_doc("Shop Settings")
-	rate = (included_rate if settings.prices_include_tax else added_rate)(settings.tax_template)
-	factor = 1 + rate / 100
-	return amount / factor if rule.amount_includes_tax else amount * factor
 
 
 def ships(cart) -> bool:

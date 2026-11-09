@@ -28,7 +28,6 @@
   "shipping_account",
   "low_stock_threshold",
   "shipping_item",
-  "shipping_surcharges",
   "fulfillment_section",
   "fulfillment_locations",
   "duties_section",
@@ -262,13 +261,6 @@
    "fieldtype": "Link",
    "label": "Shipping Item",
    "options": "Item"
-  },
-  {
-   "fieldname": "shipping_surcharges",
-   "fieldtype": "Table",
-   "label": "Shipping Surcharges",
-   "options": "Shop Shipping Surcharge",
-   "description": "Amounts added to the delivery price for addresses that match, such as a rural delivery charge"
   },
   {
    "fieldname": "card_fee_section",

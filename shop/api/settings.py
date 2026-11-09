@@ -86,7 +86,21 @@ GATEWAY_FIELDS = (
 	"fee_percent_international",
 	"fee_fixed_international",
 )
-SURCHARGE_FIELDS = ("label", "applies_to", "address_contains", "amount", "amount_includes_tax", "carrier")
+SURCHARGE_FIELDS = (
+	"label",
+	"enabled",
+	"destination",
+	"postcodes",
+	"address_contains",
+	"services",
+	"weight_from",
+	"weight_to",
+	"value_from",
+	"value_to",
+	"charge_type",
+	"amount",
+	"amount_includes_tax",
+)
 DUTY_FIELDS = ("country", "duty_rate", "fee_on_duty", "fee_per_parcel", "duty_free_up_to")
 BANK_ACCOUNT_FIELDS = (
 	"bank_account",
@@ -161,6 +175,46 @@ def save_shipping_restrictions(restrictions: list, item_groups: list) -> dict:
 	return shipping_restrictions()
 
 
+def shipping_surcharges() -> list[dict]:
+	return [
+		{
+			"name": doc.name,
+			**{field: doc.get(field) for field in SURCHARGE_FIELDS},
+			"countries": [row.country for row in doc.countries],
+		}
+		for doc in (
+			frappe.get_doc("Shop Shipping Surcharge", name)
+			for name in frappe.get_all("Shop Shipping Surcharge", order_by="surcharge_name", pluck="name")
+		)
+	]
+
+
+@frappe.whitelist(methods=["POST"])
+def save_shipping_surcharges(surcharges: list) -> list[dict]:
+	"""Save the surcharges as listed and remove the ones taken off the list."""
+	only_managers()
+	keep = []
+	for row in surcharges or []:
+		name = (row.get("name") or "").strip()
+		if not name:
+			continue
+		doc = (
+			frappe.get_doc("Shop Shipping Surcharge", name)
+			if frappe.db.exists("Shop Shipping Surcharge", name)
+			else frappe.new_doc("Shop Shipping Surcharge")
+		)
+		doc.surcharge_name = name
+		doc.update({field: row.get(field) for field in SURCHARGE_FIELDS if field in row})
+		doc.set("countries", [{"country": country} for country in row.get("countries") or []])
+		doc.save(ignore_permissions=True)
+		keep.append(doc.name)
+	for name in frappe.get_all(
+		"Shop Shipping Surcharge", filters={"name": ["not in", keep or [""]]}, pluck="name"
+	):
+		frappe.delete_doc("Shop Shipping Surcharge", name, ignore_permissions=True)
+	return shipping_surcharges()
+
+
 @frappe.whitelist()
 def get_settings() -> dict:
 	only_managers()
@@ -195,9 +249,7 @@ def get_settings() -> dict:
 			"payment_gateways": [
 				{field: row.get(field) for field in GATEWAY_FIELDS} for row in settings.payment_gateways
 			],
-			"shipping_surcharges": [
-				{field: row.get(field) for field in SURCHARGE_FIELDS} for row in settings.shipping_surcharges
-			],
+			"shipping_surcharges": shipping_surcharges(),
 			"import_duties": [
 				{field: row.get(field) for field in DUTY_FIELDS} for row in settings.import_duties
 			],
@@ -324,15 +376,6 @@ def save_settings(payload: dict) -> dict:
 				{field: row.get(field) for field in GATEWAY_FIELDS}
 				for row in payload["payment_gateways"] or []
 				if row.get("payment_gateway")
-			],
-		)
-	if "shipping_surcharges" in payload:
-		settings.set(
-			"shipping_surcharges",
-			[
-				{field: row.get(field) for field in SURCHARGE_FIELDS}
-				for row in payload["shipping_surcharges"] or []
-				if row.get("label") or row.get("address_contains")
 			],
 		)
 	if "import_duties" in payload:

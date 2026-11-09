@@ -276,59 +276,6 @@
 					Shipping is charged as the shipping item's line, or on the shipping account when no item
 					is set. One of them is required for shipping charges to apply on orders.
 				</p>
-				<div class="flex max-w-3xl flex-col gap-3">
-					<div class="text-base font-medium text-ink-gray-8">Surcharges</div>
-					<p class="text-p-sm text-ink-gray-5">
-						Added to each parcel's delivery price when the address matches, such as a rural delivery
-						charge. Collection is never charged.
-					</p>
-					<div
-						v-for="(row, index) in shipping.shipping_surcharges"
-						:key="index"
-						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
-					>
-						<FormControl
-							v-model="row.label"
-							label="Label"
-							placeholder="e.g. Rural delivery"
-							class="col-span-2"
-						/>
-						<FormControl
-							v-model="row.applies_to"
-							type="select"
-							label="Applies to"
-							:options="surchargeScopes"
-							class="col-span-2"
-						/>
-						<FormControl
-							v-model="row.address_contains"
-							label="Address contains"
-							placeholder="e.g. RD #"
-							description="Any case; # stands for a number."
-							class="col-span-2"
-						/>
-						<FormControl
-							v-model.number="row.amount"
-							type="number"
-							:label="`Amount (${data.company_currency})`"
-							class="col-span-2"
-						/>
-						<FormControl
-							v-model="row.carrier"
-							label="Carrier"
-							placeholder="Every carrier"
-							description="Only this carrier's services, as checkout names it."
-							class="col-span-2"
-						/>
-						<div class="col-span-2 flex items-end justify-between gap-2">
-							<Switch v-model="row.amount_includes_tax" label="Includes tax" class="!w-auto" />
-							<Button variant="ghost" @click="shipping.shipping_surcharges.splice(index, 1)">Remove</Button>
-						</div>
-					</div>
-					<div>
-						<Button @click="addSurcharge">Add surcharge</Button>
-					</div>
-				</div>
 				<template #footer>
 					<Button
 						variant="solid"
@@ -405,6 +352,125 @@
 					<Button variant="solid" :loading="saving === 'duties'" @click="saveSection('duties', duties)">
 						Save
 					</Button>
+				</template>
+			</CatalogSection>
+
+			<CatalogSection
+				title="Shipping surcharges"
+				description="Amounts added to each parcel's delivery price when the parcel matches every condition set. With no conditions, a surcharge is added to every delivery. Collection is never charged."
+			>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div
+						v-for="(row, index) in surcharges.shipping_surcharges"
+						:key="index"
+						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+					>
+						<FormControl
+							v-model="row.name"
+							label="Name"
+							placeholder="e.g. Rural delivery"
+							:disabled="row.saved"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.label"
+							label="Label at checkout"
+							placeholder="Added to the service's name"
+							class="col-span-2"
+						/>
+						<div class="col-span-2 flex items-end">
+							<Switch v-model="row.enabled" label="Enabled" class="!w-auto" />
+						</div>
+						<FormControl
+							v-model="row.destination"
+							type="select"
+							label="Destination"
+							:options="destinationOptions"
+							class="col-span-2"
+						/>
+						<Autocomplete
+							v-if="listsCountries(row)"
+							:model-value="row.countries.map((country) => ({ label: country, value: country }))"
+							label="Countries"
+							placeholder="Select countries"
+							:options="countryOptions"
+							multiple
+							class="col-span-4"
+							@update:model-value="(selected: Option[]) => (row.countries = selected.map((option) => option.value))"
+						/>
+						<div v-else class="col-span-4" />
+						<FormControl
+							v-model="row.postcodes"
+							type="textarea"
+							label="Postcodes"
+							placeholder="9016, IV*, 7000...7999"
+							description="A postcode, a prefix ending in * or a range of numbers."
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.address_contains"
+							label="Address contains"
+							placeholder="e.g. RD #"
+							description="Any case; # stands for a number."
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.services"
+							label="Delivery services"
+							placeholder="Every service"
+							description="Names containing any of these, separated by commas."
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.weight_from"
+							type="number"
+							label="Parcel weight from"
+							class="col-span-1"
+						/>
+						<FormControl v-model.number="row.weight_to" type="number" label="Weight to" class="col-span-1" />
+						<FormControl
+							v-model.number="row.value_from"
+							type="number"
+							:label="`Parcel value from (${data.company_currency})`"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.value_to"
+							type="number"
+							:label="`Value to (${data.company_currency})`"
+							description="0 for no limit."
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model="row.charge_type"
+							type="select"
+							label="Charge"
+							:options="chargeOptions"
+							class="col-span-2"
+						/>
+						<FormControl
+							v-model.number="row.amount"
+							type="number"
+							:label="row.charge_type === 'Fixed amount' ? `Amount (${data.company_currency})` : 'Percent'"
+							class="col-span-2"
+						/>
+						<div class="col-span-2 flex items-end justify-between gap-2">
+							<Switch
+								v-if="row.charge_type === 'Fixed amount'"
+								v-model="row.amount_includes_tax"
+								label="Includes tax"
+								class="!w-auto"
+							/>
+							<span v-else />
+							<Button variant="ghost" @click="surcharges.shipping_surcharges.splice(index, 1)">Remove</Button>
+						</div>
+					</div>
+					<div>
+						<Button @click="addSurcharge">Add surcharge</Button>
+					</div>
+				</div>
+				<template #footer>
+					<Button variant="solid" :loading="saving === 'surcharges'" @click="saveSurcharges">Save</Button>
 				</template>
 			</CatalogSection>
 
@@ -843,9 +909,9 @@ const shipping = reactive({
 	free_shipping_above: 0,
 	shipping_account: '',
 	shipping_item: '',
-	shipping_surcharges: [] as SurchargeRow[],
 })
 const duties = reactive({ duties_item: '', import_duties: [] as DutyRow[] })
+const surcharges = reactive({ shipping_surcharges: [] as SurchargeRow[] })
 const restrictions = reactive({
 	shipping_restrictions: [] as RestrictionRow[],
 	item_group_restrictions: [] as GroupRestrictionRow[],
@@ -929,29 +995,72 @@ async function saveRestrictions() {
 }
 
 type SurchargeRow = {
+	name: string
 	label: string
-	applies_to: string
+	enabled: boolean
+	destination: string
+	countries: string[]
+	postcodes: string
 	address_contains: string
+	services: string
+	weight_from: number
+	weight_to: number
+	value_from: number
+	value_to: number
+	charge_type: string
 	amount: number
 	amount_includes_tax: boolean
-	carrier: string
+	saved?: boolean
 }
 
-const surchargeScopes = [
-	{ label: "Within the store's country", value: "Within the store's country" },
-	{ label: 'Abroad', value: 'Abroad' },
-	{ label: 'Everywhere', value: 'Everywhere' },
-]
+const destinationOptions = [
+	'Everywhere',
+	"Within the store's country",
+	'Abroad',
+	'Only these countries',
+	'Everywhere except these countries',
+].map((value) => ({ label: value, value }))
+
+const chargeOptions = ['Fixed amount', 'Percent of the delivery price'].map((value) => ({ label: value, value }))
+
+function listsCountries(row: SurchargeRow) {
+	return row.destination === 'Only these countries' || row.destination === 'Everywhere except these countries'
+}
 
 function addSurcharge() {
-	shipping.shipping_surcharges.push({
+	surcharges.shipping_surcharges.push({
+		name: '',
 		label: '',
-		applies_to: "Within the store's country",
+		enabled: true,
+		destination: 'Everywhere',
+		countries: [],
+		postcodes: '',
 		address_contains: '',
+		services: '',
+		weight_from: 0,
+		weight_to: 0,
+		value_from: 0,
+		value_to: 0,
+		charge_type: 'Fixed amount',
 		amount: 0,
 		amount_includes_tax: true,
-		carrier: '',
 	})
+}
+
+async function saveSurcharges() {
+	saving.value = 'surcharges'
+	try {
+		const saved = await call('shop.api.settings.save_shipping_surcharges', {
+			surcharges: surcharges.shipping_surcharges,
+		})
+		settings.data = { ...settings.data, shipping_surcharges: saved }
+		toast.success('Settings saved')
+	} catch (error) {
+		const messages = (error as { messages?: string[] }).messages
+		toast.error(messages?.[0] || 'Could not save settings')
+	} finally {
+		saving.value = ''
+	}
 }
 
 type DutyRow = {
@@ -1056,10 +1165,17 @@ function hydrate(doc: Record<string, any>) {
 		free_shipping_above: doc.free_shipping_above || 0,
 		shipping_account: doc.shipping_account || '',
 		shipping_item: doc.shipping_item || '',
+	})
+	Object.assign(surcharges, {
 		shipping_surcharges: (doc.shipping_surcharges || []).map((row: SurchargeRow) => ({
 			...row,
-			carrier: row.carrier || '',
+			enabled: !!row.enabled,
 			amount_includes_tax: !!row.amount_includes_tax,
+			postcodes: row.postcodes || '',
+			address_contains: row.address_contains || '',
+			services: row.services || '',
+			countries: [...(row.countries || [])],
+			saved: true,
 		})),
 	})
 	Object.assign(restrictions, {

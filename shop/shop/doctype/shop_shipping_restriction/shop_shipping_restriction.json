@@ -35,7 +35,7 @@
    "fieldname": "countries",
    "fieldtype": "Table MultiSelect",
    "label": "Countries",
-   "options": "Shop Shipping Restriction Country",
+   "options": "Shop Country",
    "reqd": 1
   },
   {
@@ -50,7 +50,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-09 16:00:00.000000",
+ "modified": "2026-11-09 21:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Shipping Restriction",
