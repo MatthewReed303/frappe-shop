@@ -1933,6 +1933,14 @@ def pdp_details(refs):
 			),
 		],
 	)
+	stock_locations = block(
+		"div",
+		name="Stock by Location",
+		attrs={"data-shop": "stock-locations"},
+		visibilityCondition={"key": "product.stock_locations_html", "comesFrom": "dataScript"},
+		styles={"width": "100%"},
+		dynamicValues=[dv("product.stock_locations_html", "innerHTML")],
+	)
 	stock_line = block(
 		"div",
 		name="Stock",
@@ -2033,6 +2041,7 @@ def pdp_details(refs):
 				name="Variant Picker",
 			),
 			stock_line,
+			stock_locations,
 			repeater(
 				"product.highlights",
 				highlight,

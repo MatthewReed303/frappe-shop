@@ -305,6 +305,17 @@
 							class="col-span-3"
 						/>
 						<FormControl
+							v-model="row.display_name"
+							label="Name customers see"
+							placeholder="e.g. Auckland store"
+							class="col-span-3"
+						/>
+						<Switch
+							v-model="row.show_stock"
+							label="Show its stock on product pages"
+							class="col-span-3 self-end"
+						/>
+						<FormControl
 							v-model="row.fulfillment_provider"
 							type="select"
 							label="Shipped by"
@@ -624,6 +635,8 @@ const accounts = reactive({
 })
 type LocationRow = {
 	warehouse: string
+	display_name: string
+	show_stock: boolean
 	fulfillment_provider: string
 	ship_from_address: string
 	auto_send: boolean
@@ -637,6 +650,8 @@ function addLocation() {
 	const next = (data.value.warehouses || []).find((option: { value: string }) => !used.includes(option.value))
 	fulfillment.fulfillment_locations.push({
 		warehouse: next?.value || '',
+		display_name: '',
+		show_stock: false,
 		fulfillment_provider: 'manual',
 		ship_from_address: '',
 		auto_send: false,
@@ -717,6 +732,8 @@ function hydrate(doc: Record<string, any>) {
 		fulfillment_locations: (doc.fulfillment_locations || []).map((row: LocationRow) => ({
 			...row,
 			ship_from_address: row.ship_from_address || '',
+			display_name: row.display_name || '',
+			show_stock: !!row.show_stock,
 			auto_send: !!row.auto_send,
 		})),
 	})

@@ -239,3 +239,53 @@ class TestLocations(IntegrationTestCase):
 				patch.object(ManualProvider, "default_ship_from", return_value=company_address),
 			):
 				self.assertIsNone(settings.ship_from_warning(settings.fulfillment_locations[1]))
+
+	def test_customers_see_stock_at_each_location_the_store_shows(self):
+		use_locations(
+			self,
+			{
+				"warehouse": self.first,
+				"display_name": "Town & Co",
+				"show_stock": 1,
+				"fulfillment_provider": "manual",
+			},
+			{
+				"warehouse": self.second,
+				"display_name": "Depot",
+				"show_stock": 1,
+				"fulfillment_provider": "manual",
+			},
+		)
+		shown = stock.availability(BIG)
+		by_place = {row["label"]: row for row in shown["stock_locations"]}
+		self.assertEqual(set(by_place), {"Town & Co", "Depot"})
+		self.assertIn(by_place["Depot"]["stock_state"], ("in", "low"))
+		self.assertIn("Town &amp; Co", shown["stock_locations_html"])
+
+		# a location not shown to customers is left out; none shown, no list
+		use_locations(
+			self,
+			{"warehouse": self.first, "show_stock": 0, "fulfillment_provider": "manual"},
+			{
+				"warehouse": self.second,
+				"display_name": "Depot",
+				"show_stock": 1,
+				"fulfillment_provider": "manual",
+			},
+		)
+		self.assertEqual([row["label"] for row in stock.availability(BIG)["stock_locations"]], ["Depot"])
+		use_locations(self, {"warehouse": self.first, "fulfillment_provider": "manual"})
+		self.assertNotIn("stock_locations", stock.availability(BIG))
+
+	def test_a_parcel_says_where_it_comes_from_when_the_store_names_it(self):
+		use_locations(
+			self,
+			{"warehouse": self.first, "display_name": "Town store", "fulfillment_provider": "manual"},
+			{"warehouse": self.second, "fulfillment_provider": "manual"},
+		)
+		with patch("frappe.get_hooks", side_effect=with_rates):
+			shown = totals.payload(totals.compute(self.basket(), ADDRESS))
+		self.assertEqual(
+			[group["label"] for group in shown["shipping_groups"]],
+			["Parcel 1 of 2 from Town store", "Parcel 2 of 2"],
+		)

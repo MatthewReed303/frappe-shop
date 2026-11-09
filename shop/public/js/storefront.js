@@ -237,6 +237,11 @@
 			const text = line.querySelector('[data-shop="stock-status-text"]');
 			if (text) text.textContent = item.stock_status || "";
 		});
+		// stock at each location the store shows (ready-made, escaped, by the server)
+		document.querySelectorAll('[data-shop="stock-locations"]').forEach((list) => {
+			list.innerHTML = item.stock_locations_html || "";
+			list.hidden = !item.stock_locations_html;
+		});
 	}
 
 	function initVariantPicker() {

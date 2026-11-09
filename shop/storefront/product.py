@@ -80,6 +80,7 @@ def variant_details(template: str, compare_at: float | None = None) -> dict:
 		"purchasable": bool(default and default["purchasable"]),
 		"stock_status": default["stock_status"] if default else _("Not available online"),
 		"stock_state": default["stock_state"] if default else "unavailable",
+		"stock_locations_html": default.get("stock_locations_html") if default else None,
 		"default_item_code": default["item_code"] if default else None,
 	}
 

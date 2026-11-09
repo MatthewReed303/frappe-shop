@@ -11,11 +11,13 @@ class ShopFulfillmentLocation(Document):
 		from frappe.types import DF
 
 		auto_send: DF.Check
+		display_name: DF.Data | None
 		fulfillment_provider: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
 		ship_from_address: DF.Link | None
+		show_stock: DF.Check
 		warehouse: DF.Link
 	# end: auto-generated types
 

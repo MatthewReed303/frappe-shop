@@ -12,6 +12,11 @@ def locations() -> list[frappe._dict]:
 	return [
 		frappe._dict(
 			warehouse=row.warehouse,
+			label=row.get("display_name")
+			or frappe.get_cached_value("Warehouse", row.warehouse, "warehouse_name")
+			or row.warehouse,
+			named=bool(row.get("display_name")),
+			show_stock=cint(row.get("show_stock")),
 			provider=row.fulfillment_provider or "manual",
 			ship_from=row.ship_from_address or warehouse_address(row.warehouse),
 			auto_send=cint(row.auto_send),
@@ -145,10 +150,25 @@ def available_qty(item_code: str) -> float | None:
 
 
 def availability(item_code: str, priced: bool = True) -> dict:
-	"""Whether the item can be bought online, and what the product page says about it."""
+	"""Whether the item can be bought online, and what the product page says about it (with its
+	stock at each location the store shows)."""
 	if not priced:
 		return state(False, "unavailable", _("Not available online"))
-	qty = available_qty(item_code)
+	result = qty_state(available_qty(item_code), item_code)
+	shown = location_stock(item_code)
+	if shown:
+		result["stock_locations"] = shown
+		items = "".join(
+			f'<li data-stock-state="{row["stock_state"]}"><span>{frappe.utils.escape_html(row["label"])}</span>'
+			f' <span>{frappe.utils.escape_html(row["stock_status"])}</span></li>'
+			for row in shown
+		)
+		result["stock_locations_html"] = f'<ul class="stock-locations">{items}</ul>'
+	return result
+
+
+def qty_state(qty: float | None, item_code: str) -> dict:
+	"""What a quantity on hand says: in stock, only a few left, or out of stock."""
 	if qty is None:
 		return state(True, "in", _("In stock") if is_stock_item(item_code) else _("Available"))
 	if qty <= 0:
@@ -157,6 +177,22 @@ def availability(item_code: str, priced: bool = True) -> dict:
 	if threshold and qty <= threshold:
 		return state(True, "low", _("Only {0} left").format(cint(qty)))
 	return state(True, "in", _("In stock"))
+
+
+def location_stock(item_code: str) -> list[dict]:
+	"""The item's stock at each location the store shows customers, as ERPNext has it in each
+	warehouse."""
+	shown = [row for row in locations() if row.show_stock]
+	if not shown or not is_stock_item(item_code):
+		return []
+	by_warehouse = warehouse_stock([item_code], sellable=True)[item_code]
+	rows = []
+	for row in shown:
+		qty_said = qty_state(max(by_warehouse.get(row.warehouse, 0), 0), item_code)
+		rows.append(
+			{"label": row.label, "stock_state": qty_said["stock_state"], "stock_status": qty_said["stock_status"]}
+		)
+	return rows
 
 
 def state(purchasable: bool, stock_state: str, stock_status: str) -> dict:

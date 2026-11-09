@@ -66,7 +66,14 @@ COUNTS = {
 	"return_window_days",
 	"quote_valid_days",
 }
-LOCATION_FIELDS = ("warehouse", "fulfillment_provider", "ship_from_address", "auto_send")
+LOCATION_FIELDS = (
+	"warehouse",
+	"display_name",
+	"fulfillment_provider",
+	"ship_from_address",
+	"auto_send",
+	"show_stock",
+)
 GATEWAY_FIELDS = (
 	"payment_gateway",
 	"label",

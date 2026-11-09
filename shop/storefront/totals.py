@@ -423,6 +423,7 @@ def compute(
 		shipping_groups=[
 			frappe._dict(
 				key=group.parcel.key if group.parcel else "",
+				parcel=group.parcel,
 				items=group.parcel["items"] if group.parcel else [],
 				chosen=group.chosen,
 				options=[
@@ -439,6 +440,16 @@ def compute(
 		fees=fees,
 		total=order_total(order),
 	)
+
+
+def parcel_label(group, index: int, count: int) -> str:
+	"""Parcel 1 of 2, and where it comes from when the store names the location for customers."""
+	from shop.storefront.stock import location
+
+	place = location(group.parcel.warehouse) if group.get("parcel") else None
+	if place and place.named:
+		return _("Parcel {0} of {1} from {2}").format(index, count, place.label)
+	return _("Parcel {0} of {1}").format(index, count)
 
 
 def order_currency(method: str | None, currency: str | None, address: frappe._dict | None) -> str:
@@ -925,7 +936,7 @@ def payload(quote: frappe._dict) -> dict:
 		"shipping_groups": [
 			{
 				"key": group.key,
-				"label": _("Parcel {0} of {1}").format(index, len(quote.shipping_groups)),
+				"label": parcel_label(group, index, len(quote.shipping_groups)),
 				"items": ", ".join(f"{row['item_name']} \u00d7 {flt(row['qty']):g}" for row in group["items"]),
 				"options": [
 					{
