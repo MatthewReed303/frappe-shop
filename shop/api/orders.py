@@ -60,23 +60,34 @@ def get_orders(
 		order_by="creation desc",
 		limit=MAX_SCAN,
 	)
-	decorate(matched)
 	if payment:
-		matched = [order for order in matched if order["payment_status"] == payment]
+		matched = [order for order in matched if payment_status_of(order) == payment]
 	start, limit = cint(start), min(cint(limit) or 20, 100)
+	orders = matched[start : start + limit]
+	decorate(orders)
 	return {
-		"orders": matched[start : start + limit],
+		"orders": orders,
 		"total": len(matched),
 		"statuses": [*STATUS_FILTERS, "Cancelled"],
 	}
 
 
-def decorate(orders: list) -> None:
-	for order in orders:
-		order["formatted_total"] = pricing.document_amount(order.grand_total, order.currency)
-		order["display_status"] = display_status(order)
+def payment_status_of(order) -> str:
+	if "payment_status" not in order:
 		order["payment_status"] = payment.payment_status(frappe.get_doc("Sales Order", order.name))
-		order["fulfillment_status"] = fulfillment_label(order)
+	return order["payment_status"]
+
+
+def decorate(orders: list) -> None:
+	"""The list's columns for the orders shown."""
+	from shop.storefront.orders import shipment_summary
+
+	for order in orders:
+		shipment = shipment_summary(order.name) if order.docstatus != 2 else None
+		order["formatted_total"] = pricing.document_amount(order.grand_total, order.currency)
+		order["display_status"] = display_status(order, shipment)
+		payment_status_of(order)
+		order["fulfillment_status"] = fulfillment_label(order, shipment)
 
 
 FULFILLMENT_LABELS = {
@@ -88,26 +99,30 @@ FULFILLMENT_LABELS = {
 }
 
 
-def display_status(order) -> str:
+UNKNOWN = object()
+
+
+def display_status(order, shipment=UNKNOWN) -> str:
 	"""The order's status for staff. ERPNext calls a delivered order To Bill, but one handed to a
 	carrier is still open until the parcel ships."""
 	from shop.storefront.orders import is_cancelled
 
 	if is_cancelled(order):
 		return "Cancelled"
-	if order.status == "To Bill" and fulfillment_label(order) == "Preparing":
+	if order.status == "To Bill" and fulfillment_label(order, shipment) == "Preparing":
 		return "Open"
 	return DISPLAY_STATUS.get(order.status, order.status)
 
 
-def fulfillment_label(order) -> str:
+def fulfillment_label(order, shipment=UNKNOWN) -> str:
 	"""For an order sent through a fulfilment provider, where the parcel is; else what ERPNext has
 	delivered."""
 	from shop.storefront.orders import shipment_summary
 
 	if order.docstatus == 2:
 		return "Cancelled"
-	shipment = shipment_summary(order.name)
+	if shipment is UNKNOWN:
+		shipment = shipment_summary(order.name)
 	if shipment and shipment.partly_shipped:
 		return "Partly shipped"
 	if shipment:
