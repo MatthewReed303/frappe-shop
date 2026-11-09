@@ -7,8 +7,7 @@ from frappe import _
 from frappe.utils import flt
 
 from shop.api import only_managers
-
-APPLICATION_SOURCE = "Store Trade Application"
+from shop.install import TRADE_SOURCE as APPLICATION_SOURCE
 
 
 def trade_group() -> str | None:
@@ -87,7 +86,7 @@ def prioritise(group: str) -> None:
 def remove_discount(rule: str) -> list[dict]:
 	only_managers()
 	group = trade_group()
-	if frappe.db.get_value("Pricing Rule", rule, "customer_group") != group:
+	if not group or rule not in {row["name"] for row in discounts(group)}:
 		frappe.throw(_("This isn't one of the trade discounts"))
 	frappe.delete_doc("Pricing Rule", rule, ignore_permissions=True)
 	return discounts(group)
@@ -109,7 +108,7 @@ def make_trade_customer(
 	if int(allow_on_account or 0) and not payment_terms:
 		frappe.throw(_("Set the Payment Terms to let them pay on account"))
 	doc = frappe.get_doc("Customer", customer)
-	set_trade_terms(doc, None, payment_terms, credit_limit, allow_on_account)
+	set_trade_terms(doc, None, payment_terms, credit_limit, allow_on_account, exact=True)
 	doc.save(ignore_permissions=True)
 	return trade_status(customer)
 
@@ -146,6 +145,11 @@ def trade_status(customer: str) -> dict:
 		"payment_terms": doc.payment_terms,
 		"allow_on_account": doc.get("shop_allow_on_account") or 0,
 		"credit_limit": limit,
+		"formatted_credit_limit": frappe.utils.fmt_money(
+			limit, currency=frappe.get_cached_value("Company", company, "default_currency")
+		)
+		if limit
+		else None,
 	}
 
 

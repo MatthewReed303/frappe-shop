@@ -173,7 +173,7 @@
 					<FormControl
 						v-model.number="payment.amount"
 						type="number"
-						label="Amount received"
+						:label="`Amount received (${paidCurrency})`"
 						:description="`Still owed: ${doc.formatted_amount_due}`"
 					/>
 				</div>
@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Dialog, FormControl, Spinner, call, createResource, toast } from 'frappe-ui'
 
 import FulfillmentPanel from '@/components/FulfillmentPanel.vue'
@@ -249,7 +249,20 @@ const showConfirm = ref(false)
 const panelVersion = ref(0)
 const pending = ref<(typeof actions)[ActionKey] | null>(null)
 
-const payment = reactive({ bank_account: '', amount: 0 })
+const payment = reactive({ bank_account: '', amount: 0 as number | null })
+
+// what arrived is entered in the bank account's currency; the order's amount is only a guide in its own
+const paidCurrency = computed(
+	() =>
+		doc.value?.bank_accounts?.find((account: { name: string }) => account.name === payment.bank_account)
+			?.currency || doc.value?.currency,
+)
+watch(
+	() => payment.bank_account,
+	() => {
+		payment.amount = paidCurrency.value === doc.value?.currency ? doc.value?.amount_due : null
+	},
+)
 
 const bankAccountOptions = computed(() =>
 	(doc.value?.bank_accounts || []).map((account: { name: string; currency: string }) => ({
@@ -278,13 +291,16 @@ function openRefund(due: RefundDue, how: 'card' | 'bank') {
 	showRefund.value = true
 }
 
+const running = ref(false)
+
 const refundOptions = computed(() => ({
 	title: 'Refund',
-	actions: [{ label: 'Refund', variant: 'solid', theme: 'red', onClick: runRefund }],
+	actions: [{ label: 'Refund', variant: 'solid', theme: 'red', loading: running.value, onClick: runRefund }],
 }))
 
 async function runRefund() {
-	if (!refund.due) return
+	if (!refund.due || running.value) return
+	running.value = true
 	try {
 		await call('shop.api.orders.refund', {
 			name: props.name,
@@ -298,6 +314,7 @@ async function runRefund() {
 		const messages = (error as { messages?: string[] }).messages
 		toast.error(messages?.[0] || 'Could not refund')
 	} finally {
+		running.value = false
 		showRefund.value = false
 	}
 }
@@ -318,13 +335,15 @@ const dialogOptions = computed(() => ({
 			label: pending.value?.buttonLabel,
 			theme: pending.value?.theme,
 			variant: 'solid',
+			loading: running.value,
 			onClick: runPending,
 		},
 	],
 }))
 
 async function runPending() {
-	if (!pending.value) return
+	if (!pending.value || running.value) return
+	running.value = true
 	try {
 		const extra = pending.value.method === 'shop.api.orders.mark_paid' ? { ...payment } : {}
 		await call(pending.value.method, { name: props.name, ...extra })
@@ -335,6 +354,7 @@ async function runPending() {
 		const messages = (error as { messages?: string[] }).messages
 		toast.error(messages?.[0] || pending.value.failure)
 	} finally {
+		running.value = false
 		showConfirm.value = false
 	}
 }

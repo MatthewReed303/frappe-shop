@@ -143,6 +143,7 @@ def get_order(name: str) -> dict:
 		"customer": order.customer,
 		"customer_name": order.customer_name,
 		"contact_email": order.contact_email,
+		"currency": order.currency,
 		"transaction_date": str(order.transaction_date),
 		"delivery_date": str(order.delivery_date) if order.delivery_date else None,
 		"status": order.status,
@@ -302,10 +303,17 @@ def mark_paid(
 	"""Record a payment for the order with ERPNext's Payment Entry: what arrived, in the bank account
 	it arrived in."""
 	only_managers()
+	# a second request waits for the first, then sees the payment it recorded
+	frappe.db.get_value("Sales Order", name, "name", for_update=True)
 	order = frappe.get_doc("Sales Order", name)
 	if payment.payment_status(order) == "Paid":
 		frappe.throw(_("This order is already paid"))
 	account = frappe.db.get_value("Bank Account", bank_account, "account") if bank_account else None
+	same_currency = (
+		not account or frappe.get_cached_value("Account", account, "account_currency") == order.currency
+	)
+	if amount and same_currency and flt(amount) > payment.amount_due(order) + 0.005:
+		frappe.throw(_("That is more than the order still owes"))
 	entry, _rate = payment.payment_entry_for(order, account, flt(amount) or None)
 	if bank_account:
 		entry.bank_account = bank_account

@@ -7,6 +7,12 @@
 				and customer prices, are set up in Desk.
 			</p>
 		</div>
+		<p v-if="trade.loading && !trade.data" class="text-p-sm text-ink-gray-5">Loading…</p>
+		<p v-else-if="trade.error" class="text-p-sm text-ink-red-4">
+			Couldn't load the trade discounts.
+			<button type="button" class="underline" @click="trade.reload()">Try again</button>
+		</p>
+		<p v-else-if="!rules.length" class="text-p-sm text-ink-gray-5">No trade discounts yet.</p>
 		<div
 			v-for="rule in rules"
 			:key="rule.name"
@@ -15,7 +21,9 @@
 			<span class="text-ink-gray-8">{{ rule.item_group }}</span>
 			<span class="flex items-center gap-3">
 				<span class="text-ink-gray-7">{{ rule.discount_percentage }}% off</span>
-				<Button variant="ghost" theme="red" @click="remove(rule.name)">Remove</Button>
+				<Button variant="ghost" theme="red" :loading="removing === rule.name" @click="remove(rule)">
+					Remove
+				</Button>
 			</span>
 		</div>
 		<div class="flex max-w-lg items-end gap-2">
@@ -34,7 +42,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Button, FormControl, call, createResource, toast } from 'frappe-ui'
+import { Button, FormControl, call, createResource, dialog, toast } from 'frappe-ui'
 
 interface Rule {
 	name: string
@@ -64,8 +72,28 @@ async function add() {
 	}
 }
 
-async function remove(rule: string) {
-	updated.value = await call('shop.api.trade.remove_discount', { rule })
-	toast.success('Trade discount removed')
+const removing = ref('')
+
+function remove(rule: Rule) {
+	dialog.confirm({
+		title: 'Remove trade discount',
+		message: `Remove ${rule.discount_percentage}% off ${rule.item_group} for trade customers? Its Pricing Rule is deleted.`,
+		theme: 'red',
+		confirmLabel: 'Remove',
+		onConfirm: () => removeRule(rule.name),
+	})
+}
+
+async function removeRule(name: string) {
+	removing.value = name
+	try {
+		updated.value = await call('shop.api.trade.remove_discount', { rule: name })
+		toast.success('Trade discount removed')
+	} catch (error) {
+		const messages = (error as { messages?: string[] }).messages
+		toast.error(messages?.[0] || 'Could not remove the discount')
+	} finally {
+		removing.value = ''
+	}
 }
 </script>

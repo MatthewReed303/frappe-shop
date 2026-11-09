@@ -623,6 +623,8 @@ def refund(order_name: str, credit_note: str, bank_account: str | None = None) -
 
 	from shop.storefront import emails
 
+	# a second request for the same refund waits here, then finds nothing left to refund
+	frappe.db.get_value("Sales Invoice", credit_note, "name", for_update=True)
 	due = next((row for row in refunds_due(order_name) if row["credit_note"] == credit_note), None)
 	if not due:
 		frappe.throw(_("Credit note {0} has nothing left to refund for this order").format(credit_note))

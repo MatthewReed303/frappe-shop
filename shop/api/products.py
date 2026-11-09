@@ -169,7 +169,14 @@ def set_item_details(item_code: str, payload: dict) -> None:
 		item.weight_per_unit = flt(payload["weight"])
 		if item.weight_per_unit and not item.weight_uom:
 			item.weight_uom = default_weight_uom()
-	if "item_tax_template" in payload:
+	current = item.taxes[0].item_tax_template if item.taxes else None
+	if "item_tax_template" in payload and (payload["item_tax_template"] or None) != current:
+		if len(item.taxes) > 1:
+			frappe.throw(
+				_(
+					"{0} has several Item Tax rows (by tax category or date). Change them on the Item in Desk."
+				).format(frappe.bold(item.item_name))
+			)
 		# one template for the item; ERPNext applies it wherever the store's taxes name its accounts
 		item.taxes = []
 		if payload["item_tax_template"]:
@@ -181,7 +188,10 @@ def set_item_details(item_code: str, payload: dict) -> None:
 
 
 def default_weight_uom() -> str | None:
-	"""Kilograms, as ERPNext names them."""
+	"""The store's weight unit, else kilograms as ERPNext names them."""
+	unit = frappe.get_cached_doc("Shop Settings").get("weight_uom")
+	if unit:
+		return unit
 	for uom in ("Kg", "Kilogram"):
 		if frappe.db.exists("UOM", uom):
 			return uom
@@ -295,12 +305,15 @@ def unique_item_code(product_name: str) -> str:
 
 
 def default_item_group() -> str:
-	"""ERPNext's Default Item Group (Stock Settings), else its usual "Products" group."""
+	"""ERPNext's Default Item Group (Stock Settings), else its usual "Products" group as named on
+	this site, else the root Item Group."""
+	from frappe.utils.nestedset import get_root_of
+
 	default = frappe.db.get_single_value("Stock Settings", "item_group")
-	for group in (default, "Products", "All Item Groups"):
+	for group in (default, _("Products"), "Products"):
 		if group and frappe.db.exists("Item Group", group):
 			return group
-	return frappe.db.get_value("Item Group", {}, "name")
+	return get_root_of("Item Group")
 
 
 @frappe.whitelist()

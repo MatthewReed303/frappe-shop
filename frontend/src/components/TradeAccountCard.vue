@@ -6,7 +6,7 @@
 				<div>Group: {{ status.customer_group }}</div>
 				<div>Payment terms: {{ status.payment_terms || 'None' }}</div>
 				<div>Pay on account: {{ status.allow_on_account ? 'Yes' : 'No' }}</div>
-				<div v-if="status.credit_limit">Credit limit: {{ status.credit_limit }}</div>
+				<div v-if="status.credit_limit">Credit limit: {{ status.formatted_credit_limit }}</div>
 			</dl>
 			<div class="mt-3 flex gap-2">
 				<Button @click="open">Edit terms</Button>
@@ -56,6 +56,7 @@ interface TradeStatus {
 	payment_terms: string | null
 	allow_on_account: number
 	credit_limit: number | null
+	formatted_credit_limit: string | null
 }
 
 const props = defineProps<{ customer: string; status: TradeStatus }>()
@@ -72,7 +73,10 @@ const form = reactive({ payment_terms: '', allow_on_account: false, credit_limit
 
 function open() {
 	Object.assign(form, {
-		payment_terms: props.status.payment_terms || trade.data?.payment_terms || '',
+		// a new trade customer starts with the group's Payment Terms; an existing one keeps theirs
+		payment_terms: props.status.is_trade
+			? props.status.payment_terms || ''
+			: props.status.payment_terms || trade.data?.payment_terms || '',
 		allow_on_account: !!props.status.allow_on_account,
 		credit_limit: props.status.credit_limit || 0,
 	})
@@ -86,7 +90,7 @@ async function save() {
 			customer: props.customer,
 			payment_terms: form.payment_terms || null,
 			allow_on_account: form.allow_on_account ? 1 : 0,
-			credit_limit: form.credit_limit || null,
+			credit_limit: form.credit_limit || 0,
 		})
 		show.value = false
 		toast.success('Trade terms saved')
