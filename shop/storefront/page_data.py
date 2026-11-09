@@ -360,7 +360,13 @@ def register_page() -> dict:
 		"terms": checkout.terms_details(),
 		"show_form": None if signed_in else "true",
 		"notice": _("You're signed in. Your orders and invoices are on your account page.") if signed_in else None,
+		"trade_applications": trade_applications(),
 	}
+
+
+def trade_applications() -> str | None:
+	"""Whether the store takes trade account applications, for pages that offer them."""
+	return "true" if frappe.get_cached_doc("Shop Settings").allow_trade_applications else None
 
 
 @frappe.whitelist(allow_guest=True)
@@ -372,6 +378,7 @@ def signin_page() -> dict:
 		"notice": _("You're signed in. Your orders and invoices are on your account page.") if signed_in else None,
 		"redirect_to": return_path(frappe.form_dict.get("redirect-to")),
 		"register_url": store_url("account/register"),
+		"trade_applications": trade_applications(),
 	}
 
 
@@ -410,6 +417,8 @@ def trade_page() -> dict:
 
 def trade_form_state(trade: dict | None) -> dict:
 	"""Whether the trade application form shows, or what to tell a business that has applied."""
+	if not trade_applications():
+		return {"trade": trade, "show_form": None, "notice": _("We aren't taking trade account applications.")}
 	status = (trade or {}).get("status")
 	notice = {
 		"Approved": _("Your trade account is open. Sign in to see your trade prices."),

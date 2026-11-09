@@ -272,6 +272,14 @@
 					class="max-w-sm"
 				/>
 				<NewServiceItem suggestion="Shipping" @created="(name) => useItem('shipping_item', name)" />
+				<FormControl
+					v-model="shipping.weight_uom"
+					type="select"
+					label="Weight unit"
+					description="The unit product weights are entered in. Carriers price shipping by weight."
+					:options="[{ label: 'Kilograms', value: '' }, ...listOptions(data.uoms)]"
+					class="max-w-sm"
+				/>
 				<p class="text-p-sm text-ink-gray-5">
 					Shipping is charged as the shipping item's line, or on the shipping account when no item
 					is set. One of them is required for shipping charges to apply on orders.
@@ -591,7 +599,7 @@
 						<FormControl
 							v-model="row.display_name"
 							label="Name customers see"
-							placeholder="e.g. Auckland store"
+							placeholder="e.g. Main store"
 							class="col-span-3"
 						/>
 						<Switch
@@ -778,6 +786,12 @@
 						label="Return window (days)"
 						description="Days after shipping customers can ask for a return. 0 turns it off."
 					/>
+					<FormControl
+						v-model.number="orders.delivery_days"
+						type="number"
+						label="Delivery date (days after the order)"
+						description="The delivery date store and quote orders get in ERPNext."
+					/>
 				</div>
 				<Switch
 					v-model="orders.send_shipping_emails"
@@ -821,11 +835,24 @@
 						{{ accounts.terms_and_conditions ? 'Edit these terms in Desk' : 'Write your terms in Desk (Terms and Conditions)' }}
 						<LucideExternalLink class="size-3.5" />
 					</a>
+					<FormControl
+						v-model="accounts.terms_checkbox_note"
+						type="textarea"
+						label="Note beside the terms checkbox"
+						class="col-span-2"
+					/>
+					<FormControl
+						v-model="accounts.business_buyer_label"
+						type="textarea"
+						label="Business buyer checkbox"
+						description="Shown with the terms; customers buying for a business tick it."
+						class="col-span-2"
+					/>
 				</div>
 				<FormControl
 					v-model="accounts.new_customer_group"
 					type="select"
-					label="Customer group for new customers"
+					label="Customer Group for new customers"
 					description="ERPNext's default Customer Group (Selling Settings): customers who sign up or order online join it, with its prices and pricing rules."
 					:options="[{ label: 'Not set', value: '' }, ...listOptions(data.customer_groups)]"
 					class="max-w-sm"
@@ -833,7 +860,7 @@
 				<FormControl
 					v-model="accounts.trade_customer_group"
 					type="select"
-					label="Trade customer group"
+					label="Trade Customer Group"
 					description="Approved trade customers join this group, with its prices and payment terms."
 					:options="[{ label: 'No trade accounts', value: '' }, ...listOptions(data.customer_groups)]"
 					class="max-w-sm"
@@ -844,7 +871,13 @@
 					label="Email monthly statements"
 					description="Each trade customer gets a statement every month."
 				/>
-				<TradeDiscounts v-if="data.trade_customer_group" />
+				<Switch
+					v-if="accounts.trade_customer_group"
+					v-model="accounts.allow_trade_applications"
+					label="Trade applications"
+					description="Businesses can apply for a trade account from the storefront."
+				/>
+				<TradeDiscounts v-if="data.trade_customer_group" :key="data.trade_customer_group" />
 				<Switch
 					v-model="accounts.allow_quote_requests"
 					label="Quote requests"
@@ -856,6 +889,13 @@
 					type="number"
 					label="Quotes valid for (days)"
 					class="max-w-sm"
+				/>
+				<FormControl
+					v-model="accounts.staff_notification_emails"
+					type="textarea"
+					label="Staff notification emails"
+					description="Who is told of trade applications, quote requests and returns, one per line. Empty tells every Shop Manager and Sales Manager."
+					class="max-w-lg"
 				/>
 				<template #footer>
 					<Button variant="solid" :loading="saving === 'accounts'" @click="saveSection('accounts', accounts)">
@@ -872,6 +912,22 @@
 					</Button>
 				</template>
 				<StorefrontThemes @applied="settings.reload()" />
+				<FormControl
+					v-model="storefront.route_prefix"
+					label="Route prefix"
+					placeholder="e.g. store"
+					description="Serve the storefront under a path of the site, such as /store. Empty serves it at the site's root."
+					class="max-w-sm"
+				/>
+				<template #footer>
+					<Button
+						variant="solid"
+						:loading="saving === 'storefront'"
+						@click="saveSection('storefront', storefront)"
+					>
+						Save
+					</Button>
+				</template>
 			</CatalogSection>
 		</div>
 	</div>
@@ -909,6 +965,7 @@ const shipping = reactive({
 	free_shipping_above: 0,
 	shipping_account: '',
 	shipping_item: '',
+	weight_uom: '',
 })
 const duties = reactive({ duties_item: '', import_duties: [] as DutyRow[] })
 const surcharges = reactive({ shipping_surcharges: [] as SurchargeRow[] })
@@ -924,6 +981,7 @@ const orders = reactive({
 	order_naming_series: '',
 	payment_reminder_hours: 1,
 	return_window_days: 14,
+	delivery_days: 3,
 	send_shipping_emails: false,
 })
 const accounts = reactive({
@@ -935,7 +993,12 @@ const accounts = reactive({
 	email_statements: false,
 	allow_quote_requests: false,
 	quote_valid_days: 30,
+	business_buyer_label: '',
+	terms_checkbox_note: '',
+	allow_trade_applications: true,
+	staff_notification_emails: '',
 })
+const storefront = reactive({ route_prefix: '' })
 type Option = { label: string; value: string }
 
 type RestrictionRow = {
@@ -984,6 +1047,7 @@ async function saveRestrictions() {
 			restrictions: restrictions.shipping_restrictions,
 			item_groups: restrictions.item_group_restrictions,
 		})
+		savedSection.value = 'restrictions'
 		settings.data = { ...settings.data, ...saved }
 		toast.success('Settings saved')
 	} catch (error) {
@@ -1053,6 +1117,7 @@ async function saveSurcharges() {
 		const saved = await call('shop.api.settings.save_shipping_surcharges', {
 			surcharges: surcharges.shipping_surcharges,
 		})
+		savedSection.value = 'surcharges'
 		settings.data = { ...settings.data, shipping_surcharges: saved }
 		toast.success('Settings saved')
 	} catch (error) {
@@ -1139,17 +1204,22 @@ const settings = createResource({
 
 const data = computed(() => settings.data || {})
 
+const savedSection = ref('')
+
 watch(
 	() => settings.data,
 	(doc) => {
-		if (doc) hydrate(doc)
+		if (doc) hydrate(doc, savedSection.value)
+		savedSection.value = ''
 	},
 	{ immediate: true },
 )
 
-function hydrate(doc: Record<string, any>) {
-	Object.assign(store, { store_name: doc.store_name || '', store_logo: doc.store_logo || '' })
-	Object.assign(payments, {
+// a section's form is filled from the saved settings; saving one section leaves the others' edits
+function hydrate(doc: Record<string, any>, only = '') {
+	const fill = (section: string) => !only || only === section
+	if (fill('store')) Object.assign(store, { store_name: doc.store_name || '', store_logo: doc.store_logo || '' })
+	if (fill('payments')) Object.assign(payments, {
 		enable_cod: !!doc.enable_cod,
 		payment_gateways: (doc.payment_gateways || []).map((row: GatewayRow) => ({ ...row })),
 		card_fee_item: doc.card_fee_item || '',
@@ -1160,13 +1230,14 @@ function hydrate(doc: Record<string, any>) {
 		conversion_fee_item: doc.conversion_fee_item || '',
 		bank_charges_account: doc.bank_charges_account || '',
 	})
-	Object.assign(shipping, {
+	if (fill('shipping')) Object.assign(shipping, {
 		flat_shipping_rate: doc.flat_shipping_rate || 0,
 		free_shipping_above: doc.free_shipping_above || 0,
 		shipping_account: doc.shipping_account || '',
 		shipping_item: doc.shipping_item || '',
+		weight_uom: doc.weight_uom || '',
 	})
-	Object.assign(surcharges, {
+	if (fill('surcharges')) Object.assign(surcharges, {
 		shipping_surcharges: (doc.shipping_surcharges || []).map((row: SurchargeRow) => ({
 			...row,
 			enabled: !!row.enabled,
@@ -1178,7 +1249,7 @@ function hydrate(doc: Record<string, any>) {
 			saved: true,
 		})),
 	})
-	Object.assign(restrictions, {
+	if (fill('restrictions')) Object.assign(restrictions, {
 		shipping_restrictions: (doc.shipping_restrictions || []).map((row: RestrictionRow) => ({
 			...row,
 			countries: [...(row.countries || [])],
@@ -1186,11 +1257,11 @@ function hydrate(doc: Record<string, any>) {
 		})),
 		item_group_restrictions: (doc.item_group_restrictions || []).map((row: GroupRestrictionRow) => ({ ...row })),
 	})
-	Object.assign(duties, {
+	if (fill('duties')) Object.assign(duties, {
 		duties_item: doc.duties_item || '',
 		import_duties: (doc.import_duties || []).map((row: DutyRow) => ({ ...row })),
 	})
-	Object.assign(orders, {
+	if (fill('orders')) Object.assign(orders, {
 		invoice_paid_orders: !!doc.invoice_paid_orders,
 		cancel_unpaid_orders: !!doc.cancel_unpaid_orders,
 		online_payment_days: doc.online_payment_days || 2,
@@ -1198,9 +1269,10 @@ function hydrate(doc: Record<string, any>) {
 		round_order_totals: !!doc.round_order_totals,
 		payment_reminder_hours: doc.payment_reminder_hours ?? 1,
 		return_window_days: doc.return_window_days ?? 14,
+		delivery_days: doc.delivery_days ?? 3,
 		send_shipping_emails: !!doc.send_shipping_emails,
 	})
-	Object.assign(accounts, {
+	if (fill('accounts')) Object.assign(accounts, {
 		require_terms: !!doc.require_terms,
 		terms_and_conditions: doc.terms_and_conditions || '',
 		terms_url: doc.terms_url || '',
@@ -1209,8 +1281,12 @@ function hydrate(doc: Record<string, any>) {
 		email_statements: !!doc.email_statements,
 		allow_quote_requests: !!doc.allow_quote_requests,
 		quote_valid_days: doc.quote_valid_days || 30,
+		business_buyer_label: doc.business_buyer_label || '',
+		terms_checkbox_note: doc.terms_checkbox_note || '',
+		allow_trade_applications: !!doc.allow_trade_applications,
+		staff_notification_emails: doc.staff_notification_emails || '',
 	})
-	Object.assign(fulfillment, {
+	if (fill('fulfillment')) Object.assign(fulfillment, {
 		fulfillment_locations: (doc.fulfillment_locations || []).map((row: LocationRow) => ({
 			...row,
 			ship_from_address: row.ship_from_address || '',
@@ -1222,7 +1298,7 @@ function hydrate(doc: Record<string, any>) {
 		})),
 	})
 
-	Object.assign(catalog, {
+	if (fill('catalog')) Object.assign(catalog, {
 		price_list: doc.price_list || '',
 		low_stock_threshold: doc.low_stock_threshold || 0,
 		tax_template: doc.tax_template || '',
@@ -1232,6 +1308,7 @@ function hydrate(doc: Record<string, any>) {
 		show_prices_with_tax: !!doc.show_prices_with_tax,
 		other_currencies_with_tax: !!doc.other_currencies_with_tax,
 	})
+	if (fill('storefront')) Object.assign(storefront, { route_prefix: doc.route_prefix || '' })
 }
 
 type GatewayRow = {
@@ -1366,9 +1443,11 @@ function listOptions(names?: string[]) {
 async function saveSection(section: string, payload: Record<string, any>) {
 	saving.value = section
 	try {
-		settings.data = await call('shop.api.settings.save_settings', {
+		const saved = await call('shop.api.settings.save_settings', {
 			payload: normalize(payload),
 		})
+		savedSection.value = section
+		settings.data = saved
 		toast.success('Settings saved')
 	} catch (error) {
 		const messages = (error as { messages?: string[] }).messages

@@ -37,6 +37,9 @@ STOREFRONT_SEGMENTS = frozenset(
 	}
 )
 
+# First path segments Frappe answers itself, before website routing, or uses for the Desk.
+FRAPPE_SEGMENTS = frozenset({"api", "app", "assets", "files", "private", "backups", "desk", "login"})
+
 LINK_ATTRIBUTES = ("href", "action")
 HTML_LINK = re.compile(r"""(\b(?:href|action)\s*=\s*)(["'])(/[^"']*)\2""")
 

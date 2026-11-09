@@ -357,7 +357,8 @@ def make_order(quotation):
 	from erpnext.selling.doctype.quotation.quotation import make_sales_order
 
 	order = make_sales_order(quotation.name)
-	order.delivery_date = add_days(nowdate(), 3)
+	order.shop_shipping_option = quotation.get("shop_shipping_option")
+	order.delivery_date = add_days(nowdate(), cint(frappe.get_cached_doc("Shop Settings").delivery_days))
 	for item in order.items:
 		item.delivery_date = order.delivery_date
 	return order

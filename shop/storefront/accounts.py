@@ -121,6 +121,8 @@ def trade_source() -> str:
 def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 	"""A business applies for a trade account: an ERPNext Lead (UTM Source "Store Trade Application")
 	with its contact, address and the terms they accepted. Staff approve it from the Lead."""
+	if not frappe.get_cached_doc("Shop Settings").allow_trade_applications:
+		frappe.throw(_("We aren't taking trade account applications."))
 	check_terms(accept_terms)
 	values = {field: frappe.utils.strip_html(cstr(application.get(field))).strip() for field in TRADE_FIELDS}
 	values["email"] = values["email"].lower()
@@ -226,7 +228,12 @@ def application_lead(email: str):
 
 
 def staff_emails() -> list[str]:
-	"""The staff who look after store applications and quote requests."""
+	"""Who is told of trade applications, quote requests and returns: the store's staff
+	notification emails, else every Shop Manager and Sales Manager."""
+	listed = frappe.get_cached_doc("Shop Settings").get("staff_notification_emails")
+	emails = [email.strip() for email in (listed or "").replace(",", "\n").splitlines() if email.strip()]
+	if emails:
+		return list(dict.fromkeys(emails))
 	users = frappe.get_all(
 		"Has Role",
 		filters={"role": ["in", ["Shop Manager", "Sales Manager"]], "parenttype": "User"},
@@ -279,25 +286,28 @@ def set_trade_terms(
 	credit_limit: float | None = None,
 	allow_on_account: int = 0,
 	price_list: str | None = None,
+	exact: bool = False,
 ) -> None:
-	"""A trade customer's terms on their Customer: the trade group and what staff set; anything
-	left unset keeps the customer's current value."""
+	"""A trade customer's terms on their Customer: the trade group and what staff set. Anything left
+	unset keeps the customer's current value, unless exact: then the terms are what is given, so
+	staff can also take them away (no payment terms, not on account, no credit limit)."""
 	settings = frappe.get_cached_doc("Shop Settings")
 	customer.customer_group = (
 		customer_group or settings.get("trade_customer_group") or customer.customer_group
 	)
 	if price_list:
 		customer.default_price_list = price_list
-	if payment_terms:
-		customer.payment_terms = payment_terms
+	if payment_terms or exact:
+		customer.payment_terms = payment_terms or None
 	if customer.meta.has_field("shop_allow_on_account"):
 		customer.shop_allow_on_account = (
-			1 if cint(allow_on_account) else customer.get("shop_allow_on_account") or 0
+			1 if cint(allow_on_account) else (0 if exact else customer.get("shop_allow_on_account") or 0)
 		)
-	if flt(credit_limit):
+	if flt(credit_limit) or (exact and credit_limit is not None):
 		customer.credit_limits = [
 			row for row in customer.get("credit_limits") or [] if row.company != settings.company
 		]
+	if flt(credit_limit):
 		# the limit applies to what is invoiced on account; orders paid up front aren't held by it
 		customer.append(
 			"credit_limits",

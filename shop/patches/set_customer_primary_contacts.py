@@ -5,8 +5,6 @@ import frappe
 
 
 def execute():
-	from shop.storefront.checkout import set_primary_contact
-
 	customers = frappe.db.sql_list(
 		"""select distinct so.customer from `tabSales Order` so
 		join `tabShop Cart` cart on cart.sales_order = so.name
@@ -21,4 +19,9 @@ def execute():
 			customer,
 		)
 		if contact:
-			set_primary_contact(customer, frappe.get_doc("Contact", contact[0][0]))
+			email, mobile = frappe.db.get_value("Contact", contact[0][0], ["email_id", "mobile_no"])
+			frappe.db.set_value(
+				"Customer",
+				customer,
+				{"customer_primary_contact": contact[0][0], "email_id": email, "mobile_no": mobile},
+			)

@@ -3697,8 +3697,9 @@ def signin_blocks(refs):
 		intro(refs, "See your orders, invoices and quotes, and check out faster."),
 		form,
 		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
-		hint(refs, 'New here? <a href="/account/register">Create an account</a>. Buying for a business? '
-				   '<a href="/account/trade">Apply for a trade account</a>.'),
+		hint(refs, 'New here? <a href="/account/register">Create an account</a>.'),
+		hint(refs, 'Buying for a business? <a href="/account/trade">Apply for a trade account</a>.',
+			 visibilityCondition={"key": "trade_applications", "comesFrom": "dataScript"}),
 	], width="560px")
 
 
@@ -3715,8 +3716,9 @@ def register_blocks(refs):
 		intro(refs, "Track your orders, see invoices and quotes, and check out faster. We'll email you a link to set your password."),
 		form,
 		block("p", text="", attrs={"data-shop": "form-done", "hidden": "hidden"}, classes=["form-done"]), notice(refs),
-		hint(refs, 'Already have an account? <a href="/account/signin">Sign in</a>. Buying for a business? '
-				   '<a href="/account/trade">Apply for a trade account</a>.'),
+		hint(refs, 'Already have an account? <a href="/account/signin">Sign in</a>.'),
+		hint(refs, 'Buying for a business? <a href="/account/trade">Apply for a trade account</a>.',
+			 visibilityCondition={"key": "trade_applications", "comesFrom": "dataScript"}),
 	], width="560px")
 
 

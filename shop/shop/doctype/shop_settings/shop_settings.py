@@ -1,8 +1,9 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import cint
 
-from shop.routes import STOREFRONT_SEGMENTS, get_prefix, normalize_prefix
+from shop.routes import FRAPPE_SEGMENTS, STOREFRONT_SEGMENTS, get_prefix, normalize_prefix
 
 
 class ShopSettings(Document):
@@ -24,6 +25,7 @@ class ShopSettings(Document):
 		active_theme: DF.Data | None
 		allow_out_of_stock: DF.Check
 		allow_quote_requests: DF.Check
+		allow_trade_applications: DF.Check
 		applied_route_prefix: DF.Data | None
 		bank_accounts: DF.Table[ShopBankAccount]
 		bank_charges_account: DF.Link | None
@@ -34,6 +36,7 @@ class ShopSettings(Document):
 		company: DF.Link | None
 		conversion_fee_item: DF.Link | None
 		currency: DF.Link | None
+		delivery_days: DF.Int
 		duties_item: DF.Link | None
 		email_statements: DF.Check
 		enable_bank_transfer: DF.Check
@@ -61,6 +64,7 @@ class ShopSettings(Document):
 		shipping_account: DF.Link | None
 		shipping_item: DF.Link | None
 		show_prices_with_tax: DF.Check
+		staff_notification_emails: DF.SmallText | None
 		store_logo: DF.AttachImage | None
 		store_name: DF.Data | None
 		tax_template: DF.Link | None
@@ -70,12 +74,15 @@ class ShopSettings(Document):
 		theme_pages: DF.Table[ShopThemePage]
 		trade_customer_group: DF.Link | None
 		transfer_fee_item: DF.Link | None
+		weight_uom: DF.Link | None
 	# end: auto-generated types
 
 	def validate(self):
 		self.validate_order_naming_series()
 		self.validate_fulfillment_locations()
 		self.validate_import_duties()
+		self.validate_price_list_currency()
+		self.validate_staff_emails()
 		self.route_prefix = normalize_prefix(self.route_prefix)
 		first_segment = self.route_prefix.split("/")[0] if self.route_prefix else ""
 		if first_segment in STOREFRONT_SEGMENTS:
@@ -84,9 +91,37 @@ class ShopSettings(Document):
 					frappe.bold(first_segment)
 				)
 			)
+		if first_segment in FRAPPE_SEGMENTS:
+			frappe.throw(
+				_("Route Prefix can't start with {0}, the site already uses that path.").format(
+					frappe.bold(first_segment)
+				)
+			)
+
+	def validate_staff_emails(self):
+		from frappe.utils import validate_email_address
+
+		for email in (self.staff_notification_emails or "").replace(",", "\n").splitlines():
+			if email.strip():
+				validate_email_address(email.strip(), throw=True)
+		if self.delivery_days is not None and cint(self.delivery_days) < 0:
+			frappe.throw(_("Delivery Days can't be negative"))
+
+	def validate_price_list_currency(self):
+		"""The store prices in its company's currency; other currencies are converted from it."""
+		if not (self.price_list and self.company):
+			return
+		listed = frappe.db.get_value("Price List", self.price_list, "currency")
+		company = frappe.get_cached_value("Company", self.company, "default_currency")
+		if listed and company and listed != company:
+			frappe.throw(
+				_("Price List {0} is in {1}. Pick a Price List in {2}, the currency of {3}.").format(
+					frappe.bold(self.price_list), listed, company, self.company
+				)
+			)
 
 	def validate_fulfillment_locations(self):
-		from shop.fulfillment.provider import registry
+		from shop.fulfillment.provider import get_provider, registry
 
 		seen = set()
 		providers = registry()
@@ -94,7 +129,10 @@ class ShopSettings(Document):
 			if row.warehouse in seen:
 				frappe.throw(_("Warehouse {0} is listed twice").format(frappe.bold(row.warehouse)))
 			seen.add(row.warehouse)
-			company, is_group = frappe.db.get_value("Warehouse", row.warehouse, ["company", "is_group"])
+			found = frappe.db.get_value("Warehouse", row.warehouse, ["company", "is_group"])
+			if not found:
+				frappe.throw(_("Warehouse {0} doesn't exist").format(frappe.bold(row.warehouse)))
+			company, is_group = found
 			if is_group:
 				frappe.throw(
 					_("{0} is a group warehouse: pick the warehouse stock is kept in").format(row.warehouse)
@@ -107,6 +145,12 @@ class ShopSettings(Document):
 					_("Fulfillment provider {0} is not installed").format(
 						frappe.bold(row.fulfillment_provider)
 					)
+				)
+			if not get_provider(row.fulfillment_provider).for_locations:
+				frappe.throw(
+					_(
+						"{0} is chosen by the customer for an order; turn on collection for the location instead"
+					).format(get_provider(row.fulfillment_provider).label)
 				)
 			self.check_ship_from(row)
 

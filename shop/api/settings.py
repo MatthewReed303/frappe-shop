@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.utils import cint, flt
 
 from shop.api import only_managers
@@ -40,6 +41,13 @@ EDITABLE = (
 	"trade_customer_group",
 	"email_statements",
 	"allow_quote_requests",
+	"allow_trade_applications",
+	"staff_notification_emails",
+	"delivery_days",
+	"weight_uom",
+	"route_prefix",
+	"business_buyer_label",
+	"terms_checkbox_note",
 )
 CHECKS = {
 	"enable_cod",
@@ -54,6 +62,7 @@ CHECKS = {
 	"require_terms",
 	"email_statements",
 	"allow_quote_requests",
+	"allow_trade_applications",
 }
 AMOUNTS = {
 	"flat_shipping_rate",
@@ -66,6 +75,7 @@ COUNTS = {
 	"payment_reminder_hours",
 	"return_window_days",
 	"quote_valid_days",
+	"delivery_days",
 }
 LOCATION_FIELDS = (
 	"warehouse",
@@ -166,6 +176,10 @@ def save_shipping_restrictions(restrictions: list, item_groups: list) -> dict:
 	):
 		wanted.setdefault(group, None)
 	for group, restriction in wanted.items():
+		if not frappe.db.exists("Item Group", group):
+			frappe.throw(_("Item Group {0} doesn't exist").format(frappe.bold(group)))
+		if restriction and restriction not in keep:
+			frappe.throw(_("Shipping restriction {0} isn't in the list").format(frappe.bold(restriction)))
 		frappe.db.set_value("Item Group", group, "shop_shipping_restriction", restriction or None)
 		frappe.clear_document_cache("Item Group", group)
 	for name in frappe.get_all(
@@ -263,6 +277,7 @@ def get_settings() -> dict:
 				pluck="name",
 			),
 			"price_lists": frappe.get_all("Price List", filters={"selling": 1}, pluck="name"),
+			"uoms": frappe.get_all("UOM", filters={"enabled": 1}, pluck="name", order_by="name"),
 			"service_items": frappe.get_all(
 				"Item",
 				filters={"is_stock_item": 0, "is_sales_item": 1, "disabled": 0, "has_variants": 0},
@@ -342,7 +357,7 @@ def company_bank_accounts(company: str) -> list[dict]:
 def fulfillment_providers() -> list[dict]:
 	from shop.fulfillment.provider import available
 
-	return available()
+	return available(for_locations=True)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -402,23 +417,39 @@ def save_settings(payload: dict) -> dict:
 
 
 def save_erpnext_settings(payload: dict) -> None:
+	"""ERPNext's own settings the store shows. They apply to every company and document, so only a
+	System Manager can change them here."""
+	changes = []
 	if "new_customer_group" in payload:
 		selling = frappe.get_single("Selling Settings")
-		selling.customer_group = payload["new_customer_group"]
-		selling.save(ignore_permissions=True)
+		if selling.customer_group != payload["new_customer_group"]:
+			selling.customer_group = payload["new_customer_group"]
+			changes.append(selling)
 	if "round_order_totals" in payload:
 		defaults = frappe.get_single("Global Defaults")
-		defaults.disable_rounded_total = 0 if payload["round_order_totals"] else 1
-		defaults.save(ignore_permissions=True)
+		disabled = 0 if payload["round_order_totals"] else 1
+		if cint(defaults.disable_rounded_total) != disabled:
+			defaults.disable_rounded_total = disabled
+			changes.append(defaults)
+	if changes and "System Manager" not in frappe.get_roles():
+		frappe.throw(
+			_("Only a System Manager can change ERPNext's {0}").format(
+				", ".join(_(doc.doctype) for doc in changes)
+			),
+			frappe.PermissionError,
+		)
+	for doc in changes:
+		doc.save(ignore_permissions=True)
 
 
 @frappe.whitelist(methods=["POST"])
 def create_service_item(item_name: str) -> str:
 	"""A service Item (not stocked) for a charge the store adds to orders, such as a fee or shipping."""
-	from shop.api.products import default_item_group, unique_item_code
+	from shop.api.products import unique_item_code
+	from shop.setup_store import service_item_group
 
 	only_managers()
-	group = "Services" if frappe.db.exists("Item Group", "Services") else default_item_group()
+	group = service_item_group()
 	item = frappe.get_doc(
 		{
 			"doctype": "Item",

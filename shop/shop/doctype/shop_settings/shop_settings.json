@@ -28,6 +28,7 @@
   "shipping_account",
   "low_stock_threshold",
   "shipping_item",
+  "weight_uom",
   "fulfillment_section",
   "fulfillment_locations",
   "duties_section",
@@ -51,6 +52,7 @@
   "bank_accounts",
   "orders_section",
   "order_naming_series",
+  "delivery_days",
   "invoice_paid_orders",
   "send_shipping_emails",
   "column_break_orders",
@@ -67,9 +69,11 @@
   "business_buyer_label",
   "trade_section",
   "trade_customer_group",
+  "allow_trade_applications",
   "email_statements",
   "allow_quote_requests",
   "quote_valid_days",
+  "staff_notification_emails",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -263,6 +267,13 @@
    "options": "Item"
   },
   {
+   "fieldname": "weight_uom",
+   "fieldtype": "Link",
+   "options": "UOM",
+   "label": "Weight Unit",
+   "description": "The unit product weights are entered in"
+  },
+  {
    "fieldname": "card_fee_section",
    "fieldtype": "Section Break",
    "label": "Online Payments"
@@ -385,6 +396,13 @@
    "options": "Customer Group"
   },
   {
+   "default": "1",
+   "fieldname": "allow_trade_applications",
+   "fieldtype": "Check",
+   "label": "Allow Trade Applications",
+   "description": "Businesses can apply for a trade account from the storefront"
+  },
+  {
    "default": "0",
    "description": "Shoppers can ask for a quote at checkout instead of ordering. It arrives as a draft Quotation for staff to finish and send.",
    "fieldname": "allow_quote_requests",
@@ -399,6 +417,12 @@
    "fieldtype": "Int",
    "label": "Quote Valid For (Days)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "staff_notification_emails",
+   "fieldtype": "Small Text",
+   "label": "Staff Notification Emails",
+   "description": "Who is told of trade applications, quote requests and returns, one email per line. Empty: every Shop Manager and Sales Manager"
   },
   {
    "default": "0",
@@ -431,6 +455,13 @@
    "fieldname": "order_naming_series",
    "fieldtype": "Data",
    "label": "Order Naming Series"
+  },
+  {
+   "default": "3",
+   "fieldname": "delivery_days",
+   "fieldtype": "Int",
+   "label": "Delivery Days",
+   "description": "The delivery date a store or quote order gets, this many days after it is placed"
   },
   {
    "default": "0",
@@ -503,7 +534,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-09 20:00:00.000000",
+ "modified": "2026-11-10 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import frappe
 from frappe import _
-from frappe.utils import flt, fmt_money
+from frappe.utils import cint, flt, fmt_money
 
 from shop.storefront import shipping as shipping_module
 
@@ -512,7 +512,7 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 			"company": s.company,
 			"order_type": "Sales",
 			"transaction_date": nowdate(),
-			"delivery_date": add_days(nowdate(), 3),
+			"delivery_date": add_days(nowdate(), cint(s.delivery_days)),
 			"customer": customer,
 			"currency": currency,
 			"conversion_rate": exchange_rate(currency, company_currency()),
