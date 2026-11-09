@@ -231,7 +231,7 @@ class TestReturns(IntegrationTestCase):
 		from shop.storefront import payment
 
 		note = frappe._dict(
-			outstanding_amount=-150.0, currency="USD", party_account_currency="NZD", conversion_rate=1.5
+			outstanding_amount=-150.0, currency="USD", party_account_currency="INR", conversion_rate=1.5
 		)
 		with patch("frappe.db.get_value", return_value=note):
 			self.assertEqual(payment.owed("CN-1"), 100.0)

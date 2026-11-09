@@ -19,7 +19,7 @@ from shop.themes import apply_route_prefix, ensure_default_theme, reset_theme
 class TestRouteHelpers(UnitTestCase):
 	def test_normalize_prefix(self):
 		self.assertEqual(normalize_prefix(" /Store/ "), "store")
-		self.assertEqual(normalize_prefix("shop//nz"), "shop/nz")
+		self.assertEqual(normalize_prefix("shop//en"), "shop/en")
 		self.assertEqual(normalize_prefix(None), "")
 
 	def test_signin_comes_back_only_to_this_site(self):
