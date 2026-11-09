@@ -121,11 +121,12 @@
 					description="Shown as a table on the product page. Those set as filters let shoppers narrow a collection by them."
 				>
 					<div v-for="(row, index) in form.specifications" :key="index" class="flex items-end gap-2">
-						<FormControl
+						<UiPicker
 							v-model="row.specification"
 							:label="index ? undefined : 'Specification'"
-							placeholder="Capacity"
-							list="shop-specifications"
+							:options="specificationNames"
+							placeholder="Choose or type, e.g. Capacity"
+							allow-custom
 							class="flex-1"
 						/>
 						<FormControl
@@ -138,9 +139,6 @@
 							<template #icon><LucideTrash2 class="size-4" /></template>
 						</Button>
 					</div>
-					<datalist id="shop-specifications">
-						<option v-for="name in specificationNames" :key="name" :value="name" />
-					</datalist>
 					<Button class="w-fit" @click="form.specifications.push({ specification: '', value: '' })">
 						Add specification
 					</Button>
@@ -163,17 +161,15 @@
 						placeholder="Select an Item Group"
 						:options="itemGroupOptions"
 					/>
-					<FormControl
+					<UiPicker
 						v-if="isEdit || !isLink"
 						v-model="form.brand"
 						label="Brand"
-						placeholder="No brand"
-						list="shop-brands"
 						description="A brand shoppers can filter by. Type a new one to add it."
+						:options="brandNames"
+						empty-label="No brand"
+						allow-custom
 					/>
-					<datalist id="shop-brands">
-						<option v-for="name in brandNames" :key="name" :value="name" />
-					</datalist>
 					<Autocomplete
 						v-model="collectionValue"
 						label="Collections"
@@ -273,6 +269,7 @@ import CatalogSection from '@/components/CatalogSection.vue'
 import CatalogStockControl from '@/components/CatalogStockControl.vue'
 import CatalogVariantsPanel from '@/components/CatalogVariantsPanel.vue'
 import PricingRates from '@/components/PricingRates.vue'
+import UiPicker from '@/components/UiPicker.vue'
 import { storefrontPath } from '@/utils/storefront'
 
 interface Option {

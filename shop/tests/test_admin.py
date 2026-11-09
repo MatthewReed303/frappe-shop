@@ -141,7 +141,7 @@ class TestAdminApi(IntegrationTestCase):
 		self.addCleanup(frappe.delete_doc, "Item", name, force=True)
 		item = frappe.get_doc("Item", name)
 		self.assertEqual((item.item_name, item.is_stock_item, item.is_sales_item), ("Test Card Fee", 0, 1))
-		self.assertIn(name, settings.get_settings()["service_items"])
+		self.assertIn(name, [item["value"] for item in settings.get_settings()["service_items"]])
 
 	def test_setup_guide_covers_taxes_shipping_and_email(self):
 		from shop.api import admin

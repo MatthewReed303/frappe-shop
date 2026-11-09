@@ -109,9 +109,8 @@
 						for orders shipped outside the company's country ({{ data.company_country }}).
 					</p>
 				</div>
-				<FormControl
+				<UiPicker
 					v-model="payments.card_fee_item"
-					type="select"
 					label="Payment fee item"
 					description="A gateway's fee is added to the order as a line with this item."
 					:options="feeItemOptions('No payment fee')"
@@ -136,10 +135,10 @@
 							:key="index"
 							class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
 						>
-							<FormControl
+							<UiPicker
 								v-model="row.bank_account"
-								type="select"
 								label="Bank account"
+								description="The ERPNext Bank Account customers pay into by bank transfer."
 								:options="bankAccountOptions"
 								class="col-span-3"
 							/>
@@ -197,16 +196,16 @@
 						added to the order. Swift transfers are offered when the account's Bank has a SWIFT code.
 					</p>
 					<div class="grid max-w-lg grid-cols-2 gap-4">
-						<FormControl
+						<UiPicker
 							v-model="payments.transfer_fee_item"
-							type="select"
 							label="Transfer fee item"
+							description="The order line a bank's transfer fee is charged on."
 							:options="feeItemOptions('No transfer fees')"
 						/>
-						<FormControl
+						<UiPicker
 							v-model="payments.conversion_fee_item"
-							type="select"
 							label="Currency conversion item"
+							description="The order line a currency conversion fee is charged on."
 							:options="feeItemOptions('No conversion fees')"
 						/>
 						<NewServiceItem suggestion="Bank transfer fee" @created="(name) => useItem('transfer_fee_item', name)" />
@@ -214,9 +213,8 @@
 							suggestion="Currency conversion"
 							@created="(name) => useItem('conversion_fee_item', name)"
 						/>
-						<FormControl
+						<UiPicker
 							v-model="payments.bank_charges_account"
-							type="select"
 							label="Bank charges account"
 							description="Where a fee the bank reports taking is booked."
 							:options="expenseAccountOptions"
@@ -257,24 +255,23 @@
 						description="0 turns this threshold off."
 					/>
 				</div>
-				<FormControl
+				<UiPicker
 					v-model="shipping.shipping_account"
-					type="select"
 					label="Shipping account"
+					description="The income account shipping charges are booked to."
 					:options="accountOptions"
 					class="max-w-sm"
 				/>
-				<FormControl
+				<UiPicker
 					v-model="shipping.shipping_item"
-					type="select"
 					label="Shipping item"
+					description="The order line shipping is charged on."
 					:options="itemOptions"
 					class="max-w-sm"
 				/>
 				<NewServiceItem suggestion="Shipping" @created="(name) => useItem('shipping_item', name)" />
-				<FormControl
+				<UiPicker
 					v-model="shipping.weight_uom"
-					type="select"
 					label="Weight unit"
 					description="The unit product weights are entered in. Carriers price shipping by weight."
 					:options="[{ label: 'Kilograms', value: '' }, ...listOptions(data.uoms)]"
@@ -305,10 +302,10 @@
 						:key="index"
 						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
 					>
-						<FormControl
+						<UiPicker
 							v-model="row.country"
-							type="select"
 							label="Country"
+							description="Orders shipped to this country pay its duties."
 							:options="countryOptions"
 							class="col-span-3"
 						/>
@@ -347,9 +344,8 @@
 						<Button @click="addDuty">Add country</Button>
 					</div>
 				</div>
-				<FormControl
+				<UiPicker
 					v-model="duties.duties_item"
-					type="select"
 					label="Duties item"
 					:options="feeItemOptions('No duties item')"
 					description="The order line duties are charged on, named as the item is."
@@ -415,19 +411,23 @@
 							description="A postcode, a prefix ending in * or a range of numbers."
 							class="col-span-2"
 						/>
-						<FormControl
+						<UiPicker
 							v-model="row.address_contains"
 							label="Address contains"
-							placeholder="e.g. RD #"
-							description="Any case; # stands for a number."
+							description="Only addresses with these words, in any case; # stands for a number. Choose one or type your own."
+							:options="addressPatterns"
+							empty-label="Any address"
+							allow-custom
 							class="col-span-2"
 						/>
-						<FormControl
-							v-model="row.services"
+						<UiTagPicker
+							:model-value="splitNames(row.services)"
 							label="Delivery services"
+							description="Only these services: any whose name contains one of them. None chosen means every service."
+							:options="data.delivery_services || []"
 							placeholder="Every service"
-							description="Names containing any of these, separated by commas."
 							class="col-span-2"
+							@update:model-value="(names: string[]) => (row.services = names.join(', '))"
 						/>
 						<FormControl
 							v-model.number="row.weight_from"
@@ -540,10 +540,10 @@
 						:key="index"
 						class="grid grid-cols-6 gap-3"
 					>
-						<FormControl
+						<UiPicker
 							v-model="row.item_group"
-							type="select"
 							label="Item Group"
+							description="Products in this Item Group, and the groups inside it, follow the restriction."
 							:options="listOptions(data.item_groups)"
 							class="col-span-3"
 						/>
@@ -589,10 +589,10 @@
 						:key="index"
 						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
 					>
-						<FormControl
+						<UiPicker
 							v-model="row.warehouse"
-							type="select"
 							label="Warehouse"
+							description="Where stock for these orders is picked from."
 							:options="data.warehouses || []"
 							class="col-span-3"
 						/>
@@ -614,10 +614,10 @@
 							:options="providerOptions"
 							class="col-span-3"
 						/>
-						<FormControl
+						<UiPicker
 							v-model="row.ship_from_address"
-							type="select"
 							label="Ship from"
+							description="The return address on parcels."
 							:options="[{ label: 'The warehouse\'s address, else the provider\'s', value: '' }, ...(data.addresses || [])]"
 							class="col-span-3"
 						/>
@@ -687,10 +687,10 @@
 
 			<CatalogSection title="Catalog" description="Pricing, stock and tax defaults.">
 				<div class="grid max-w-lg grid-cols-2 gap-4">
-					<FormControl
+					<UiPicker
 						v-model="catalog.price_list"
-						type="select"
 						label="Price list"
+						description="The selling prices the store shows."
 						:options="listOptions(data.price_lists)"
 					/>
 					<FormControl
@@ -698,10 +698,10 @@
 						type="number"
 						label="Low stock threshold"
 					/>
-					<FormControl
+					<UiPicker
 						v-model="catalog.tax_template"
-						type="select"
 						label="Tax template"
+						description="Taxes added to orders when no Tax Rule matches."
 						:options="taxOptions"
 					/>
 				</div>
@@ -725,9 +725,8 @@
 					label="Show other currencies with tax"
 :description="`Off: prices in another currency are shown without tax, as for a buyer outside ${data.company_country || 'the company\'s country'}. Checkout always charges the tax for the delivery address.`"
 				/>
-				<FormControl
+				<UiPicker
 					v-model="catalog.export_tax_template"
-					type="select"
 					label="Export tax template"
 :description="`Taxes for orders shipped outside ${data.company_country || 'the company\'s country'}, when no Tax Rule for the shopping cart matches.`"
 					:options="taxOptions"
@@ -745,10 +744,12 @@
 			</CatalogSection>
 
 			<CatalogSection title="Orders" description="What happens to orders after checkout.">
-				<FormControl
+				<UiPicker
 					v-model="orders.order_naming_series"
 					label="Order naming series"
-					description="A short Sales Order naming series (e.g. SO-.#####) so order numbers fit bank references. Add it to Sales Order in Document Naming Settings first."
+					description="How web orders are numbered. A short series (e.g. SO-.#####) fits in bank references. New series are added to Sales Order in Document Naming Settings."
+					:options="data.order_series || []"
+					empty-label="ERPNext's default"
 					class="max-w-sm"
 				/>
 				<Switch
@@ -812,16 +813,19 @@
 					description="Customers accept your terms when they sign up, order or accept a quote."
 				/>
 				<div v-if="accounts.require_terms" class="grid max-w-lg grid-cols-2 gap-4">
-					<FormControl
+					<UiPicker
 						v-model="accounts.terms_and_conditions"
-						type="select"
 						label="Terms and conditions"
+						description="The terms customers accept, written in Desk."
 						:options="listOptions(data.terms_records)"
 					/>
-					<FormControl
+					<UiPicker
 						v-model="accounts.terms_url"
-						label="Terms page URL"
-						description="Leave empty to use the store's terms page."
+						label="Terms page"
+						description="Where the terms link at checkout goes: a page on the site, or type a full web address."
+						:options="data.site_pages || []"
+						empty-label="The store's terms page"
+						allow-custom
 					/>
 					<a
 						:href="
@@ -849,17 +853,15 @@
 						class="col-span-2"
 					/>
 				</div>
-				<FormControl
+				<UiPicker
 					v-model="accounts.new_customer_group"
-					type="select"
 					label="Customer Group for new customers"
 					description="ERPNext's default Customer Group (Selling Settings): customers who sign up or order online join it, with its prices and pricing rules."
 					:options="[{ label: 'Not set', value: '' }, ...listOptions(data.customer_groups)]"
 					class="max-w-sm"
 				/>
-				<FormControl
+				<UiPicker
 					v-model="accounts.trade_customer_group"
-					type="select"
 					label="Trade Customer Group"
 					description="Approved trade customers join this group, with its prices and payment terms."
 					:options="[{ label: 'No trade accounts', value: '' }, ...listOptions(data.customer_groups)]"
@@ -960,6 +962,8 @@ import CatalogListState from '@/components/CatalogListState.vue'
 import CatalogSection from '@/components/CatalogSection.vue'
 import NewServiceItem from '@/components/NewServiceItem.vue'
 import StorefrontThemes from '@/components/StorefrontThemes.vue'
+import UiPicker from '@/components/UiPicker.vue'
+import UiTagPicker from '@/components/UiTagPicker.vue'
 
 const saving = ref('')
 
@@ -1449,15 +1453,28 @@ function useItem(
 	field: 'card_fee_item' | 'transfer_fee_item' | 'conversion_fee_item' | 'shipping_item' | 'duties_item',
 	name: string,
 ) {
-	settings.data.service_items = [...(settings.data.service_items || []), name]
+	settings.data.service_items = [...(settings.data.service_items || []), { label: name, value: name }]
 	if (field === 'shipping_item') shipping.shipping_item = name
 	else if (field === 'duties_item') duties.duties_item = name
 	else payments[field] = name
 	toast.success(`${name} created. Save to use it.`)
 }
 
-function listOptions(names?: string[]) {
-	return (names || []).map((name) => ({ label: name, value: name }))
+const addressPatterns = [
+	{ label: 'PO Box', value: 'PO Box' },
+	{ label: 'Private Bag', value: 'Private Bag' },
+	{ label: 'RD # (rural delivery)', value: 'RD #' },
+]
+
+function splitNames(text?: string) {
+	return (text || '')
+		.split(',')
+		.map((name) => name.trim())
+		.filter(Boolean)
+}
+
+function listOptions(names?: (string | { label: string; value: string })[]) {
+	return (names || []).map((name) => (typeof name === 'string' ? { label: name, value: name } : name))
 }
 
 async function saveSection(section: string, payload: Record<string, any>) {

@@ -66,6 +66,15 @@ def open_fulfillment(name: str):
 	return doc
 
 
+@frappe.whitelist()
+def get_carriers() -> list[str]:
+	"""Carriers the store has shipped with, to pick from when recording a shipment."""
+	only_managers()
+	from shop.api.settings import delivery_names
+
+	return delivery_names(("carrier",))
+
+
 @frappe.whitelist(methods=["POST"])
 def mark_shipped(fulfillment: str, carrier: str | None = None, tracking_number: str | None = None) -> dict:
 	"""Record a shipment you packed yourself, with optional tracking."""

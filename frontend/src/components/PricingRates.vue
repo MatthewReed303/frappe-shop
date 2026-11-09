@@ -61,35 +61,24 @@
 							{ label: 'Product', value: 'Product' },
 						]"
 					/>
-					<FormControl
+					<UiPicker
 						v-if="form.target_type === 'Item Group'"
 						v-model="form.target"
-						type="select"
 						label="Item Group"
-						:options="[{ label: 'Choose an Item Group', value: '' }, ...groupOptions]"
+						description="The rate covers every product in this Item Group and the groups inside it."
+						:options="groupOptions"
+						placeholder="Choose an Item Group"
 					/>
-					<div v-else>
-						<FormControl
-							v-model="productSearch"
-							type="text"
-							label="Product"
-							placeholder="Search products"
-							@update:model-value="searchProducts"
-						/>
-						<div v-if="form.target" class="mt-1 text-sm text-ink-gray-6">Chosen: {{ form.label }}</div>
-						<div v-if="productResults.length" class="mt-1 divide-y divide-outline-gray-1 rounded border border-outline-gray-1">
-							<button
-								v-for="product in productResults"
-								:key="product.item"
-								type="button"
-								class="block w-full px-3 py-1.5 text-left text-base hover:bg-surface-gray-1"
-								@click="pickProduct(product)"
-							>
-								{{ product.product_name }}
-								<span class="text-sm text-ink-gray-5">{{ product.item }}</span>
-							</button>
-						</div>
-					</div>
+					<UiPicker
+						v-else
+						v-model="form.target"
+						label="Product"
+						description="Search by product name or item code."
+						:search="findProducts"
+						:selected-label="form.label"
+						placeholder="Choose a product"
+						@picked="(option) => (form.label = option.label)"
+					/>
 				</template>
 
 				<div>
@@ -147,6 +136,7 @@
 import { computed, reactive, ref } from 'vue'
 import { Badge, Button, Dialog, FormControl, TabButtons, call, createResource, dialog, toast } from 'frappe-ui'
 
+import UiPicker from '@/components/UiPicker.vue'
 import LucidePlus from '~icons/lucide/plus'
 import LucideX from '~icons/lucide/x'
 
@@ -233,8 +223,6 @@ function openEditor(row?: RateRow) {
 			? row.tiers.map((tier) => ({ kind: tier.kind, value: tier.value, from_qty: Math.max(tier.from_qty, 1) }))
 			: [{ kind: 'discount', value: 0, from_qty: props.item ? 10 : 1 }],
 	})
-	productSearch.value = ''
-	productResults.value = []
 	editing.value = true
 }
 
@@ -295,27 +283,12 @@ function confirmRemove(row: RateRow) {
 	})
 }
 
-const productSearch = ref('')
-const productResults = ref<{ item: string; product_name: string }[]>([])
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-function searchProducts(text: string) {
-	clearTimeout(searchTimer)
-	if (!text || text.length < 2) {
-		productResults.value = []
-		return
+async function findProducts(text: string) {
+	const result = (await call('shop.api.products.get_products', { search: text, limit: 20 })) as {
+		products: { item: string; product_name: string }[]
 	}
-	searchTimer = setTimeout(async () => {
-		const result = (await call('shop.api.products.get_products', { search: text, limit: 8 })) as {
-			products: { item: string; product_name: string }[]
-		}
-		productResults.value = result.products.filter((product) => product.item)
-	}, 250)
-}
-
-function pickProduct(product: { item: string; product_name: string }) {
-	form.target = product.item
-	form.label = product.product_name
-	productResults.value = []
-	productSearch.value = ''
+	return result.products
+		.filter((product) => product.item)
+		.map((product) => ({ label: product.product_name, value: product.item, description: product.item }))
 }
 </script>

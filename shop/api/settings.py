@@ -241,7 +241,9 @@ def get_settings() -> dict:
 		{
 			# ERPNext's own settings, shown here because every web order uses them
 			"new_customer_group": frappe.db.get_single_value("Selling Settings", "customer_group"),
-			"round_order_totals": not cint(frappe.db.get_single_value("Global Defaults", "disable_rounded_total")),
+			"round_order_totals": not cint(
+				frappe.db.get_single_value("Global Defaults", "disable_rounded_total")
+			),
 			"company": settings.company,
 			"currency": settings.currency,
 			# what ERPNext's company is set up with: its accounts' currency and its country
@@ -281,16 +283,22 @@ def get_settings() -> dict:
 			),
 			"price_lists": frappe.get_all("Price List", filters={"selling": 1}, pluck="name"),
 			"uoms": frappe.get_all("UOM", filters={"enabled": 1}, pluck="name", order_by="name"),
-			"service_items": frappe.get_all(
-				"Item",
-				filters={"is_stock_item": 0, "is_sales_item": 1, "disabled": 0, "has_variants": 0},
-				pluck="name",
-			),
+			"service_items": [
+				{"label": item.item_name or item.name, "value": item.name, "description": item.name}
+				for item in frappe.get_all(
+					"Item",
+					filters={"is_stock_item": 0, "is_sales_item": 1, "disabled": 0, "has_variants": 0},
+					fields=["name", "item_name"],
+					order_by="item_name",
+				)
+			],
 			"terms_records": frappe.get_all(
 				"Terms and Conditions", filters={"selling": 1, "disabled": 0}, pluck="name"
 			),
 			"customer_groups": frappe.get_all("Customer Group", filters={"is_group": 0}, pluck="name"),
-			"bank_accounts": [{field: row.get(field) for field in BANK_ACCOUNT_FIELDS} for row in settings.bank_accounts],
+			"bank_accounts": [
+				{field: row.get(field) for field in BANK_ACCOUNT_FIELDS} for row in settings.bank_accounts
+			],
 			"company_bank_accounts": company_bank_accounts(settings.company),
 			"expense_accounts": frappe.get_all(
 				"Account",
@@ -298,6 +306,15 @@ def get_settings() -> dict:
 				pluck="name",
 			),
 			"fulfillment_providers": fulfillment_providers(),
+			"delivery_services": delivery_names(("label", "carrier", "service")),
+			"order_series": [
+				series
+				for series in (frappe.get_meta("Sales Order").get_field("naming_series").options or "").split(
+					"\n"
+				)
+				if series
+			],
+			"site_pages": site_pages(),
 			"warehouses": [
 				{"value": row.name, "label": row.warehouse_name or row.name}
 				for row in frappe.get_all(
@@ -355,6 +372,55 @@ def company_bank_accounts(company: str) -> list[dict]:
 			}
 		)
 	return accounts
+
+
+def delivery_names(keys: tuple[str, ...]) -> list[str]:
+	"""Names of the deliveries the store has offered and sent (a shipping option's label, carrier
+	and service), from recent orders and shipments."""
+	names = []
+	for value in frappe.get_all(
+		"Sales Order",
+		filters={"shop_shipping_option": ["like", "{%"]},
+		pluck="shop_shipping_option",
+		order_by="creation desc",
+		limit=500,
+	):
+		option = frappe.parse_json(value) or {}
+		names += [option.get(key) for key in keys]
+	if "carrier" in keys:
+		names += frappe.get_all(
+			"Shop Fulfillment", filters={"carrier": ["is", "set"]}, pluck="carrier", limit=500
+		)
+		names += frappe.get_all("Shipment", filters={"carrier": ["is", "set"]}, pluck="carrier", limit=500)
+	if "service" in keys:
+		names += frappe.get_all(
+			"Shipment", filters={"carrier_service": ["is", "set"]}, pluck="carrier_service", limit=500
+		)
+	return sorted({str(name).strip() for name in names if name and str(name).strip()}, key=str.lower)
+
+
+def site_pages() -> list[dict]:
+	"""The site's published pages, to link to."""
+	pages = frappe.get_all(
+		"Builder Page",
+		filters={"published": 1, "is_template": 0, "dynamic_route": 0},
+		fields=["name", "page_title as title", "route"],
+	)
+	store_pages = {row.page for row in frappe.get_cached_doc("Shop Settings").theme_pages}
+	pages = [page for page in pages if page.name not in store_pages]
+	pages += frappe.get_all("Web Page", filters={"published": 1}, fields=["title", "route"])
+	return sorted(
+		(
+			{
+				"label": page.title or page.route,
+				"value": "/" + page.route.strip("/"),
+				"description": "/" + page.route.strip("/"),
+			}
+			for page in pages
+			if page.route
+		),
+		key=lambda page: page["label"].lower(),
+	)
 
 
 def fulfillment_providers() -> list[dict]:

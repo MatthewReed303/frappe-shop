@@ -29,10 +29,10 @@
 			}"
 		>
 			<div class="space-y-4">
-				<FormControl
+				<UiPicker
 					v-model="form.payment_terms"
-					type="select"
 					label="Payment terms"
+					description="When the customer's invoices are due, e.g. 20th of the following month."
 					:options="[{ label: 'None', value: '' }, ...termsOptions]"
 				/>
 				<Switch v-model="form.allow_on_account" label="Pay on account at the store" class="!w-auto" />
@@ -48,6 +48,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { Button, Dialog, FormControl, Switch, call, createResource, dialog, toast } from 'frappe-ui'
+
+import UiPicker from '@/components/UiPicker.vue'
 
 interface TradeStatus {
 	enabled: boolean

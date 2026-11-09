@@ -87,10 +87,10 @@
 								They're emailed when it's done, with a link to sign in.
 							</p>
 							<div class="mt-4 space-y-4">
-								<FormControl
+								<UiPicker
 									v-model="form.payment_terms"
-									type="select"
 									label="Payment terms"
+									description="When the customer's invoices are due, e.g. 20th of the following month."
 									:options="[{ label: 'None', value: '' }, ...termsOptions]"
 								/>
 								<Switch
@@ -167,6 +167,7 @@ import { Button, Dialog, FormControl, Spinner, Switch, call, createResource, toa
 import { useRouter } from 'vue-router'
 
 import UiPageHeader from '@/components/UiPageHeader.vue'
+import UiPicker from '@/components/UiPicker.vue'
 import UiStatusBadge from '@/components/UiStatusBadge.vue'
 import { formatDate, formatDateTime } from '@/utils/format'
 

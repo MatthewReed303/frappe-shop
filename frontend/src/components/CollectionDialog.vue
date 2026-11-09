@@ -13,16 +13,14 @@
 			</div>
 			<FormControl v-model="form.description" type="textarea" :rows="3" label="Description" />
 			<CatalogImageInput v-model="form.image" label="Image" />
-			<FormControl
+			<UiPicker
 				v-model="form.parent_collection"
-				type="select"
 				label="Inside"
 				:options="parentOptions"
 				description="Show this collection inside another, e.g. Temperature sensors inside Sensors"
 			/>
-			<FormControl
+			<UiPicker
 				v-model="form.item_group"
-				type="select"
 				label="Include Item Group"
 				:options="itemGroupOptions"
 				description="Its products, and those of the groups inside it, are in the collection without adding them one by one."
@@ -44,6 +42,7 @@ import { computed, reactive, watch } from 'vue'
 import { Dialog, FormControl, Switch, call, createResource, toast } from 'frappe-ui'
 
 import CatalogImageInput from '@/components/CatalogImageInput.vue'
+import UiPicker from '@/components/UiPicker.vue'
 
 export interface CollectionRow {
 	name: string

@@ -112,7 +112,7 @@
 		>
 			<div class="space-y-4">
 				<FormControl v-model="form.item_group_name" label="Name" required />
-				<FormControl v-model="form.parent" type="select" label="Inside" :options="parentOptions" />
+				<UiPicker v-model="form.parent" label="Inside" description="The Item Group this one sits in." :options="parentOptions" />
 				<p v-if="form.name" class="text-p-sm text-ink-gray-5">
 					Renaming keeps the products, rates and records that use it.
 				</p>
@@ -126,7 +126,7 @@
 				actions: [{ label: 'Move', variant: 'solid', loading: saving, disabled: !moveTo, onClick: moveProduct }],
 			}"
 		>
-			<FormControl v-model="moveTo" type="select" label="To" :options="groupOptions" />
+			<UiPicker v-model="moveTo" label="To" description="The Item Group the chosen products move to." :options="groupOptions" />
 		</Dialog>
 
 		<Dialog
@@ -183,6 +183,7 @@ import { useRoute, useRouter } from 'vue-router'
 import LucidePlus from '~icons/lucide/plus'
 
 import UiPageHeader from '@/components/UiPageHeader.vue'
+import UiPicker from '@/components/UiPicker.vue'
 import UiStatusBadge from '@/components/UiStatusBadge.vue'
 
 interface ItemGroup {

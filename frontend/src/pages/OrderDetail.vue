@@ -149,12 +149,12 @@
 							: `Record a refund of ${refund.due?.formatted_amount} paid from your bank account. Pay the customer from that account yourself.`
 					}}
 				</p>
-				<FormControl
+				<UiPicker
 					v-if="refund.how === 'bank'"
 					v-model="refund.bank_account"
 					class="mt-4"
-					type="select"
 					label="Paid from"
+					description="Your bank account the refund is paid from."
 					:options="bankAccountOptions"
 				/>
 			</template>
@@ -164,10 +164,10 @@
 			<template #body-content>
 				<p class="text-p-base text-ink-gray-7">{{ pending?.message }}</p>
 				<div v-if="pending?.method === 'shop.api.orders.mark_paid'" class="mt-4 flex flex-col gap-3">
-					<FormControl
+					<UiPicker
 						v-model="payment.bank_account"
-						type="select"
 						label="Paid into"
+						description="Your bank account the payment arrived in."
 						:options="bankAccountOptions"
 					/>
 					<FormControl
@@ -189,6 +189,7 @@ import { Dialog, FormControl, Spinner, call, createResource, toast } from 'frapp
 import FulfillmentPanel from '@/components/FulfillmentPanel.vue'
 import ReturnsPanel from '@/components/ReturnsPanel.vue'
 import UiPageHeader from '@/components/UiPageHeader.vue'
+import UiPicker from '@/components/UiPicker.vue'
 import UiStatusBadge from '@/components/UiStatusBadge.vue'
 import { formatDateTime } from '@/utils/format'
 
