@@ -153,15 +153,27 @@ def trade_status(customer: str) -> dict:
 	}
 
 
+WAITING = {
+	"utm_source": APPLICATION_SOURCE,
+	"status": ["!=", "Converted"],
+	"qualification_status": ["!=", "Unqualified"],
+}
+
+
 def waiting_applications() -> int | None:
 	"""Trade applications from the store not answered yet; None when the store has no trade accounts."""
 	if not trade_group():
 		return None
-	return frappe.db.count(
-		"Lead",
+	return frappe.db.count("Lead", WAITING)
+
+
+def waiting_applications_url() -> str:
+	"""Desk's Lead list showing the applications waiting_applications counts."""
+	from urllib.parse import urlencode
+
+	return "/app/lead?" + urlencode(
 		{
-			"utm_source": APPLICATION_SOURCE,
-			"status": ["!=", "Converted"],
-			"qualification_status": ["!=", "Unqualified"],
-		},
+			key: value if isinstance(value, str) else frappe.as_json(value, indent=None)
+			for key, value in WAITING.items()
+		}
 	)

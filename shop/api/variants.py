@@ -94,6 +94,7 @@ def get_variants(product: str) -> dict:
 		"has_variants": True,
 		"options": product_options(doc),
 		"default_variant": doc.default_variant,
+		"track_stock": bool(frappe.get_cached_value("Item", doc.item, "is_stock_item")),
 		"variants": [
 			{
 				"item_code": item.name,
@@ -231,7 +232,7 @@ def generate(product: str, price: float | None = None, opening_stock: float = 0)
 		if template_price:
 			set_price(variant.name, template_price)
 		if flt(opening_stock) > 0 and variant.is_stock_item:
-			receive_stock(variant.name, flt(opening_stock), template_price or 1, settings)
+			receive_stock(variant.name, flt(opening_stock), settings)
 	return get_variants(product)
 
 

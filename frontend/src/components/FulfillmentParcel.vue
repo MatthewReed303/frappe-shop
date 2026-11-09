@@ -281,20 +281,8 @@ const timeline = computed(() => {
 		{ label: 'Delivered', on: doc.delivered_on },
 	]
 		.filter((event) => event.on)
-		.map((event) => ({ label: event.label, on: formatStamp(event.on as string) }))
+		.map((event) => ({ label: event.label, on: event.on as string }))
 })
-
-function formatStamp(value: string) {
-	const parsed = new Date(value.replace(' ', 'T'))
-	if (Number.isNaN(parsed.getTime())) return value
-	return parsed.toLocaleString('en-GB', {
-		day: 'numeric',
-		month: 'short',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-	})
-}
 
 async function run(
 	key: string,

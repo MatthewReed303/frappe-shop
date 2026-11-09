@@ -11,7 +11,7 @@ export interface OnboardingState {
 	onboarding_complete: boolean
 	store_name: string | null
 	store_logo: string | null
-	has_demo_data: boolean
+	has_sample_products: boolean
 	enable_cod: 0 | 1
 	payment_gateways: string[]
 	gateway_accounts: GatewayAccount[]

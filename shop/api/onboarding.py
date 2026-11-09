@@ -14,7 +14,6 @@ def get_state() -> dict:
 		"store_logo": settings.store_logo,
 		"active_theme": settings.active_theme,
 		"themes": themes.list_themes(),
-		"has_demo_data": bool(frappe.db.count("Shop Product")),
 		"has_sample_products": has_sample_products(),
 		"enable_cod": settings.enable_cod,
 		"payment_gateways": [row.payment_gateway for row in settings.payment_gateways],

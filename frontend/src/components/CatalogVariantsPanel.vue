@@ -92,7 +92,7 @@
 								<th class="w-12 px-3 py-1.5 font-normal">Image</th>
 								<th class="px-3 py-1.5 font-normal">Variant</th>
 								<th class="px-3 py-1.5 font-normal">Price</th>
-								<th class="px-3 py-1.5 font-normal">Stock</th>
+								<th v-if="data.track_stock" class="px-3 py-1.5 font-normal">Stock</th>
 								<th class="whitespace-nowrap px-3 py-1.5 text-center font-normal">
 									<Tooltip text="The variant the product page opens on">
 										<span>Default</span>
@@ -138,7 +138,7 @@
 										@blur="savePrice(variant)"
 									/>
 								</td>
-								<td class="px-3 py-1.5">
+								<td v-if="data.track_stock" class="px-3 py-1.5">
 									<div class="flex items-center gap-1.5">
 										<FormControl
 											:model-value="stockDrafts[variant.item_code] ?? variant.stock"
@@ -229,6 +229,7 @@ interface VariantsPayload {
 	variants: Variant[]
 	missing_combinations?: number
 	default_variant?: string | null
+	track_stock?: boolean
 	can_add_options?: boolean
 }
 

@@ -211,7 +211,7 @@ const attention = computed(() => {
 					{
 						label: 'trade applications waiting',
 						count: data.trade_applications,
-						href: '/app/lead?utm_source=Store%20Trade%20Application&status=Open',
+						href: data.trade_applications_url,
 						icon: LucideBriefcase,
 					},
 				]

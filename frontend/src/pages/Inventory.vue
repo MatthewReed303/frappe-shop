@@ -24,6 +24,7 @@
 					v-if="(inventory.data?.warehouses || []).length > 1"
 					v-model="warehouse"
 					type="select"
+					aria-label="Warehouse"
 					:options="inventory.data?.warehouses || []"
 					class="w-56"
 				/>
@@ -165,7 +166,9 @@ watch(
 	},
 )
 
-watch([search, lowOnly, warehouse], () => {
+watch([search, lowOnly, warehouse], ([, , picked], [, , before]) => {
+	// the picker taking up the warehouse already shown isn't a change
+	if (picked !== before && !before && picked === inventory.data?.warehouse) return
 	start.value = 0
 	inventory.reload()
 })

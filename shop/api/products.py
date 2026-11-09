@@ -279,7 +279,7 @@ def create_product(
 	).insert(ignore_permissions=True)
 	set_price(item_code, flt(price))
 	if track_stock and flt(opening_stock) > 0:
-		receive_stock(item_code, flt(opening_stock), flt(price), settings)
+		receive_stock(item_code, flt(opening_stock), settings)
 	return save_product(
 		{
 			"item": item_code,
@@ -331,7 +331,7 @@ def get_item_groups() -> dict:
 	}
 
 
-def receive_stock(item_code: str, qty: float, rate: float, settings) -> None:
+def receive_stock(item_code: str, qty: float, settings) -> None:
 	from shop.api.inventory import valuation_rate
 	from shop.storefront.stock import primary_warehouse
 
