@@ -42,6 +42,8 @@
 						</div>
 					</div>
 
+					<CustomerPeople :customer="doc.name" :people="doc.people || []" />
+
 					<TradeAccountCard
 						v-if="doc.trade?.enabled"
 						:customer="doc.name"
@@ -110,6 +112,7 @@ import { useRouter } from 'vue-router'
 import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import LucideStar from '~icons/lucide/star'
 
+import CustomerPeople from '@/components/CustomerPeople.vue'
 import TradeAccountCard from '@/components/TradeAccountCard.vue'
 import UiDataTable from '@/components/UiDataTable.vue'
 import UiEmptyState from '@/components/UiEmptyState.vue'

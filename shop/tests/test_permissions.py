@@ -3,7 +3,7 @@
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from shop.api import orders, settings, trade
+from shop.api import customers, orders, settings, trade
 from shop.storefront import accounts
 from shop.tests.utils import fresh_request
 
@@ -43,6 +43,10 @@ class TestPermissions(IntegrationTestCase):
 			lambda: settings.save_shipping_surcharges([]),
 			lambda: accounts.approve_trade(lead=self.lead.name),
 			lambda: accounts.decline_trade(lead=self.lead.name),
+			lambda: customers.add_person(customer="_Test", full_name="Someone", email="someone@example.com"),
+			lambda: customers.remove_person(customer="_Test", user=SHOPPER),
+			lambda: customers.send_password_reset(customer="_Test", user=SHOPPER),
+			lambda: customers.set_sign_in(customer="_Test", user=SHOPPER, enabled=0),
 		]
 
 	def test_shoppers_and_guests_cant_run_staff_actions(self):

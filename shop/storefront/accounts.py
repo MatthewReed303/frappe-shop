@@ -70,9 +70,9 @@ def register(full_name: str, email: str, accept_terms: int = 0) -> dict:
 	return {"message": _("Check your email for a link to set your password.")}
 
 
-def create_user(email: str, full_name: str, accepted: tuple | None = None) -> str:
+def create_user(email: str, full_name: str, accepted: tuple | None = None, record_terms: bool = True) -> str:
 	"""A Website User for a store customer; `accepted` is the (terms version, time) they accepted,
-	now when not given."""
+	now when not given. Staff adding a person record no acceptance for them (record_terms)."""
 	from shop.storefront import terms
 
 	first, _space, last = full_name.partition(" ")
@@ -86,7 +86,7 @@ def create_user(email: str, full_name: str, accepted: tuple | None = None) -> st
 			"send_welcome_email": 1,
 		}
 	)
-	if user.meta.has_field("shop_terms_version") and (accepted or terms.required()):
+	if user.meta.has_field("shop_terms_version") and (accepted or (record_terms and terms.required())):
 		user.shop_terms_version, user.shop_terms_accepted_on = accepted or (terms.version(), now_datetime())
 	user.flags.ignore_permissions = True
 	user.insert(ignore_permissions=True)
