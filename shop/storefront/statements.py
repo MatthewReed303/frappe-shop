@@ -57,11 +57,12 @@ def statement_pdf():
 	)
 
 	from shop.storefront.checkout import elevated
-	from shop.storefront.orders import session_customers
+	from shop.storefront.pricing import session_customer
 
-	customers = session_customers()
-	if not customers:
+	customer = session_customer()
+	if not customer:
 		raise frappe.PermissionError
+	customers = [customer]
 	company = frappe.get_cached_doc("Shop Settings").company
 	to_date = getdate(nowdate())
 	with elevated():

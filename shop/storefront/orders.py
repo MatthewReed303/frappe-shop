@@ -17,9 +17,13 @@ STATUS_LABELS = {
 
 @frappe.whitelist()
 def get_orders(start: int = 0, limit: int = 20) -> list[dict]:
-	customers = session_customers()
-	if not customers:
+	"""The orders of the customer the signed-in shopper buys for."""
+	from shop.storefront.pricing import session_customer
+
+	customer = session_customer()
+	if not customer:
 		return []
+	customers = [customer]
 	orders = frappe.get_all(
 		"Sales Order",
 		filters={"customer": ["in", customers], "docstatus": 1},

@@ -35,6 +35,8 @@ def store_css(refs, radius: str = "2px"):
 .stock-locations li {{ display:flex; justify-content:space-between; gap:12px; color:{ink}; }}
 .stock-locations li span:last-child {{ color:{ok}; }}
 .stock-locations li[data-stock-state="out"] span:last-child {{ color:{muted}; }}
+.buying-for {{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0 0 12px; font-size:14px; color:{ink}; }}
+.buying-for select {{ font:inherit; padding:6px 10px; border:1px solid {line}; border-radius:4px; background:transparent; color:{ink}; }}
 .shipping-note {{ margin:0; font-size:13px; color:{muted}; }}
 .currency-picker select {{ font: inherit; font-size:13px; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:{radius}; padding:5px 7px; cursor:pointer; }}
 .checkout-option {{ display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid {line}; border-radius:{radius}; cursor:pointer; width:100%; font-size:13px; }}

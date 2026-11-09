@@ -2,6 +2,8 @@
 list with ERPNext's pricing rules applied. format_amount is the store-currency amount for staff
 screens, display_amount what shoppers see (optionally with tax, or in another currency)."""
 
+from urllib.parse import unquote
+
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
@@ -311,8 +313,12 @@ def currency_picker_html() -> str:
 	)
 
 
+BUYING_FOR_COOKIE = "shop_buying_for"
+
+
 def session_customer() -> str | None:
-	"""The customer of the signed-in shopper (the first, when a login is linked to several)."""
+	"""The customer the signed-in shopper buys for: the one they chose, when their login is linked
+	to several and the choice is still theirs, else the first."""
 	user = shopper()
 	if user in ("Guest", None, "Administrator"):
 		return None
@@ -321,8 +327,55 @@ def session_customer() -> str | None:
 		from shop.storefront.orders import session_customers
 
 		customers = session_customers(user)
-		cache[user] = customers[0] if customers else None
+		request = getattr(frappe.local, "request", None)
+		chosen = unquote(request.cookies.get(BUYING_FOR_COOKIE) or "") if request else None
+		cache[user] = chosen if chosen in customers else (customers[0] if customers else None)
 	return cache[user]
+
+
+@frappe.whitelist(methods=["POST"])
+def set_buying_for(customer: str) -> str:
+	"""Choose which of the customers the signed-in login is linked to it buys for."""
+	from shop.storefront.orders import session_customers
+
+	if customer not in session_customers():
+		raise frappe.PermissionError(_("You can't buy for this account"))
+	frappe.local.cookie_manager.set_cookie(
+		BUYING_FOR_COOKIE, customer, max_age=60 * 60 * 24 * 365, samesite="Lax", httponly=True
+	)
+	request_cache("shop_session_customer")[shopper()] = customer
+	return customer
+
+
+def buying_for_html() -> str:
+	"""Who the signed-in shopper buys for, with a <select> to change it when they can buy for more
+	than one customer; storefront.js saves the choice."""
+	from shop.storefront.orders import session_customers
+
+	customers = session_customers()
+	current = session_customer()
+	if not current:
+		return ""
+	esc = frappe.utils.escape_html
+	names = {
+		row.name: row.customer_name
+		for row in frappe.get_all(
+			"Customer", filters={"name": ["in", customers]}, fields=["name", "customer_name"]
+		)
+	}
+	label = esc(_("Buying for"))
+	if len(customers) < 2:
+		if frappe.db.get_value("Customer", current, "customer_type") != "Company":
+			return ""
+		return f'<p class="buying-for">{label} <strong>{esc(names.get(current) or current)}</strong></p>'
+	options = "".join(
+		f'<option value="{esc(name)}"{" selected" if name == current else ""}>{esc(names.get(name) or name)}</option>'
+		for name in customers
+	)
+	return (
+		f'<label class="buying-for"><span>{label}</span> '
+		f'<select data-shop="buying-for" aria-label="{label}">{options}</select></label>'
+	)
 
 
 def shopper() -> str | None:

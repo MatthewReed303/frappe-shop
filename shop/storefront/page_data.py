@@ -302,13 +302,13 @@ def order_confirmation() -> dict:
 
 @frappe.whitelist()
 def account_orders() -> dict:
-	from shop.storefront import accounts
+	from shop.storefront import accounts, pricing
 
-	customers = orders.session_customers()
+	customer = pricing.session_customer()
 	return {
 		"store": store_details(),
 		"orders": orders.get_orders(),
-		"account_html": account_html(customers),
+		"account_html": pricing.buying_for_html() + account_html([customer] if customer else []),
 		"trade": accounts.trade_status(),
 	}
 

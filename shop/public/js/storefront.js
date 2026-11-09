@@ -1018,8 +1018,25 @@
 		);
 	}
 
+	function initBuyingFor() {
+		// a login linked to several customers picks which one it buys for; prices and terms follow
+		document.addEventListener("change", async (event) => {
+			const select = event.target.closest('select[data-shop="buying-for"]');
+			if (!select) return;
+			select.disabled = true;
+			try {
+				await call("shop.storefront.pricing.set_buying_for", { customer: select.value });
+				window.location.reload();
+			} catch (error) {
+				select.disabled = false;
+				showError(error.message);
+			}
+		});
+	}
+
 	function init() {
 		initCurrencyPicker();
+		initBuyingFor();
 		initGallery();
 		initVariantPicker();
 		refreshCartCount();

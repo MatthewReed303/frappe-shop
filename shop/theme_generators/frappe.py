@@ -2937,6 +2937,14 @@ def checkout_blocks(refs):
 		styles={"display": "grid", "gap": "10px", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "width": "100%"},
 		children=[
 			block("p", text="Contact", styles={"fontSize": "14px", "fontWeight": "600", "gridColumn": "span 2", "height": "fit-content", "width": "fit-content"}),
+			block(
+				"div",
+				name="Buying For",
+				attrs={"data-shop": "buying-for-note"},
+				visibilityCondition={"key": "buying_for_html", "comesFrom": "dataScript"},
+				styles={"gridColumn": "span 2", "width": "100%"},
+				dynamicValues=[dv("buying_for_html", "innerHTML")],
+			),
 			input_block(refs, "email", "Email address", "email", required=True, prefill=True),
 			form_section_label(refs, "Shipping address"),
 			block(

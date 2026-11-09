@@ -28,6 +28,7 @@ def get_checkout_summary() -> dict:
 		"bank_currency_note": bank_currency_note(),
 		"quotes_enabled": "true" if settings.get("allow_quote_requests") else None,
 		"waiting_order": None if cart and cart.items else waiting_order(),
+		"buying_for_html": pricing.buying_for_html() or None,
 	}
 
 
@@ -128,11 +129,10 @@ def checkout_prefill() -> dict:
 		return prefill
 	prefill["email"] = user
 	prefill["full_name"] = frappe.db.get_value("User", user, "full_name") or ""
-	from shop.storefront.orders import session_customers
-
-	customers = session_customers()
-	if not customers:
+	customer = pricing.session_customer()
+	if not customer:
 		return prefill
+	customers = [customer]
 	prefill["phone"] = contact_phone(user) or ""
 	address = last_shipping_address(customers)
 	for field, value in (address or {}).items():
@@ -157,14 +157,14 @@ def saved_addresses_exist() -> bool:
 
 
 def saved_addresses() -> list[dict]:
-	"""Every address this customer has shipped to, newest first, plus a blank entry."""
-	from shop.storefront.orders import session_customers
-
+	"""Every address the customer the shopper buys for has shipped to, newest first, plus a blank
+	entry."""
 	if frappe.session.user in ("Guest", None, "Administrator"):
 		return []
-	customers = session_customers()
-	if not customers:
+	customer = pricing.session_customer()
+	if not customer:
 		return []
+	customers = [customer]
 	links = frappe.get_all(
 		"Dynamic Link",
 		filters={"parenttype": "Address", "link_doctype": "Customer", "link_name": ["in", customers]},
