@@ -275,18 +275,37 @@
 		);
 	}
 
+	// whether picking this value, with the other options as they are, gives a variant that can be bought
+	function optionAvailable(attribute, value) {
+		const wanted = Object.assign({}, state.selection, { [attribute]: value });
+		return state.product.variants.some(
+			(variant) =>
+				variant.purchasable &&
+				Object.entries(variant.attributes).every(([name, picked]) => wanted[name] === picked)
+		);
+	}
+
 	function syncVariantUI() {
 		document.querySelectorAll('[data-shop="variant-option"]').forEach((button) => {
 			const selected = state.selection[button.dataset.attribute] === button.dataset.value;
 			button.dataset.selected = selected ? "true" : "false";
 			button.setAttribute("aria-pressed", selected ? "true" : "false");
+			button.dataset.available = optionAvailable(button.dataset.attribute, button.dataset.value) ? "true" : "false";
 		});
 		const variant = selectedVariant();
-		const buttons = document.querySelectorAll('[data-shop="add-to-cart"], [data-shop="buy-now"]');
+		const prices = document.querySelectorAll('[data-shop="pdp-price"], [data-shop="pdp-price-note"]');
 		if (!variant) {
-			buttons.forEach((button) => (button.disabled = true));
+			// a combination the store doesn't sell: nothing of another variant stays on the page
+			syncAvailability({
+				purchasable: false,
+				stock_status: state.product.unavailable_label,
+				stock_state: "unavailable",
+			});
+			prices.forEach((price) => (price.hidden = true));
+			syncSavings({});
 			return;
 		}
+		prices.forEach((price) => (price.hidden = false));
 		syncAvailability(variant);
 		if (variant.formatted_price) {
 			document.querySelectorAll('[data-shop="pdp-price"]').forEach((price) => {

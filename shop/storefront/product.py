@@ -30,7 +30,7 @@ def get_product(slug: str) -> dict:
 		"rating": reviews.summary(doc.name),
 	}
 	if doc.has_variants:
-		payload.update(variant_details(doc.item, doc.compare_at_price))
+		payload.update(variant_details(doc.item, doc.compare_at_price, doc))
 	else:
 		price = pricing.get_price(doc.item) or {}
 		if price.get("retail"):  # a trade or customer price: show the store price struck through
@@ -64,12 +64,26 @@ def product_collections(doc) -> list[dict]:
 	)
 
 
-def variant_details(template: str, compare_at: float | None = None) -> dict:
-	variants = load_variants(template, compare_at)
+def variant_details(template: str, compare_at: float | None = None, doc=None) -> dict:
+	"""A product's variants in the order of its option values, and the one its page opens on: the
+	product's default variant when it can be bought, else the first that can."""
+	options = option_order(template, doc)
+	variants = sorted(load_variants(template, compare_at), key=lambda v: variant_position(v, options))
 	rates = [v["price"] for v in variants if v["price"] is not None]
-	default = next((v for v in variants if v["purchasable"]), variants[0] if variants else None)
+	chosen = next((v for v in variants if doc and v["item_code"] == doc.get("default_variant")), None)
+	default = (
+		chosen
+		if chosen and chosen["purchasable"]
+		else next((v for v in variants if v["purchasable"]), variants[0] if variants else None)
+	)
 	return {
-		"attributes": attribute_options(template, variants),
+		"attributes": [
+			{
+				"attribute": attribute,
+				"values": [v for v in values if any(x["attributes"].get(attribute) == v for x in variants)],
+			}
+			for attribute, values in options
+		],
 		"variants": variants,
 		"price": min(rates) if rates else None,
 		"formatted_price": pricing.display_price(min(rates), pricing.item_tax_rate(template)) if rates else None,
@@ -83,7 +97,25 @@ def variant_details(template: str, compare_at: float | None = None) -> dict:
 		"stock_locations_html": default.get("stock_locations_html") if default else None,
 		"shipping_note": default.get("shipping_note") if default else None,
 		"default_item_code": default["item_code"] if default else None,
+		"unavailable_label": _("Not available"),
 	}
+
+
+def option_order(template: str, doc=None) -> list[tuple[str, list[str]]]:
+	"""The product's options and their values in the order the store set them."""
+	if doc:
+		from shop.api.variants import product_options
+
+		return [(row["attribute"], row["values"]) for row in product_options(doc)]
+	return [(row["attribute"], row["values"]) for row in attribute_options(template, [])]
+
+
+def variant_position(variant: dict, options: list[tuple[str, list[str]]]) -> tuple:
+	position = []
+	for attribute, values in options:
+		value = variant["attributes"].get(attribute)
+		position.append(values.index(value) if value in values else len(values))
+	return tuple(position)
 
 
 def load_variants(template: str, compare_at: float | None = None) -> list[dict]:
@@ -143,7 +175,7 @@ def attribute_options(template: str, variants: list[dict]) -> list[dict]:
 		values = ordered_values(attribute)
 		used = {v["attributes"].get(attribute) for v in variants}
 		options.append(
-			{"attribute": attribute, "values": [v for v in values if v in used]}
+			{"attribute": attribute, "values": [v for v in values if v in used or not variants]}
 		)
 	return options
 

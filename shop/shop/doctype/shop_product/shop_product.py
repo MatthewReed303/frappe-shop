@@ -14,3 +14,8 @@ class ShopProduct(Document):
 	def validate(self):
 		if frappe.db.get_value("Item", self.item, "variant_of"):
 			frappe.throw(_("Publish the template item instead of an individual variant"))
+		if (
+			self.default_variant
+			and frappe.db.get_value("Item", self.default_variant, "variant_of") != self.item
+		):
+			frappe.throw(_("{0} is not a variant of this product").format(frappe.bold(self.default_variant)))

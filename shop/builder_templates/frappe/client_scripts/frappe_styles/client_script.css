@@ -4,6 +4,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 a, button { transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
 a:hover { opacity: 0.7; }
 :focus-visible { outline: 2px solid var(--43b5ae6c-cab5-4094-ab96-6170f2e6c33c, #18181B); outline-offset: 2px; }
+[data-shop="variant-option"][data-available="false"] { color: var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); text-decoration: line-through; }
 [data-shop="variant-option"][data-selected="true"] {
 	background: var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B);
 	color: var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF);

@@ -86,9 +86,14 @@ def get_variants(product: str) -> dict:
 	combos = {}
 	for row in attribute_rows:
 		combos.setdefault(row.parent, {})[row.attribute] = row.attribute_value
+	from shop.storefront.product import option_order, variant_position
+
+	options = option_order(doc.item, doc)
+	items.sort(key=lambda item: variant_position({"attributes": combos.get(item.name, {})}, options))
 	return {
 		"has_variants": True,
 		"options": product_options(doc),
+		"default_variant": doc.default_variant,
 		"variants": [
 			{
 				"item_code": item.name,
@@ -260,6 +265,16 @@ def missing_combinations(doc) -> list[dict]:
 		if tuple(sorted(combo.items())) not in existing:
 			combinations.append(combo)
 	return combinations
+
+
+@frappe.whitelist(methods=["POST"])
+def set_default_variant(product: str, item_code: str | None = None) -> dict:
+	"""The variant the product page opens on; none opens it on the first available one."""
+	only_managers()
+	doc = frappe.get_doc("Shop Product", product)
+	doc.default_variant = item_code or None
+	doc.save(ignore_permissions=True)
+	return get_variants(product)
 
 
 @frappe.whitelist(methods=["POST"])

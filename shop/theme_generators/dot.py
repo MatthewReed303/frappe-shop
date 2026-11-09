@@ -140,6 +140,7 @@ button:disabled {{ opacity: 0.4; cursor: not-allowed; }}
 input, textarea, select {{ font-family: {THEME.mono}, monospace; }}
 input::placeholder, textarea::placeholder {{ color: {refs["muted"]}; }}
 input[type="radio"] {{ accent-color: {refs["ink"]}; }}
+[data-shop="variant-option"][data-available="false"] {{ color: {refs["muted"]}; text-decoration: line-through; }}
 [data-shop="variant-option"][data-selected="true"] {{
 	background: {refs["ink"]};
 	color: {refs["paper"]};

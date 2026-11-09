@@ -137,6 +137,7 @@ button:disabled {{ opacity: 0.45; cursor: not-allowed; }}
 a, button {{ transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }}
 a:hover {{ opacity: 0.7; }}
 :focus-visible {{ outline: 2px solid {refs["accent"]}; outline-offset: 2px; }}
+[data-shop="variant-option"][data-available="false"] {{ color: {refs["muted"]}; text-decoration: line-through; }}
 [data-shop="variant-option"][data-selected="true"] {{
 	background: {refs["ink"]};
 	color: {refs["paper"]};

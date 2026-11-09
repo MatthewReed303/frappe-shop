@@ -93,6 +93,11 @@
 								<th class="px-3 py-1.5 font-normal">Variant</th>
 								<th class="px-3 py-1.5 font-normal">Price</th>
 								<th class="px-3 py-1.5 font-normal">Stock</th>
+								<th class="whitespace-nowrap px-3 py-1.5 text-center font-normal">
+									<Tooltip text="The variant the product page opens on">
+										<span>Default</span>
+									</Tooltip>
+								</th>
 								<th class="whitespace-nowrap px-3 py-1.5 text-right font-normal">Available</th>
 							</tr>
 						</thead>
@@ -152,6 +157,16 @@
 										</Button>
 									</div>
 								</td>
+								<td class="px-3 py-1.5 text-center">
+									<input
+										type="radio"
+										name="default-variant"
+										:aria-label="`Open the product page on ${variantLabel(variant)}`"
+										:checked="data.default_variant === variant.item_code"
+										:disabled="!!variant.disabled || savingDefault"
+										@change="setDefault(variant.item_code)"
+									/>
+								</td>
 								<td class="px-3 py-1.5 text-right">
 									<Switch
 										:model-value="!variant.disabled"
@@ -163,6 +178,18 @@
 						</tbody>
 					</table>
 				</div>
+				<p class="mt-2 text-p-sm text-ink-gray-5">
+					<template v-if="data.default_variant">
+						The product page opens on the default variant while it can be bought.
+						<button type="button" class="underline hover:text-ink-gray-8" @click="setDefault(null)">
+							Open on the first available instead
+						</button>
+					</template>
+					<template v-else>
+						The product page opens on the first variant that can be bought, in the order of the option
+						values. Pick a default to choose another.
+					</template>
+				</p>
 
 				<CatalogVariantImageDialog
 					v-model="imageDialog"
@@ -201,6 +228,7 @@ interface VariantsPayload {
 	options: ProductOption[]
 	variants: Variant[]
 	missing_combinations?: number
+	default_variant?: string | null
 	can_add_options?: boolean
 }
 
@@ -213,6 +241,7 @@ const error = ref(false)
 const editing = ref(false)
 const saving = ref(false)
 const generating = ref(false)
+const savingDefault = ref(false)
 const savingCode = ref('')
 const draftOptions = ref<ProductOption[]>([])
 const imageDialog = ref(false)
@@ -347,6 +376,19 @@ async function setImage(variant: Variant, image: string) {
 		image ? 'Variant image updated' : 'Variant image removed',
 		() => (variant.image = previous),
 	)
+}
+
+async function setDefault(itemCode: string | null) {
+	savingDefault.value = true
+	try {
+		apply(await call('shop.api.variants.set_default_variant', { product: props.product, item_code: itemCode }))
+		toast.success(itemCode ? 'Default variant set' : 'The first available variant is shown first')
+	} catch (err) {
+		toast.error('Could not set the default variant')
+		await load()
+	} finally {
+		savingDefault.value = false
+	}
 }
 
 async function setAvailability(variant: Variant, available: boolean) {

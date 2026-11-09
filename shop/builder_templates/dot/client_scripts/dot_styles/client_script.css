@@ -5,6 +5,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 input, textarea, select { font-family: DM Mono, monospace; }
 input::placeholder, textarea::placeholder { color: var(--e1b35a3c-0189-43b5-9e2c-e295cc81f525, #8A8A8F); }
 input[type="radio"] { accent-color: var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); }
+[data-shop="variant-option"][data-available="false"] { color: var(--e1b35a3c-0189-43b5-9e2c-e295cc81f525, #8A8A8F); text-decoration: line-through; }
 [data-shop="variant-option"][data-selected="true"] {
 	background: var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C);
 	color: var(--14e519f0-b9a6-4acd-ae4a-f8e5664c13fa, #FFFFFF);

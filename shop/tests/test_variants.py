@@ -74,3 +74,61 @@ class TestVariants(IntegrationTestCase):
 		self.assertFalse(payload["can_add_options"])
 		with self.assertRaises(frappe.ValidationError):
 			variants.set_options(simple["name"], OPTIONS)
+
+	# --- what the product page shows ------------------------------------------
+
+	def page(self, product):
+		from shop.storefront.product import get_product
+
+		frappe.clear_document_cache("Shop Product", product)
+		return get_product(frappe.db.get_value("Shop Product", product, "slug"))
+
+	def code(self, result, **attributes):
+		return next(v["item_code"] for v in result["variants"] if v["attributes"] == attributes)
+
+	def test_variants_follow_the_order_of_the_option_values(self):
+		result = self.create(name="Ordered Tee")
+		order = [v["attributes"] for v in result["variants"]]
+		self.assertEqual(
+			order,
+			[
+				{"Size": "Small", "Colour": "Black"},
+				{"Size": "Small", "Colour": "White"},
+				{"Size": "Medium", "Colour": "Black"},
+				{"Size": "Medium", "Colour": "White"},
+			],
+		)
+		page = self.page(result["product"])
+		self.assertEqual([v["attributes"] for v in page["variants"]], order)
+		self.assertEqual(page["attributes"], OPTIONS)
+		# the page opens on the first that can be bought
+		self.assertEqual(page["default_item_code"], self.code(result, Size="Small", Colour="Black"))
+
+	def test_the_page_opens_on_the_default_variant_while_it_can_be_bought(self):
+		result = self.create(name="Default Tee")
+		medium_white = self.code(result, Size="Medium", Colour="White")
+		saved = variants.set_default_variant(result["product"], medium_white)
+		self.assertEqual(saved["default_variant"], medium_white)
+		self.assertEqual(self.page(result["product"])["default_item_code"], medium_white)
+		# sold out: the first one that can be bought instead
+		variants.update_variant(medium_white, stock=0)
+		self.assertEqual(
+			self.page(result["product"])["default_item_code"], self.code(result, Size="Small", Colour="Black")
+		)
+		variants.set_default_variant(result["product"], None)
+		self.assertIsNone(frappe.db.get_value("Shop Product", result["product"], "default_variant"))
+
+	def test_a_switched_off_variant_is_not_on_the_page(self):
+		result = self.create(name="Hidden Tee")
+		small_black = self.code(result, Size="Small", Colour="Black")
+		variants.update_variant(small_black, disabled=True)
+		page = self.page(result["product"])
+		self.assertNotIn(small_black, [v["item_code"] for v in page["variants"]])
+		self.assertEqual(page["default_item_code"], self.code(result, Size="Small", Colour="White"))
+		self.assertEqual(page["unavailable_label"], "Not available")
+
+	def test_the_default_variant_must_be_the_products_own(self):
+		result = self.create(name="Own Tee")
+		other = self.create(name="Other Tee")
+		with self.assertRaises(frappe.ValidationError):
+			variants.set_default_variant(result["product"], other["variants"][0]["item_code"])
