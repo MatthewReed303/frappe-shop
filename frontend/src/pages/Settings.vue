@@ -919,6 +919,12 @@
 					description="Serve the storefront under a path of the site, such as /store. Empty serves it at the site's root."
 					class="max-w-sm"
 				/>
+				<Switch
+					v-model="storefront.customers_land_in_store"
+					label="Customers land in the store"
+					description="After signing in or setting a password, customers go to their store account, not the site's home page."
+					class="!w-auto"
+				/>
 				<template #footer>
 					<Button
 						variant="solid"
@@ -998,7 +1004,7 @@ const accounts = reactive({
 	allow_trade_applications: true,
 	staff_notification_emails: '',
 })
-const storefront = reactive({ route_prefix: '' })
+const storefront = reactive({ route_prefix: '', customers_land_in_store: true })
 type Option = { label: string; value: string }
 
 type RestrictionRow = {
@@ -1308,7 +1314,11 @@ function hydrate(doc: Record<string, any>, only = '') {
 		show_prices_with_tax: !!doc.show_prices_with_tax,
 		other_currencies_with_tax: !!doc.other_currencies_with_tax,
 	})
-	if (fill('storefront')) Object.assign(storefront, { route_prefix: doc.route_prefix || '' })
+	if (fill('storefront'))
+		Object.assign(storefront, {
+			route_prefix: doc.route_prefix || '',
+			customers_land_in_store: !!doc.customers_land_in_store,
+		})
 }
 
 type GatewayRow = {

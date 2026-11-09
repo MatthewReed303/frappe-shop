@@ -36,6 +36,7 @@ class ShopSettings(Document):
 		company: DF.Link | None
 		conversion_fee_item: DF.Link | None
 		currency: DF.Link | None
+		customers_land_in_store: DF.Check
 		delivery_days: DF.Int
 		duties_item: DF.Link | None
 		email_statements: DF.Check
@@ -216,9 +217,10 @@ class ShopSettings(Document):
 			from shop.install import enable_customer_signup
 
 			enable_customer_signup()
-		if not self.active_theme:
-			return
-		if get_prefix() != normalize_prefix(self.applied_route_prefix):
+		if self.active_theme and get_prefix() != normalize_prefix(self.applied_route_prefix):
 			from shop.themes import apply_route_prefix
 
 			apply_route_prefix()
+		from shop.storefront.accounts import sync_customer_home_page
+
+		sync_customer_home_page()

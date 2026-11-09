@@ -33,9 +33,16 @@ def setup():
 	sync_templates()
 	apply_default_theme()
 	apply_route_prefix()
+	sync_customer_home_page()
 	sync_agent()
 	enable_customer_signup()
 	warn_if_server_scripts_disabled()
+
+
+def sync_customer_home_page():
+	from shop.storefront.accounts import sync_customer_home_page as sync
+
+	sync()
 
 
 def enable_customer_signup():

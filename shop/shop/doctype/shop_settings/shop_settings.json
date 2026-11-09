@@ -11,6 +11,7 @@
   "active_theme",
   "route_prefix",
   "applied_route_prefix",
+  "customers_land_in_store",
   "onboarding_complete",
   "commerce_section",
   "company",
@@ -115,6 +116,13 @@
    "hidden": 1,
    "label": "Applied Route Prefix",
    "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "customers_land_in_store",
+   "fieldtype": "Check",
+   "label": "Customers Land in the Store",
+   "description": "After signing in or setting a password, customers go to their store account rather than the site's home page (the Customer role's home page)"
   },
   {
    "default": "0",
@@ -534,7 +542,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-10 09:00:00.000000",
+ "modified": "2026-11-09 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

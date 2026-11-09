@@ -12,6 +12,25 @@ from shop.routes import signin_url, store_url
 from shop.storefront import pricing
 
 
+ACCOUNT_PATH = "account/orders"
+
+
+def sync_customer_home_page() -> None:
+	"""Frappe sends a signed-in customer to their role's home page: the store account while the
+	store keeps customers in the store, else the site's own choice."""
+	if not frappe.db.exists("Role", "Customer"):
+		return
+	current = cstr(frappe.db.get_value("Role", "Customer", "home_page"))
+	store_home = store_url(ACCOUNT_PATH).lstrip("/")
+	if frappe.db.get_single_value("Shop Settings", "customers_land_in_store"):
+		wanted = store_home
+	else:
+		wanted = "" if current.endswith(ACCOUNT_PATH) else current
+	if wanted != current:
+		frappe.db.set_value("Role", "Customer", "home_page", wanted or None)
+		frappe.cache.delete_key("home_page")
+
+
 def check_terms(accept_terms) -> None:
 	from shop.storefront import terms
 

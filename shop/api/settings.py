@@ -46,6 +46,7 @@ EDITABLE = (
 	"delivery_days",
 	"weight_uom",
 	"route_prefix",
+	"customers_land_in_store",
 	"business_buyer_label",
 	"terms_checkbox_note",
 )
@@ -63,6 +64,7 @@ CHECKS = {
 	"email_statements",
 	"allow_quote_requests",
 	"allow_trade_applications",
+	"customers_land_in_store",
 }
 AMOUNTS = {
 	"flat_shipping_rate",
