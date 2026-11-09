@@ -377,7 +377,16 @@ def signin_page() -> dict:
 
 def return_path(path: str | None) -> str:
 	"""Where to go after signing in: a page on this site, else the account page."""
-	if path and path.startswith("/") and not path.startswith("//") and "\\" not in path:
+	from urllib.parse import urlsplit
+
+	if (
+		path
+		and path.startswith("/")
+		and path.isprintable()
+		and "\\" not in path
+		and not path.startswith("//")
+		and not urlsplit(path).netloc
+	):
 		return path
 	return store_url("account/orders")
 

@@ -27,7 +27,14 @@ class TestRouteHelpers(UnitTestCase):
 
 		self.assertEqual(signin_url("/store/cart"), store_url("account/signin") + "?redirect-to=/store/cart")
 		self.assertEqual(return_path("/store/product/mug"), "/store/product/mug")
-		for elsewhere in ("https://example.com", "//example.com", "/\\example.com", None):
+		for elsewhere in (
+			"https://example.com",
+			"//example.com",
+			"/\\example.com",
+			"/\t/example.com",
+			"/\n/example.com",
+			None,
+		):
 			self.assertEqual(return_path(elsewhere), store_url("account/orders"))
 
 	def test_store_url(self):
