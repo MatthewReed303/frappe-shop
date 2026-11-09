@@ -2,7 +2,6 @@
 and the customer accepts it online, which places and pays the order."""
 
 import json
-from types import SimpleNamespace
 
 import frappe
 from frappe import _
@@ -390,14 +389,16 @@ def accept_quote(
 			frappe.throw(_("This quote can no longer be accepted. Please contact us."))
 		if payment_method not in [m["method"] for m in summary["payment_methods"]]:
 			frappe.throw(_("This payment method is not available"))
-		# what was in stock when the quote was sent may have sold since, as at checkout
-		from shop.storefront.checkout import validate_stock
+		# what was in stock when the quote was sent may have sold since; a quote may hold items the
+		# store doesn't list online
+		from shop.storefront.checkout import lock_stock, validate_quantities
 
-		validate_stock(
-			SimpleNamespace(items=[row for row in quotation.items if not totals.is_charge_item(row.item_code)])
-		)
+		goods = [row for row in quotation.items if not totals.is_charge_item(row.item_code)]
+		lock_stock([row.item_code for row in goods])
+		validate_quantities([(row.item_code, flt(row.stock_qty) or flt(row.qty)) for row in goods])
 		order = make_order(quotation)
-		if flt(totals.order_total(order), 2) != flt(totals.order_total(quotation), 2):
+		precision = quotation.precision("grand_total")
+		if flt(totals.order_total(order), precision) != flt(totals.order_total(quotation), precision):
 			# ERPNext prices the order as prices are today; it is never placed for other than quoted
 			frappe.enqueue(
 				"shop.storefront.quotes.tell_staff_prices_changed",

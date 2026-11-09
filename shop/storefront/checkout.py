@@ -302,7 +302,9 @@ def validate_quote(order_quote, expected_total: float | None) -> None:
 			frappe.throw("<br>".join(order_quote.shipping_messages))
 		frappe.throw(_("We can't ship to this address. Check the address, or contact us."))
 	for item in order_quote.order.items:
-		if not flt(item.rate) and not item.get("is_free_item") and not totals.is_charge_item(item.item_code):
+		# an item with no price, not one a discount makes free
+		unpriced = not flt(item.rate) and not flt(item.price_list_rate)
+		if unpriced and not item.get("is_free_item") and not totals.is_charge_item(item.item_code):
 			frappe.throw(_("{0} can't be ordered right now. Remove it to continue.").format(item.item_name or item.item_code))
 	if expected_total is not None and abs(flt(expected_total) - order_quote.total) > 0.009:
 		frappe.throw(
@@ -406,6 +408,11 @@ def elevated():
 		frappe.local.form_dict = form_dict
 		frappe.local.cache = {}
 		frappe.local.role_permissions = {}
+		# what set_user cached for Administrator
+		frappe.local.user_perms = None
+		frappe.local.new_doc_templates = {}
+		frappe.local.jenv_restricted = None
+		frappe.local.jenv_unrestricted = None
 
 
 def validate_order(cart, customer: dict, payment_method: str, accept_terms: int = 0):
@@ -422,21 +429,34 @@ def validate_order(cart, customer: dict, payment_method: str, accept_terms: int 
 	validate_stock(cart)
 
 
-def validate_stock(cart):
-	# two checkouts at once can't both take the last one: the second waits for the first
-	codes = [row.item_code for row in cart.items]
-	parts = [part for code in codes for part, _qty in stock.bundle_parts(code)]
-	if codes:
+def lock_stock(item_codes: list[str]) -> None:
+	"""Two checkouts at once can't both take the last one: the second waits for the first."""
+	parts = [part for code in item_codes for part, _qty in stock.bundle_parts(code)]
+	if item_codes:
 		frappe.db.sql(
 			"select name from `tabBin` where item_code in %(codes)s and warehouse in %(warehouses)s for update",
-			{"codes": [*codes, *parts], "warehouses": stock.warehouses() or [""]},
+			{"codes": [*item_codes, *parts], "warehouses": stock.warehouses() or [""]},
 		)
+
+
+def validate_stock(cart):
+	lock_stock([row.item_code for row in cart.items])
 	for row in cart.items:
 		cart_module.validate_purchasable(row.item_code)
-		available = stock.available_qty(row.item_code)
-		if available is not None and available < flt(row.qty):
-			name = frappe.get_cached_value("Item", row.item_code, "item_name") or row.item_code
-			frappe.throw(_("Only {0} of {1} left in stock").format(int(max(available, 0)), name))
+	validate_quantities([(row.item_code, flt(row.qty)) for row in cart.items])
+
+
+def validate_quantities(lines: list[tuple[str, float]]) -> None:
+	"""The store has enough of every stock item the lines take together, a Product Bundle counted by
+	its parts."""
+	if frappe.get_cached_doc("Shop Settings").allow_out_of_stock:
+		return
+	need = stock.demand(lines)
+	available = stock.get_stock(list(need), sellable=True)
+	for part, qty in need.items():
+		if available.get(part, 0) < qty:
+			name = frappe.get_cached_value("Item", part, "item_name") or part
+			frappe.throw(_("Only {0} of {1} left in stock").format(int(max(available.get(part, 0), 0)), name))
 
 
 def get_or_create_customer(customer: dict) -> str:

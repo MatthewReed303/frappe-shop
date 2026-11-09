@@ -51,10 +51,11 @@ def create_request(
 def validate_item(order, item_code: str, qty: float):
 	from shop.storefront.totals import is_charge_item
 
-	row = next((item for item in order.items if item.item_code == item_code), None)
-	if not row or is_charge_item(item_code):
+	rows = [item for item in order.items if item.item_code == item_code]
+	if not rows or is_charge_item(item_code):
 		# shipping and fees aren't sent back
 		frappe.throw(_("That item is not part of this order"))
+	ordered = sum(flt(item.qty) for item in rows)
 	if flt(qty) <= 0:
 		frappe.throw(_("Choose how many to send back"))
 	returned = sum(
@@ -65,14 +66,14 @@ def validate_item(order, item_code: str, qty: float):
 			pluck="qty",
 		)
 	)
-	if flt(qty) > flt(row.qty) - returned:
+	if flt(qty) > ordered - returned:
 		if returned:
 			frappe.throw(
 				_("You ordered {0} of this item and {1} came back already").format(
-					int(row.qty), int(returned)
+					f"{ordered:g}", f"{returned:g}"
 				)
 			)
-		frappe.throw(_("You ordered only {0} of this item").format(int(row.qty)))
+		frappe.throw(_("You ordered only {0} of this item").format(f"{ordered:g}"))
 
 
 def window_days() -> int:
@@ -190,15 +191,26 @@ def status_changed(request) -> None:
 		)
 
 
-def return_lines(doc, request, qty: float | None = None) -> None:
+def return_lines(doc, request, qty: float | None = None, source_row: str | None = None) -> None:
 	"""Keep only the returned item on a return made from a Delivery Note or invoice, for the quantity
-	returned."""
-	rows = [row for row in doc.items if row.item_code == request.item_code]
+	returned, spread over the rows it is on (or only the source row named)."""
+	rows = [
+		row
+		for row in doc.items
+		if row.item_code == request.item_code and (not source_row or row.get("dn_detail") == source_row)
+	]
 	if not rows:
 		frappe.throw(_("{0} is not on {1}").format(request.item_name, doc.return_against))
-	row = rows[0]
-	row.qty = -min(flt(qty if qty is not None else request.qty), abs(flt(row.qty)))
-	doc.items = [row]
+	remaining = flt(qty if qty is not None else request.qty)
+	kept = []
+	for row in rows:
+		take = min(remaining, abs(flt(row.qty)))
+		if take <= 0:
+			continue
+		row.qty = -take
+		remaining -= take
+		kept.append(row)
+	doc.items = kept
 	if doc.doctype != "Sales Invoice":
 		return
 	# ERPNext's return copies the whole order's discount and charges: a returned item takes back
@@ -207,7 +219,7 @@ def return_lines(doc, request, qty: float | None = None) -> None:
 	if original.additional_discount_percentage:
 		doc.discount_amount = 0
 	elif flt(original.discount_amount) and flt(original.total):
-		share = abs(flt(row.qty) * flt(row.rate)) / flt(original.total)
+		share = sum(abs(flt(row.qty) * flt(row.rate)) for row in kept) / flt(original.total)
 		doc.discount_amount = -flt(abs(flt(original.discount_amount)) * share, doc.precision("discount_amount"))
 	doc.taxes = [tax for tax in doc.taxes if tax.charge_type != "Actual"]
 
@@ -228,14 +240,14 @@ def return_stock(request) -> None:
 			"docstatus": 1,
 			"qty": [">", 0],
 		},
-		fields=["parent", "qty", "returned_qty"],
+		fields=["name", "parent", "qty", "returned_qty"],
 		order_by="creation desc",
 	):
 		take = min(remaining, flt(line.qty) - flt(line.returned_qty))
 		if take <= 0:
 			continue
 		returned = make_sales_return(line.parent)
-		return_lines(returned, request, take)
+		return_lines(returned, request, take, source_row=line.name)
 		returned.flags.ignore_permissions = True
 		returned.insert(ignore_permissions=True)
 		returned.submit()

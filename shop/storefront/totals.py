@@ -385,7 +385,9 @@ def compute(
 	parcels = shipping_module.parcels(order)
 	groups = []
 	for index, parcel in enumerate(parcels or [None]):
-		options = shipping_module.get_options(cart, address, subtotal, refresh_shipping, parcel)
+		options = shipping_module.get_options(
+			cart, address, subtotal, refresh_shipping, parcel, first=index == 0
+		)
 		wanted = (
 			choice.get(parcel.key if parcel else "") if isinstance(choice, dict) else (choice if index == 0 else None)
 		)
@@ -527,21 +529,30 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 	order.coupon_code = cart.get("coupon_code")
 	from shop.storefront.stock import allocate
 
-	# each line is sent from the first of the store's warehouses that has it
-	for line in allocate([(row.item_code, flt(row.qty)) for row in cart.items]):
-		order.append(
+	lines = [(row.item_code, flt(row.qty)) for row in cart.items]
+	allocated = allocate(lines)
+	# each line is priced whole, so quantity breaks apply to all of it, then sent from the first
+	# of the store's warehouses that has it
+	splits = []
+	for code, qty in lines:
+		parts = []
+		while allocated and allocated[0].item_code == code and sum(part.qty for part in parts) < qty:
+			parts.append(allocated.pop(0))
+		row = order.append(
 			"items",
 			{
-				"item_code": line.item_code,
-				"qty": line.qty,
+				"item_code": code,
+				"qty": qty,
 				# the store prices, shows and stocks items in their stock unit; ERPNext would
 				# otherwise sell in the item's Sales UOM (a box of ten at the price of one)
-				"uom": frappe.get_cached_value("Item", line.item_code, "stock_uom"),
+				"uom": frappe.get_cached_value("Item", code, "stock_uom"),
 				"conversion_factor": 1,
-				"warehouse": line.warehouse,
+				"warehouse": parts[0].warehouse if parts else None,
 				"delivery_date": order.delivery_date,
 			},
 		)
+		if len(parts) > 1:
+			splits.append((row, parts))
 	if template:
 		from shop.compat import get_sales_taxes
 
@@ -555,8 +566,42 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 		# rules for the whole order (a coupon's minimum amount) look at its totals
 		calculate(order)
 		apply_pricing_rule_on_transaction(order)
+	for row, parts in splits:
+		split_row(order, row, parts)
 	remove_included_tax(order, template)
 	return order
+
+
+def split_row(order, row, parts) -> None:
+	"""One priced line sent from several warehouses, as one row per warehouse at the line's rate.
+	The rows keep the price the whole line was given; they don't name its Pricing Rules, which
+	ERPNext would otherwise check against each row's own quantity when the order is saved."""
+	keep = {
+		key: value
+		for key, value in row.as_dict().items()
+		if key not in ("name", "idx", "qty", "stock_qty", "warehouse", "pricing_rules")
+		and key not in frappe.model.default_fields
+	}
+	factor = flt(row.conversion_factor) or 1
+	row.update(
+		{
+			"qty": parts[0].qty,
+			"stock_qty": parts[0].qty * factor,
+			"warehouse": parts[0].warehouse,
+			"pricing_rules": "",
+		}
+	)
+	position = order.items.index(row)
+	for offset, part in enumerate(parts[1:], 1):
+		extra = order.append(
+			"items",
+			dict(keep, qty=part.qty, stock_qty=part.qty * factor, warehouse=part.warehouse, pricing_rules=""),
+		)
+		order.items.remove(extra)
+		order.items.insert(position + offset, extra)
+	for idx, item in enumerate(order.items, 1):
+		item.idx = idx
+	calculate(order)
 
 
 def remove_included_tax(order, template: str | None) -> None:
@@ -968,15 +1013,20 @@ def payload(quote: frappe._dict) -> dict:
 			amount = flt(amount * factor(), order.precision("grand_total"))
 		return money(amount, currency) if amount else _("Free")
 
+	# each product's amount as the summary lists it: in the order currency, with tax when shown so,
+	# a line sent from several warehouses counted once
+	amounts: dict[str, float] = {}
+	for row in order.items:
+		if not is_charge_item(row.item_code):
+			amounts[row.item_code] = amounts.get(row.item_code, 0) + flt(row.amount) * factor(row)
+
 	return {
 		"currency": currency,
 		"export": quote.export,
 		"lines": lines,
-		# each product's amount as the summary lists it: in the order currency, with tax when shown so
 		"items": [
-			{"item_code": row.item_code, "formatted_amount": money(flt(row.amount) * factor(row), currency)}
-			for row in order.items
-			if not is_charge_item(row.item_code)
+			{"item_code": code, "formatted_amount": money(amount, currency)}
+			for code, amount in amounts.items()
 		],
 		"notes": notes,
 		"total": quote.total,

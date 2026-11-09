@@ -83,7 +83,12 @@ def parcels(order) -> list[frappe._dict]:
 
 
 def get_options(
-	cart, address: frappe._dict, subtotal: float, refresh: bool = False, parcel: frappe._dict | None = None
+	cart,
+	address: frappe._dict,
+	subtotal: float,
+	refresh: bool = False,
+	parcel: frappe._dict | None = None,
+	first: bool = True,
 ) -> dict:
 	"""Shipping options for this cart and address: {"options": [...], "messages": [...]}.
 
@@ -126,7 +131,8 @@ def get_options(
 	options = list(options)
 	flat = flat_rate_option(subtotal)
 	if flat:
-		options.append(flat)
+		# the flat rate is for the order: further parcels go at no extra charge
+		options.append(flat if first else dict(flat, amount=0.0))
 	options = with_surcharges(
 		options,
 		address,

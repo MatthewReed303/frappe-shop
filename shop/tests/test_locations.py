@@ -361,3 +361,91 @@ class TestLocations(IntegrationTestCase):
 			"Delivery Note Item", filters={"against_sales_order": name, "docstatus": 1}, pluck="item_code"
 		)
 		self.assertEqual(notes, [SMALL])
+
+	def split_line(self):
+		"""A quantity of SMALL that only both warehouses together have."""
+		both = stock.warehouse_stock([SMALL], sellable=True)[SMALL]
+		qty = max(both[self.first], 0) + 1
+		sellable(SMALL, 1, self.second)
+		return qty
+
+	def test_a_line_split_across_warehouses_keeps_its_quantity_price(self):
+		qty = self.split_line()
+		company = frappe.get_cached_doc("Shop Settings").company
+		rule = frappe.get_doc(
+			{
+				"doctype": "Pricing Rule",
+				"title": "Test quantity break",
+				"apply_on": "Item Code",
+				"items": [{"item_code": SMALL}],
+				"selling": 1,
+				"min_qty": qty,
+				"rate_or_discount": "Discount Percentage",
+				"discount_percentage": 10,
+				"company": company,
+				"currency": frappe.get_cached_value("Company", company, "default_currency"),
+			}
+		).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Pricing Rule", rule.name, force=True)
+		cart.add_item(SMALL, qty=qty)
+		quote = totals.compute(cart.resolve_cart(), ADDRESS, None, "bank")
+		rows = [row for row in quote.order.items if row.item_code == SMALL]
+		self.assertEqual([row.warehouse for row in rows], [self.first, self.second])
+		self.assertEqual(sum(row.qty for row in rows), qty)
+		self.assertTrue(all(flt(row.discount_percentage) == 10 for row in rows))
+		# the checkout lists the line once, with the amount of all of it
+		shown = [row for row in totals.payload(quote)["items"] if row["item_code"] == SMALL]
+		self.assertEqual(len(shown), 1)
+
+	def test_a_bundle_and_its_own_part_draw_on_the_same_stock(self):
+		from shop.tests.utils import service
+
+		company = frappe.get_cached_doc("Shop Settings").company
+		bundle = service("TEST-BUNDLE-OF-SMALL", company)
+		if not frappe.db.exists("Product Bundle", {"new_item_code": bundle}):
+			frappe.get_doc(
+				{
+					"doctype": "Product Bundle",
+					"new_item_code": bundle,
+					"items": [{"item_code": SMALL, "qty": 2}],
+				}
+			).insert(ignore_permissions=True)
+		have = stock.get_stock([SMALL], sellable=True)[SMALL]
+		self.assertEqual(stock.demand([(bundle, 1), (SMALL, 3)]), {SMALL: 5})
+		checkout.validate_quantities([(bundle, 1), (SMALL, have - 2)])
+		with self.assertRaises(frappe.ValidationError):
+			checkout.validate_quantities([(bundle, 1), (SMALL, have - 1)])
+
+	def test_a_return_counts_every_row_of_a_split_line(self):
+		from types import SimpleNamespace
+
+		from shop.storefront import returns
+
+		order = SimpleNamespace(
+			name="_Test Split Order",
+			items=[frappe._dict(item_code=SMALL, qty=3), frappe._dict(item_code=SMALL, qty=2)],
+		)
+		returns.validate_item(order, SMALL, 5)
+		with self.assertRaises(frappe.ValidationError):
+			returns.validate_item(order, SMALL, 6)
+
+	def test_the_flat_rate_is_charged_once_per_order(self):
+		from shop.tests.utils import service
+
+		company = frappe.get_cached_doc("Shop Settings").company
+		fields = ("shipping_item", "flat_shipping_rate", "free_shipping_above")
+		previous = {field: frappe.db.get_single_value("Shop Settings", field) for field in fields}
+		frappe.db.set_single_value(
+			"Shop Settings",
+			{
+				"shipping_item": service("TEST-SHIPPING", company),
+				"flat_shipping_rate": 9,
+				"free_shipping_above": 0,
+			},
+		)
+		frappe.clear_cache(doctype="Shop Settings")
+		self.addCleanup(frappe.clear_cache, doctype="Shop Settings")
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", previous)
+		quote = totals.compute(self.basket(), ADDRESS, None, "bank")
+		self.assertEqual(len(quote.shipping_groups), 2)
+		self.assertEqual([option.amount for option in quote.shippings], [9, 0])

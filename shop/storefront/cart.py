@@ -185,7 +185,7 @@ def cart_payload(cart, exact: bool = False) -> dict:
 		"discount": discount,
 		"formatted_discount": money(discount, cart_rate),
 		"shipping": shipping,
-		"formatted_shipping": money(shipping) if shipping else "Free",
+		"formatted_shipping": money(shipping) if shipping else _("Free"),
 		"total": total,
 		"formatted_total": money(total, total_rate),
 	}
@@ -201,14 +201,11 @@ def forget_coupon(cart) -> None:
 
 
 def shipping_charge(order_value: float) -> float:
-	settings = frappe.get_cached_doc("Shop Settings")
-	rate = flt(settings.get("flat_shipping_rate"))
-	if not rate or not settings.get("shipping_account"):
-		return 0.0
-	threshold = flt(settings.get("free_shipping_above"))
-	if threshold and order_value >= threshold:
-		return 0.0
-	return rate
+	"""The store's flat rate as checkout charges it, once per order."""
+	from shop.storefront.shipping import flat_rate_option
+
+	option = flat_rate_option(order_value)
+	return flt(option["amount"]) if option else 0.0
 
 
 def applied_discount(cart, subtotal: float, tax_rate: float | None = None):

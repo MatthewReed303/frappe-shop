@@ -93,31 +93,60 @@ def get_stock(item_codes: list[str], sellable: bool = False) -> dict[str, float]
 	return {code: sum(max(qty, 0) for qty in by_warehouse[code].values()) for code in item_codes}
 
 
+def stocked_parts(item_code: str) -> list[tuple[str, float]]:
+	"""The stock items a line of this item takes, and how many of each per unit: the item itself,
+	or a Product Bundle's stocked parts."""
+	parts = bundle_parts(item_code)
+	if parts:
+		return [(part, n) for part, n in parts if frappe.get_cached_value("Item", part, "is_stock_item")]
+	return [(item_code, 1.0)] if frappe.get_cached_value("Item", item_code, "is_stock_item") else []
+
+
+def demand(lines: list[tuple[str, float]]) -> dict[str, float]:
+	"""How many of each stock item the lines take together, bundles counted by their parts."""
+	need: dict[str, float] = {}
+	for code, qty in lines:
+		for part, n in stocked_parts(code):
+			need[part] = need.get(part, 0) + n * flt(qty)
+	return need
+
+
 def allocate(lines: list[tuple[str, float]]) -> list[frappe._dict]:
 	"""Which warehouse each line is sent from: the first, in the store's order, that has all of it;
-	a line no single warehouse has is split across them. What isn't stocked (a service), or isn't in
-	stock where the store sells out-of-stock items, goes to the first warehouse."""
+	a line no single warehouse has is split across them. A Product Bundle is counted by its parts,
+	so a bundle and its own part in one order draw on the same stock. What isn't stocked (a
+	service), or isn't in stock where the store sells out-of-stock items, goes to the first
+	warehouse."""
 	first = primary_warehouse()
-	codes = list(dict.fromkeys(code for code, _qty in lines))
-	left = warehouse_stock([code for code in codes if is_stock_item(code)], sellable=True)
+	needs = {code: stocked_parts(code) for code, _qty in lines}
+	left = warehouse_stock(
+		list(dict.fromkeys(part for need in needs.values() for part, _n in need)), sellable=True
+	)
+
+	def can_take(need, warehouse) -> float:
+		return min(math.floor(round(left[part].get(warehouse, 0) / n, 9)) for part, n in need)
+
+	def take(need, warehouse, qty) -> None:
+		for part, n in need:
+			left[part][warehouse] = left[part].get(warehouse, 0) - n * qty
+
 	allocated = []
 	for code, qty in lines:
-		qty = flt(qty)
-		if code not in left:
+		qty, need = flt(qty), needs[code]
+		if not need:
 			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=first))
 			continue
-		stock = left[code]
-		whole = next((warehouse for warehouse in warehouses() if stock.get(warehouse, 0) >= qty), None)
+		whole = next((warehouse for warehouse in warehouses() if can_take(need, warehouse) >= qty), None)
 		if whole:
-			stock[whole] -= qty
+			take(need, whole, qty)
 			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=whole))
 			continue
 		for warehouse in warehouses():
-			take = min(qty, max(stock.get(warehouse, 0), 0))
-			if take > 0:
-				stock[warehouse] -= take
-				qty -= take
-				allocated.append(frappe._dict(item_code=code, qty=take, warehouse=warehouse))
+			part_qty = min(qty, max(can_take(need, warehouse), 0))
+			if part_qty > 0:
+				take(need, warehouse, part_qty)
+				qty -= part_qty
+				allocated.append(frappe._dict(item_code=code, qty=part_qty, warehouse=warehouse))
 		if qty > 0:
 			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=first))
 	return allocated
