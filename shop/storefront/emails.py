@@ -8,6 +8,7 @@ what shoppers typed. A failed email is logged and never stops the action that se
 """
 
 import frappe
+from frappe import _lt
 from frappe.model.document import Document
 
 ORDER = "Sales Order"
@@ -22,192 +23,235 @@ TEMPLATES = {
 	"order_confirmed": (
 		"Shop: Order Confirmed",
 		ORDER,
-		"Your order {{ doc.name }} is confirmed",
-		"<p>Thank you for your order at {{ store_name }}.</p>"
-		"<p>Order: <b>{{ doc.name }}</b></p>{{ lines_html }}{{ payment_html }}"
-		'<p><a href="{{ order_url }}">View your order</a></p>{{ terms_html }}',
+		_lt("Your order {{ doc.name }} is confirmed"),
+		_lt(
+			"<p>Thank you for your order at {{ store_name }}.</p>"
+			"<p>Order: <b>{{ doc.name }}</b></p>{{ lines_html }}{{ payment_html }}"
+			'<p><a href="{{ order_url }}">View your order</a></p>{{ terms_html }}'
+		),
 	),
 	"order_payment_instructions": (
 		"Shop: Order Payment Instructions",
 		ORDER,
-		"Your order {{ doc.name }}: how to pay",
-		"<p>Thank you for your order at {{ store_name }}.</p>"
-		"<p>Order: <b>{{ doc.name }}</b></p>{{ lines_html }}{{ payment_html }}"
-		'<p><a href="{{ order_url }}">View your order</a></p>{{ terms_html }}',
+		_lt("Your order {{ doc.name }}: how to pay"),
+		_lt(
+			"<p>Thank you for your order at {{ store_name }}.</p>"
+			"<p>Order: <b>{{ doc.name }}</b></p>{{ lines_html }}{{ payment_html }}"
+			'<p><a href="{{ order_url }}">View your order</a></p>{{ terms_html }}'
+		),
 	),
 	"payment_reminder": (
 		"Shop: Order Payment Reminder",
 		ORDER,
-		"Your order {{ doc.name }} is waiting for payment",
-		"<p>Your order {{ doc.name }} at {{ store_name }} hasn't been paid yet.</p>{{ lines_html }}"
-		'<p><a href="{{ pay_url }}">Pay now</a></p>'
-		"{% if due_date %}<p>Unpaid orders are cancelled after {{ due_date }}.</p>{% endif %}"
-		'<p><a href="{{ order_url }}">View your order</a></p>',
+		_lt("Your order {{ doc.name }} is waiting for payment"),
+		_lt(
+			"<p>Your order {{ doc.name }} at {{ store_name }} hasn't been paid yet.</p>{{ lines_html }}"
+			'<p><a href="{{ pay_url }}">Pay now</a></p>'
+			"{% if due_date %}<p>Unpaid orders are cancelled after {{ due_date }}.</p>{% endif %}"
+			'<p><a href="{{ order_url }}">View your order</a></p>'
+		),
 	),
 	"payment_received": (
 		"Shop: Payment Received",
 		ORDER,
-		"Payment received for order {{ doc.name }}",
-		"<p>Thank you, we've received your payment for order {{ doc.name }}."
-		"{% if shipping_emails %} We'll let you know when it ships.{% endif %}</p>"
-		"{% if invoice %}<p>Your invoice {{ invoice }} is attached.</p>{% endif %}",
+		_lt("Payment received for order {{ doc.name }}"),
+		_lt(
+			"<p>Thank you, we've received your payment for order {{ doc.name }}."
+			"{% if shipping_emails %} We'll let you know when it ships.{% endif %}</p>"
+			"{% if invoice %}<p>Your invoice {{ invoice }} is attached.</p>{% endif %}"
+		),
 	),
 	"payment_short": (
 		"Shop: Payment Part Received",
 		ORDER,
-		"Part payment received for order {{ doc.name }}",
-		"<p>Thank you, we've received {{ received }} for order {{ doc.name }}. {{ owed }} is still owed.</p>"
-		"<p>Banks along the way sometimes take a fee from a transfer. Please send the rest with the same "
-		"reference, and we'll send your order once it is paid in full.</p>"
-		"{{ payment_html }}",
+		_lt("Part payment received for order {{ doc.name }}"),
+		_lt(
+			"<p>Thank you, we've received {{ received }} for order {{ doc.name }}. {{ owed }} is still owed.</p>"
+			"<p>Banks along the way sometimes take a fee from a transfer. Please send the rest with the same "
+			"reference, and we'll send your order once it is paid in full.</p>"
+			"{{ payment_html }}"
+		),
 	),
 	"return_requested": (
 		"Shop: Return Requested",
 		ORDER,
-		"We've received your request for order {{ doc.name }}",
-		"<p>We've received your {{ request_type|lower }} request for {{ qty }} \u00d7 {{ item_name }} from order "
-		"{{ doc.name }}. We'll reply once we've looked at it.</p>",
+		_lt("We've received your request for order {{ doc.name }}"),
+		_lt(
+			"<p>We've received your {{ request_type|lower }} request for {{ qty }} \u00d7 {{ item_name }} from order "
+			"{{ doc.name }}. We'll reply once we've looked at it.</p>"
+		),
 	),
 	"return_staff": (
 		"Shop: Return Requested (Staff)",
 		ORDER,
-		"{{ request_type }} requested for order {{ doc.name }}",
-		"<p>{{ doc.customer_name | e }} asked for a {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name | e }} "
-		"from order {{ doc.name }}.</p><p>Reason: {{ reason | e }}</p><p>Review it in the store admin under Returns.</p>",
+		_lt("{{ request_type }} requested for order {{ doc.name }}"),
+		_lt(
+			"<p>{{ doc.customer_name | e }} asked for a {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name | e }} "
+			"from order {{ doc.name }}.</p><p>Reason: {{ reason | e }}</p><p>Review it in the store admin under Returns.</p>"
+		),
 	),
 	"return_approved": (
 		"Shop: Return Approved",
 		ORDER,
-		"Your {{ request_type|lower }} for order {{ doc.name }} is approved",
-		"<p>We've approved your {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
-		"{% if note %}<p>{{ note }}</p>{% endif %}"
-		"<p>Please send the item back with your order number, {{ doc.name }}. Reply to this email if you need our "
-		"return address.</p>",
+		_lt("Your {{ request_type|lower }} for order {{ doc.name }} is approved"),
+		_lt(
+			"<p>We've approved your {{ request_type|lower }} of {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
+			"{% if note %}<p>{{ note }}</p>{% endif %}"
+			"<p>Please send the item back with your order number, {{ doc.name }}. Reply to this email if you need our "
+			"return address.</p>"
+		),
 	),
 	"return_rejected": (
 		"Shop: Return Declined",
 		ORDER,
-		"Your {{ request_type|lower }} request for order {{ doc.name }}",
-		"<p>We're sorry, we can't accept the {{ request_type|lower }} of {{ item_name }} from order {{ doc.name }}.</p>"
-		"{% if note %}<p>{{ note }}</p>{% endif %}<p>Reply to this email if you'd like to talk about it.</p>",
+		_lt("Your {{ request_type|lower }} request for order {{ doc.name }}"),
+		_lt(
+			"<p>We're sorry, we can't accept the {{ request_type|lower }} of {{ item_name }} from order {{ doc.name }}.</p>"
+			"{% if note %}<p>{{ note }}</p>{% endif %}<p>Reply to this email if you'd like to talk about it.</p>"
+		),
 	),
 	"return_completed": (
 		"Shop: Return Completed",
 		ORDER,
-		"Your {{ request_type|lower }} for order {{ doc.name }} is complete",
-		"<p>We've received {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
-		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached."
-		"{% if refund_due %} We'll let you know when the refund is on its way."
-		"{% else %} It is taken off what you owe.{% endif %}</p>{% endif %}"
-		"{% if note %}<p>{{ note }}</p>{% endif %}",
+		_lt("Your {{ request_type|lower }} for order {{ doc.name }} is complete"),
+		_lt(
+			"<p>We've received {{ qty }} \u00d7 {{ item_name }} from order {{ doc.name }}.</p>"
+			"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached."
+			"{% if refund_due %} We'll let you know when the refund is on its way."
+			"{% else %} It is taken off what you owe.{% endif %}</p>{% endif %}"
+			"{% if note %}<p>{{ note }}</p>{% endif %}"
+		),
 	),
 	"order_cancelled_by_store": (
 		"Shop: Order Cancelled By Store",
 		ORDER,
-		"Your order {{ doc.name }} has been cancelled",
-		"<p>We've cancelled your order {{ doc.name }} at {{ store_name }}.</p>"
-		"{% if note %}<p>{{ note }}</p>{% endif %}"
-		"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached."
-		"{% if refund_due %} We'll let you know when the refund of what you paid is on its way."
-		"{% else %} There's nothing to pay for this order.{% endif %}</p>{% endif %}"
-		"<p>Reply to this email if you have any questions.</p>",
+		_lt("Your order {{ doc.name }} has been cancelled"),
+		_lt(
+			"<p>We've cancelled your order {{ doc.name }} at {{ store_name }}.</p>"
+			"{% if note %}<p>{{ note }}</p>{% endif %}"
+			"{% if credit_note %}<p>Your credit note {{ credit_note }} for {{ amount }} is attached."
+			"{% if refund_due %} We'll let you know when the refund of what you paid is on its way."
+			"{% else %} There's nothing to pay for this order.{% endif %}</p>{% endif %}"
+			"<p>Reply to this email if you have any questions.</p>"
+		),
 	),
 	"refund_sent": (
 		"Shop: Refund Sent",
 		ORDER,
-		"Your refund for order {{ doc.name }}",
-		"<p>We've refunded {{ amount }} for order {{ doc.name }}{% if to_card %} the way you paid"
-		"{% if gateway %} ({{ gateway }}){% endif %}. It can take a few days to show on your statement"
-		"{% else %} to your bank account{% endif %}.</p>",
+		_lt("Your refund for order {{ doc.name }}"),
+		_lt(
+			"<p>We've refunded {{ amount }} for order {{ doc.name }}{% if to_card %} the way you paid"
+			"{% if gateway %} ({{ gateway }}){% endif %}. It can take a few days to show on your statement"
+			"{% else %} to your bank account{% endif %}.</p>"
+		),
 	),
 	"order_cancelled": (
 		"Shop: Order Cancelled",
 		ORDER,
-		"Your order {{ doc.name }} has been cancelled",
-		"<p>We didn't receive payment for order {{ doc.name }} by {{ due_date }}, so it has been cancelled.</p>"
-		"<p>If you still want the items, please place a new order at {{ store_name }}. If you have paid, reply to "
-		"this email and we'll sort it out.</p>",
+		_lt("Your order {{ doc.name }} has been cancelled"),
+		_lt(
+			"<p>We didn't receive payment for order {{ doc.name }} by {{ due_date }}, so it has been cancelled.</p>"
+			"<p>If you still want the items, please place a new order at {{ store_name }}. If you have paid, reply to "
+			"this email and we'll sort it out.</p>"
+		),
 	),
 	"order_shipped": (
 		"Shop: Order Shipped",
 		ORDER,
-		"Your order {{ doc.name }} is on its way",
-		"<p>{% if partly %}Part of your order {{ doc.name }} has shipped. The rest follows in its own parcel."
-		"{% else %}Good news: your order {{ doc.name }} has shipped.{% endif %}</p>"
-		"{% if carrier_line %}<p>{{ carrier_line }}</p>{% endif %}"
-		'{% if tracking_url %}<p><a href="{{ tracking_url }}">Track your parcel</a></p>{% endif %}'
-		'<p><a href="{{ order_url }}">View your order</a></p>',
+		_lt("Your order {{ doc.name }} is on its way"),
+		_lt(
+			"<p>{% if partly %}Part of your order {{ doc.name }} has shipped. The rest follows in its own parcel."
+			"{% else %}Good news: your order {{ doc.name }} has shipped.{% endif %}</p>"
+			"{% if carrier_line %}<p>{{ carrier_line }}</p>{% endif %}"
+			'{% if tracking_url %}<p><a href="{{ tracking_url }}">Track your parcel</a></p>{% endif %}'
+			'<p><a href="{{ order_url }}">View your order</a></p>'
+		),
 	),
 	"ready_for_pickup": (
 		"Shop: Ready for Pickup",
 		ORDER,
-		"Your order {{ doc.name }} is ready to collect",
-		"<p>Your order {{ doc.name }} is ready to collect{% if location %} from {{ location | e }}{% endif %}.</p>"
-		"{% if instructions %}<p>{{ instructions | e }}</p>{% endif %}"
-		'<p><a href="{{ order_url }}">View your order</a></p>',
+		_lt("Your order {{ doc.name }} is ready to collect"),
+		_lt(
+			"<p>Your order {{ doc.name }} is ready to collect{% if location %} from {{ location | e }}{% endif %}.</p>"
+			"{% if instructions %}<p>{{ instructions | e }}</p>{% endif %}"
+			'<p><a href="{{ order_url }}">View your order</a></p>'
+		),
 	),
 	"order_delivered": (
 		"Shop: Order Delivered",
 		ORDER,
-		"Your order {{ doc.name }} has been delivered",
-		"<p>Your order {{ doc.name }} has been delivered. Thank you for shopping with us.</p>"
-		'<p><a href="{{ order_url }}">View your order</a></p>',
+		_lt("Your order {{ doc.name }} has been delivered"),
+		_lt(
+			"<p>Your order {{ doc.name }} has been delivered. Thank you for shopping with us.</p>"
+			'<p><a href="{{ order_url }}">View your order</a></p>'
+		),
 	),
 	"quote_request_received": (
 		"Shop: Quote Request Received",
 		QUOTATION,
-		"We've received your quote request {{ doc.name }}",
-		"<p>Thanks, we've received your request. We'll check it and email you the quote, usually within one "
-		"working day.</p>",
+		_lt("We've received your quote request {{ doc.name }}"),
+		_lt("<p>Thanks, we've received your request. We'll check it and email you the quote.</p>"),
 	),
 	"quote_request_staff": (
 		"Shop: New Quote Request",
 		QUOTATION,
-		"Quote request {{ doc.name }} from {{ customer_name }}",
-		"<p>{{ customer_name | e }} ({{ email | e }}) asked for a quote.</p><p>{{ message | e }}</p>"
-		'<p><a href="{{ desk_url }}">Open the quotation</a></p>',
+		_lt("Quote request {{ doc.name }} from {{ customer_name }}"),
+		_lt(
+			"<p>{{ customer_name | e }} ({{ email | e }}) asked for a quote.</p><p>{{ message | e }}</p>"
+			'<p><a href="{{ desk_url }}">Open the quotation</a></p>'
+		),
 	),
 	"quote_changed_staff": (
 		"Shop: Quote Prices Changed",
 		QUOTATION,
-		"Quote {{ doc.name }} can't be accepted: prices have changed",
-		'<p>{{ note | e }}</p><p><a href="{{ desk_url }}">Open the quotation</a></p>',
+		_lt("Quote {{ doc.name }} can't be accepted: prices have changed"),
+		_lt('<p>{{ note | e }}</p><p><a href="{{ desk_url }}">Open the quotation</a></p>'),
 	),
 	"quote_ready": (
 		"Shop: Quote Ready",
 		QUOTATION,
-		"Your quote {{ doc.name }}",
-		"<p>Here is your quote. It's valid until {{ valid_till }}.</p>"
-		'<p><a href="{{ quote_url }}">View and accept the quote</a></p>',
+		_lt("Your quote {{ doc.name }}"),
+		_lt(
+			"<p>Here is your quote. It's valid until {{ valid_till }}.</p>"
+			'<p><a href="{{ quote_url }}">View and accept the quote</a></p>'
+		),
 	),
 	"trade_application_received": (
 		"Shop: Trade Application Received",
 		LEAD,
-		"We've received your trade account application",
-		"<p>Thanks for applying for a {{ store_name }} trade account for {{ doc.company_name | e }}. We'll review it "
-		"and email you.</p>",
+		_lt("We've received your trade account application"),
+		_lt(
+			"<p>Thanks for applying for a {{ store_name }} trade account for {{ doc.company_name | e }}. We'll review it "
+			"and email you.</p>"
+		),
 	),
 	"trade_application_staff": (
 		"Shop: New Trade Application",
 		LEAD,
-		"Trade account application: {{ doc.company_name }}",
-		"<p>{{ doc.company_name | e }} ({{ (doc.country or '') | e }}) applied for a trade account.</p>"
-		'<p><a href="{{ desk_url }}">Review the application</a></p>',
+		_lt("Trade account application: {{ doc.company_name }}"),
+		_lt(
+			"<p>{{ doc.company_name | e }} ({{ (doc.country or '') | e }}) applied for a trade account.</p>"
+			'<p><a href="{{ desk_url }}">Review the application</a></p>'
+		),
 	),
 	"trade_account_approved": (
 		"Shop: Trade Account Approved",
 		LEAD,
-		"Your {{ store_name }} trade account is ready",
-		"<p>Your trade account for {{ doc.company_name | e }} is approved. Sign in to see your trade prices"
-		"{% if on_account %} and pay on account{% endif %}.</p>"
-		'<p><a href="{{ sign_in_url }}">Sign in</a></p>',
+		_lt("Your {{ store_name }} trade account is ready"),
+		_lt(
+			"<p>Your trade account for {{ doc.company_name | e }} is approved. Sign in to see your trade prices"
+			"{% if on_account %} and pay on account{% endif %}.</p>"
+			'<p><a href="{{ sign_in_url }}">Sign in</a></p>'
+		),
 	),
 	"trade_application_declined": (
 		"Shop: Trade Application Declined",
 		LEAD,
-		"Your {{ store_name }} trade account application",
-		"<p>Thank you for applying. We can't open a trade account for {{ doc.company_name | e }} at the moment.</p>"
-		"{% if reason %}<p>{{ reason | e }}</p>{% endif %}<p>You can still buy at retail prices in the store.</p>",
+		_lt("Your {{ store_name }} trade account application"),
+		_lt(
+			"<p>Thank you for applying. We can't open a trade account for {{ doc.company_name | e }} at the moment.</p>"
+			"{% if reason %}<p>{{ reason | e }}</p>{% endif %}<p>You can still buy at retail prices in the store.</p>"
+		),
 	),
 }
 
@@ -219,6 +263,8 @@ def ensure_templates() -> None:
 		return
 	written = frappe.parse_json(frappe.db.get_global(DEFAULTS_KEY) or "{}")
 	for name, reference_doctype, subject, body in TEMPLATES.values():
+		# in the site's language when the template is made
+		subject, body = str(subject), str(body)
 		wording = fingerprint(subject, body)
 		if frappe.db.exists("Email Template", name):
 			doc = frappe.get_doc("Email Template", name)

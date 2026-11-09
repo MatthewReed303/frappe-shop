@@ -5,7 +5,9 @@ Customer Group and monthly statements. Running it again keeps what exists."""
 import frappe
 from frappe import _
 from frappe.utils import add_months, get_last_day, nowdate
+from frappe.utils.nestedset import get_root_of
 
+DUTIES_ITEM = ("duties_item", "STORE-DUTIES", "Duties and import fees", "Duties and Import Fees Income")
 CHARGE_ITEMS = (
 	# Shop Settings field, item code, item name, income account
 	("shipping_item", "STORE-SHIPPING", "Shipping", "Freight Income"),
@@ -27,9 +29,11 @@ def set_up(
 	trade_discounts: dict | None = None,
 	default_customer_group: str | None = None,
 	statements: bool = True,
+	duties: bool = False,
 ):
 	"""Set the store up. account_numbers maps account names (e.g. "Freight Income") to numbers, for
-	charts that number their accounts. trade_discounts maps Item Group -> discount %."""
+	charts that number their accounts. trade_discounts maps Item Group -> discount %. duties also
+	sets up the item import duties are charged on."""
 	from shop.api.onboarding import fill_commerce_defaults
 
 	settings = frappe.get_doc("Shop Settings")
@@ -42,7 +46,7 @@ def set_up(
 	settings.currency = settings.currency or company_doc.default_currency
 	numbers = account_numbers or {}
 
-	for field, code, name, account_name in CHARGE_ITEMS:
+	for field, code, name, account_name in (*CHARGE_ITEMS, *((DUTIES_ITEM,) if duties else ())):
 		if settings.get(field):
 			continue
 		income = account(
@@ -50,16 +54,17 @@ def set_up(
 		)
 		settings.set(field, charge_item(company_doc, code, name, income))
 
-	gateway = stripe_gateway_account(company_doc, numbers.get("Stripe Clearing"))
-	if gateway and not settings.payment_gateways:
-		settings.append(
-			"payment_gateways",
-			{
-				"payment_gateway": frappe.db.get_value("Payment Gateway Account", gateway, "payment_gateway"),
-				"label": _("Pay by card"),
-				"fee_label": _("Card fee"),
-			},
-		)
+	if not settings.payment_gateways:
+		for gateway in gateway_accounts(company_doc, numbers):
+			name = frappe.db.get_value("Payment Gateway Account", gateway, "payment_gateway")
+			settings.append(
+				"payment_gateways",
+				{
+					"payment_gateway": name,
+					"label": _("Pay with {0}").format(_(name)),
+					"fee_label": _("{0} fee").format(_(name)),
+				},
+			)
 
 	settings.tax_template = settings.tax_template or default_sales_taxes(company_doc.name)
 	if export_zero_rated and settings.tax_template and not settings.get("export_tax_template"):
@@ -119,6 +124,16 @@ def account(
 	)
 
 
+def service_item_group() -> str:
+	"""ERPNext's Services Item Group, as named on this site, else the default Item Group."""
+	from shop.api.products import default_item_group
+
+	for name in (_("Services"), "Services"):
+		if frappe.db.exists("Item Group", {"name": name, "is_group": 0}):
+			return name
+	return default_item_group()
+
+
 def charge_item(company, code: str, name: str, income_account: str) -> str:
 	"""A non-stock service item for a charge line on orders, booked to its income account."""
 	doc = frappe.get_doc("Item", code) if frappe.db.exists("Item", code) else frappe.new_doc("Item")
@@ -126,11 +141,9 @@ def charge_item(company, code: str, name: str, income_account: str) -> str:
 		doc.update(
 			{
 				"item_code": code,
-				"item_name": name,
-				"description": name,
-				"item_group": "Services"
-				if frappe.db.exists("Item Group", "Services")
-				else frappe.db.get_value("Item Group", {"is_group": 0}, "name"),
+				"item_name": _(name),
+				"description": _(name),
+				"item_group": service_item_group(),
 				"stock_uom": "Nos",
 				"is_stock_item": 0,
 				"is_sales_item": 1,
@@ -149,39 +162,38 @@ def charge_item(company, code: str, name: str, income_account: str) -> str:
 	return doc.name
 
 
-def stripe_gateway_account(company, number: str | None = None) -> str | None:
-	"""The Payment Gateway Account for Stripe, paid into a "Stripe Clearing" bank account, when a
-	Stripe gateway has been set up (its keys are entered in the desk)."""
-	gateway = frappe.db.get_value("Payment Gateway", {"gateway_settings": "Stripe Settings"})
-	if not gateway:
-		return None
+def gateway_accounts(company, numbers: dict) -> list[str]:
+	"""A Payment Gateway Account in the company's currency for each Payment Gateway set up (its
+	keys are entered in the desk), paid into a clearing bank account named after the gateway."""
 	bank_parent = frappe.db.get_value(
 		"Account", {"company": company.name, "account_type": "Bank", "is_group": 0}, "parent_account"
 	)
-	if not bank_parent:
-		return None
-	clearing = account(company, "Stripe Clearing", bank_parent, "Bank", number)
-	existing = frappe.db.get_value(
-		"Payment Gateway Account", {"payment_gateway": gateway, "currency": company.default_currency}
-	)
-	if existing:
-		return existing
-	return (
-		frappe.get_doc(
-			{
-				"doctype": "Payment Gateway Account",
-				"payment_gateway": gateway,
-				"payment_account": clearing,
-				"currency": company.default_currency,
-				"is_default": 1,
-			}
+	found = []
+	for gateway in frappe.get_all("Payment Gateway", pluck="name", order_by="creation"):
+		existing = frappe.db.get_value(
+			"Payment Gateway Account", {"payment_gateway": gateway, "currency": company.default_currency}
 		)
-		.insert(ignore_permissions=True)
-		.name
-	)
-
-
-# --- taxes and customers -----------------------------------------------------------------
+		if existing:
+			found.append(existing)
+			continue
+		if not bank_parent:
+			continue
+		account_name = _("{0} Clearing").format(gateway)
+		clearing = account(company, account_name, bank_parent, "Bank", numbers.get(account_name))
+		found.append(
+			frappe.get_doc(
+				{
+					"doctype": "Payment Gateway Account",
+					"payment_gateway": gateway,
+					"payment_account": clearing,
+					"currency": company.default_currency,
+					"is_default": not found,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+	return found
 
 
 def default_sales_taxes(company: str) -> str | None:
@@ -213,7 +225,7 @@ def zero_rated_template(company, home_template: str) -> str:
 						"charge_type": "On Net Total",
 						"account_head": account_head,
 						"rate": 0,
-						"description": f"{tax} 0% (exported goods)",
+						"description": _("{0} 0% (exported goods)").format(tax),
 					}
 				],
 			}
@@ -231,7 +243,7 @@ def customer_group(name: str, payment_terms: str | None = None, discounts: dict 
 			{
 				"doctype": "Customer Group",
 				"customer_group_name": name,
-				"parent_customer_group": "All Customer Groups",
+				"parent_customer_group": get_root_of("Customer Group"),
 			}
 		).insert(ignore_permissions=True)
 	group = frappe.get_doc("Customer Group", name)
@@ -335,6 +347,8 @@ def statement_run(company: str, group: str, store_name: str) -> str | None:
 	if frappe.db.exists("Process Statement Of Accounts", name):
 		return name
 	month_end = get_last_day(nowdate())
+	# the store's name is text in ERPNext's Jinja wording, never template code
+	store = frappe.utils.escape_html(store_name).replace("{", "&#123;").replace("}", "&#125;")
 	doc = frappe.new_doc("Process Statement Of Accounts")
 	doc.update(
 		{
@@ -355,14 +369,14 @@ def statement_run(company: str, group: str, store_name: str) -> str | None:
 			"primary_mandatory": 1,
 			"letter_head": statement_letter_head(store_name),
 			"sender": frappe.db.get_value("Email Account", {"default_outgoing": 1, "enable_outgoing": 1}),
-			"subject": f"Your {store_name} statement to {{{{ doc.to_date }}}}",
-			"body": (
-				"<p>Hello {{ customer.customer_name }},</p>"
-				f"<p>Your {store_name} statement from {{{{ doc.from_date }}}} to {{{{ doc.to_date }}}} is attached. "
-				"It lists your invoices and payments, and anything still owing.</p>"
-				"<p>If anything doesn't look right, just reply to this email.</p>"
+			"subject": _("Your {0} statement to {1}").format(store, "{{ doc.to_date }}"),
+			"body": "<p>{0}</p><p>{1}</p>".format(
+				_("Hello {0},").format("{{ customer.customer_name }}"),
+				_(
+					"Your {0} statement from {1} to {2} is attached. It lists your invoices and payments, and anything still owing."
+				).format(store, "{{ doc.from_date }}", "{{ doc.to_date }}"),
 			),
-			"pdf_name": f"{store_name} statement {{{{ doc.to_date }}}}",
+			"pdf_name": _("{0} statement {1}").format(store, "{{ doc.to_date }}"),
 		}
 	)
 	from shop.storefront.statements import run_customers
