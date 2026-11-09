@@ -295,11 +295,6 @@ def send_paid_order(order_name: str) -> None:
 			)
 
 
-def configured_provider() -> str:
-	"""The provider of the store's first location."""
-	return parcel_provider(None)
-
-
 def summary(fulfillment) -> dict:
 	if isinstance(fulfillment, str):
 		fulfillment = frappe.get_doc("Shop Fulfillment", fulfillment)

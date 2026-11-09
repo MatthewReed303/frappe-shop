@@ -202,7 +202,7 @@ def custom_fields() -> dict:
 				"fieldtype": "Data",
 				"label": "Tax ID",
 				"insert_after": "shop_trade_section",
-				"description": "GST or VAT number the business gave. Copied to the Customer when approved.",
+				"description": "The tax number the business gave. Copied to the Customer when approved.",
 			},
 			{
 				"fieldname": "shop_company_number",

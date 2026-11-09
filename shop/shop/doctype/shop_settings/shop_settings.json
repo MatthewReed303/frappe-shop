@@ -323,7 +323,7 @@
    "options": "Item"
   },
   {
-   "description": "When a bank reports the fee it took from a transfer (as Wise does), the fee is booked here on the Payment Entry",
+   "description": "When a bank reports the fee it took from a transfer, the fee is booked here on the Payment Entry",
    "fieldname": "bank_charges_account",
    "fieldtype": "Link",
    "label": "Bank Charges Account",

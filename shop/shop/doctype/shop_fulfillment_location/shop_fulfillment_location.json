@@ -25,7 +25,7 @@
    "reqd": 1
   },
   {
-   "description": "What customers see, e.g. \"Auckland store\". Left empty, the warehouse's name.",
+   "description": "What customers see, such as the town or shop the location is in. Left empty, the warehouse's name.",
    "fieldname": "display_name",
    "fieldtype": "Data",
    "label": "Name Customers See"

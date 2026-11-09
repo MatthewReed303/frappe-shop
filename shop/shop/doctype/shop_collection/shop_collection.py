@@ -5,6 +5,23 @@ from frappe.website.utils import cleanup_page_name
 
 
 class ShopCollection(Document):
+	# begin: auto-generated types
+	# This code is auto-generated. Do not modify anything in this block.
+
+	from typing import TYPE_CHECKING
+
+	if TYPE_CHECKING:
+		from frappe.types import DF
+
+		description: DF.SmallText | None
+		image: DF.AttachImage | None
+		parent_collection: DF.Link | None
+		published: DF.Check
+		ranking: DF.Int
+		slug: DF.Data | None
+		title: DF.Data
+	# end: auto-generated types
+
 	def before_insert(self):
 		if not self.slug:
 			self.slug = cleanup_page_name(self.title)
