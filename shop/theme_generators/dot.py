@@ -295,11 +295,17 @@ a[data-active="true"] {{
 	justify-content: center;
 	width: 26px;
 }}
-.drawer-qty > span {{
+.drawer-qty > input {{
+	background: {refs["paper"]};
+	border: 1px solid {refs["line"]};
+	border-radius: 999px;
+	color: {refs["ink"]};
 	font-family: {THEME.mono}, monospace;
 	font-size: 12px;
-	min-width: 16px;
+	height: 26px;
+	padding: 0 6px;
 	text-align: center;
+	width: 56px;
 }}
 .drawer-qty > .drawer-remove {{
 	background: none;
@@ -397,7 +403,7 @@ a[data-active="true"] {{
 @media (max-width: 640px) {{
 	.pdp-buybar {{ bottom: 0; padding: 0 12px 10px; }}
 	.pdp-buybar-inner {{ width: 100%; }}
-	[data-shop="qty-inc"], [data-shop="qty-dec"], [data-drawer-step] {{ min-height: 36px; min-width: 36px; }}
+	[data-shop="qty-inc"], [data-shop="qty-dec"], [data-drawer-step], [data-shop="qty-input"], [data-drawer-qty] {{ min-height: 36px; min-width: 36px; }}
 	.drawer-close {{ padding: 10px; margin: -10px; }}
 	[data-shop="remove"], .drawer-remove {{ padding: 8px 6px; }}
 }}
@@ -485,6 +491,21 @@ def run(refs, parts, size="12px", color=None, weight="400", family=None):
 		styles={"alignItems": "baseline", "display": "flex", "flexDirection": "row", "width": "fit-content"},
 		children=spans,
 	)
+
+
+def qty_input_styles(refs):
+	return {
+		"backgroundColor": refs["paper"],
+		"borderColor": refs["line"],
+		"borderRadius": "999px",
+		"borderStyle": "solid",
+		"borderWidth": "1px",
+		"color": refs["ink"],
+		"fontFamily": THEME.mono,
+		"fontSize": "12px",
+		"padding": "0 8px",
+		"textAlign": "center",
+	}
 
 
 def pill(refs, text, href=None, variant="solid", full=False, attrs=None, **extra):
@@ -2013,6 +2034,22 @@ def pdp_details(refs):
 		styles={"display": "flex", "flexDirection": "row", "gap": "10px", "width": "100%"},
 		mobile={"flexDirection": "column"},
 		children=[
+			block(
+				"input",
+				name="Quantity",
+				attrs={
+					"type": "number",
+					"name": "qty",
+					"value": "1",
+					"min": "0",
+					"step": "any",
+					"inputmode": "decimal",
+					"aria-label": "Quantity",
+					"data-shop": "pdp-qty",
+				},
+				styles={**qty_input_styles(refs), "flexShrink": "0", "minHeight": "44px", "width": "84px"},
+				mobile={"width": "100%"},
+			),
 			buy_button(
 				"Add to cart",
 				"Add to cart",
@@ -2432,10 +2469,18 @@ def cart_blocks(refs):
 						dynamicValues=[dv("item_code", "data-item-code", "attribute")],
 					),
 					block(
-						"span",
-						text="1",
-						styles={**mono(size="12px", color=refs["ink"], spacing="0", upper=False), "minWidth": "18px", "textAlign": "center"},
-						dynamicValues=[dv("qty", "innerHTML")],
+						"input",
+						name="Quantity",
+						attrs={
+							"type": "number",
+							"min": "0",
+							"step": "any",
+							"inputmode": "decimal",
+							"aria-label": "Quantity",
+							"data-shop": "qty-input",
+						},
+						styles={**qty_input_styles(refs), "height": "28px", "width": "60px"},
+						dynamicValues=[dv("qty", "value", "attribute"), dv("item_code", "data-item-code", "attribute")],
 					),
 					block(
 						"button",

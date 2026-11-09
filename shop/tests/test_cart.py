@@ -42,6 +42,18 @@ class TestCart(IntegrationTestCase):
 			cart.add_item("SHOP-DEMO-003", qty=1.5)
 		self.assertEqual(cart.get_cart()["item_count"], 1)
 
+	def test_the_quantity_added_is_the_quantity_chosen(self):
+		uom = frappe.db.get_value("Item", "SHOP-DEMO-003", "stock_uom")
+		whole = frappe.db.get_value("UOM", uom, "must_be_whole_number")
+		frappe.db.set_value("UOM", uom, "must_be_whole_number", 0)
+		self.addCleanup(frappe.db.set_value, "UOM", uom, "must_be_whole_number", whole)
+		frappe.clear_cache(doctype="UOM")
+		self.assertEqual(cart.add_item("SHOP-DEMO-003", qty=0.5)["items"][0]["qty"], 0.5)
+		self.assertEqual(cart.add_item("SHOP-DEMO-003", qty=12)["items"][0]["qty"], 12.5)
+		for qty in (0, -1):
+			with self.assertRaises(frappe.ValidationError):
+				cart.add_item("SHOP-DEMO-003", qty=qty)
+
 	def test_an_item_taken_off_sale_is_named(self):
 		frappe.db.set_value("Item", "SHOP-DEMO-003", "disabled", 1)
 		self.addCleanup(frappe.db.set_value, "Item", "SHOP-DEMO-003", "disabled", 0)

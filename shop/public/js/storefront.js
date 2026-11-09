@@ -89,13 +89,25 @@
 		} catch (e) {}
 	}
 
+	// how many the shopper chose on the product page; null when it isn't a quantity
+	function chosenQty() {
+		const input = document.querySelector('[data-shop="pdp-qty"]');
+		if (!input) return 1;
+		const qty = parseFloat(input.value);
+		if (qty > 0) return qty;
+		showError(__("Enter how many you want."));
+		input.focus();
+		return null;
+	}
+
 	async function addToCart(button) {
 		const itemCode = button.dataset.itemCode;
-		if (!itemCode) return;
+		const qty = chosenQty();
+		if (!itemCode || qty === null) return;
 		button.disabled = true;
 		const label = button.textContent;
 		try {
-			const cart = await call("shop.storefront.cart.add_item", { item_code: itemCode });
+			const cart = await call("shop.storefront.cart.add_item", { item_code: itemCode, qty: qty });
 			updateCartCount(cart.item_count || 0);
 			if (drawerElement()) {
 				renderDrawer(cart);
@@ -162,7 +174,7 @@
 					<span class="drawer-rate">${esc(item.formatted_rate || "")}</span>
 					<div class="drawer-qty">
 						<button type="button" data-drawer-step="-1" data-item-code="${esc(item.item_code)}" aria-label="Decrease quantity">&minus;</button>
-						<span>${esc(item.qty)}</span>
+						<input type="number" data-drawer-qty data-item-code="${esc(item.item_code)}" value="${esc(item.qty)}" min="0" step="any" inputmode="decimal" aria-label="${esc(__("Quantity"))}">
 						<button type="button" data-drawer-step="1" data-item-code="${esc(item.item_code)}" aria-label="Increase quantity">+</button>
 						<button type="button" class="drawer-remove" data-drawer-step="0" data-item-code="${esc(item.item_code)}">Remove</button>
 					</div>
@@ -175,12 +187,16 @@
 
 	async function drawerStep(itemCode, step) {
 		const row = state.cart && state.cart.items.find((item) => item.item_code === itemCode);
-		const qty = step === 0 ? 0 : Math.max((row ? row.qty : 1) + step, 0);
+		await drawerQty(itemCode, step === 0 ? 0 : Math.max((row ? row.qty : 1) + step, 0));
+	}
+
+	async function drawerQty(itemCode, qty) {
 		try {
 			const cart = await call("shop.storefront.cart.set_qty", { item_code: itemCode, qty: qty });
 			renderDrawer(cart);
 			cartChanged();
 		} catch (error) {
+			if (state.cart) renderDrawer(state.cart);
 			showError(error.message);
 		}
 	}
@@ -196,9 +212,20 @@
 		try {
 			await call("shop.storefront.cart.set_qty", { item_code: itemCode, qty: qty });
 			window.location.reload();
+			return true;
 		} catch (error) {
 			showError(error.message);
+			return false;
 		}
+	}
+
+	// a quantity typed in the cart or the drawer: none removes the line; what isn't a quantity is put back
+	function typedQty(input, current) {
+		const qty = input.value.trim() === "" ? NaN : parseFloat(input.value);
+		if (qty >= 0) return qty;
+		input.value = current;
+		showError(__("Enter how many you want."));
+		return null;
 	}
 
 	function rowQty(itemCode) {
@@ -233,6 +260,9 @@
 			button.disabled = !item.purchasable;
 			if (!item.purchasable) button.textContent = item.stock_status || button.dataset.outOfStockLabel;
 			else if (button.dataset.label) button.textContent = button.dataset.label;
+		});
+		document.querySelectorAll('[data-shop="pdp-qty"]').forEach((input) => {
+			input.disabled = !item.purchasable;
 		});
 		document.querySelectorAll('[data-shop="stock-status"]').forEach((line) => {
 			line.dataset.stockState = item.stock_state || "";
@@ -340,10 +370,11 @@
 
 	async function buyNow(button) {
 		const itemCode = button.dataset.itemCode;
-		if (!itemCode) return;
+		const qty = chosenQty();
+		if (!itemCode || qty === null) return;
 		button.disabled = true;
 		try {
-			await call("shop.storefront.cart.add_item", { item_code: itemCode });
+			await call("shop.storefront.cart.add_item", { item_code: itemCode, qty: qty });
 			window.location.href = base + "/checkout";
 		} catch (error) {
 			showError(error.message);
@@ -705,6 +736,19 @@
 
 	document.addEventListener("keydown", (event) => {
 		if (event.key === "Escape") closeDrawer();
+	});
+
+	document.addEventListener("change", async (event) => {
+		const input = event.target;
+		if (input.matches('[data-shop="qty-input"]')) {
+			const current = rowQty(input.dataset.itemCode);
+			const qty = typedQty(input, current);
+			if (qty !== null && !(await setQty(input.dataset.itemCode, qty))) input.value = current;
+		} else if (input.matches("[data-drawer-qty]")) {
+			const row = state.cart && state.cart.items.find((item) => item.item_code === input.dataset.itemCode);
+			const qty = typedQty(input, row ? row.qty : 1);
+			if (qty !== null) drawerQty(input.dataset.itemCode, qty);
+		}
 	});
 
 	document.addEventListener("submit", (event) => {

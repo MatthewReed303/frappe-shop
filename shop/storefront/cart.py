@@ -19,10 +19,12 @@ def get_cart() -> dict:
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=60, seconds=60)
 def add_item(item_code: str, qty: float = 1) -> dict:
+	if flt(qty) <= 0:
+		frappe.throw(_("Enter how many you want."))
 	shop_product = validate_purchasable(item_code)
 	cart = resolve_cart(create=True)
 	row = find_row(cart, item_code)
-	wanted = (flt(row.qty) if row else 0) + max(flt(qty), 1)
+	wanted = (flt(row.qty) if row else 0) + flt(qty)
 	check_available(item_code, wanted)
 	if row:
 		row.qty = wanted

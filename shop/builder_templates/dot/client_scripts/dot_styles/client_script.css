@@ -160,11 +160,17 @@ a[data-active="true"] {
 	justify-content: center;
 	width: 26px;
 }
-.drawer-qty > span {
+.drawer-qty > input {
+	background: var(--14e519f0-b9a6-4acd-ae4a-f8e5664c13fa, #FFFFFF);
+	border: 1px solid var(--89b2d9a1-4c11-45a1-8a99-099334bf7d38, #E4E4E7);
+	border-radius: 999px;
+	color: var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C);
 	font-family: DM Mono, monospace;
 	font-size: 12px;
-	min-width: 16px;
+	height: 26px;
+	padding: 0 6px;
 	text-align: center;
+	width: 56px;
 }
 .drawer-qty > .drawer-remove {
 	background: none;
@@ -262,7 +268,7 @@ a[data-active="true"] {
 @media (max-width: 640px) {
 	.pdp-buybar { bottom: 0; padding: 0 12px 10px; }
 	.pdp-buybar-inner { width: 100%; }
-	[data-shop="qty-inc"], [data-shop="qty-dec"], [data-drawer-step] { min-height: 36px; min-width: 36px; }
+	[data-shop="qty-inc"], [data-shop="qty-dec"], [data-drawer-step], [data-shop="qty-input"], [data-drawer-qty] { min-height: 36px; min-width: 36px; }
 	.drawer-close { padding: 10px; margin: -10px; }
 	[data-shop="remove"], .drawer-remove { padding: 8px 6px; }
 }
