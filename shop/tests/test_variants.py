@@ -21,7 +21,11 @@ class TestVariants(IntegrationTestCase):
 		if frappe.db.exists("Shop Product", product):
 			products.delete_product(product)
 		for code in frappe.get_all("Item", filters={"item_name": ["like", f"{name}%"]}, pluck="name"):
-			frappe.delete_doc("Item", code, ignore_permissions=True, force=True)
+			try:
+				frappe.delete_doc("Item", code, ignore_permissions=True, force=True)
+			except frappe.LinkExistsError:
+				# an item with stock can't be deleted
+				frappe.db.set_value("Item", code, "disabled", 1)
 
 	def test_creates_one_variant_per_combination(self):
 		result = self.create()
@@ -66,14 +70,35 @@ class TestVariants(IntegrationTestCase):
 		self.assertEqual(len(payload["variants"]), 6)
 		self.assertEqual(payload["missing_combinations"], 0)
 
-	def test_options_blocked_once_stock_exists(self):
-		simple = products.create_product(product_name="Simple Stocked", price=300, opening_stock=5)
-		self.addCleanup(self.cleanup, simple["name"], "Simple Stocked")
-		payload = variants.get_variants(simple["name"])
-		self.assertFalse(payload["has_variants"])
-		self.assertFalse(payload["can_add_options"])
+	def test_a_product_with_stock_gets_options_and_keeps_its_item(self):
+		name = f"Stocked {frappe.generate_hash(length=6)}"
+		simple = products.create_product(product_name=name, price=300, opening_stock=5)
+		self.addCleanup(self.cleanup, simple["name"], name)
+		item = frappe.db.get_value("Shop Product", simple["name"], "item")
+		self.assertTrue(variants.get_variants(simple["name"])["has_history"])
+		# the version sold now has to be named
 		with self.assertRaises(frappe.ValidationError):
 			variants.set_options(simple["name"], OPTIONS)
+		result = variants.set_options(simple["name"], OPTIONS, current={"Size": "Small", "Colour": "Black"})
+		product = frappe.get_doc("Shop Product", simple["name"])
+		self.assertEqual((product.item, product.default_variant), (f"{item}-V", item))
+		self.assertEqual(frappe.db.get_value("Item", item, "variant_of"), product.item)
+		self.assertEqual(len(result["variants"]), 4)
+		kept = next(v for v in result["variants"] if v["item_code"] == item)
+		self.assertEqual(
+			(kept["attributes"], kept["stock"], kept["price"]), ({"Size": "Small", "Colour": "Black"}, 5, 300)
+		)
+		self.assertTrue(all(v["price"] == 300 for v in result["variants"]))
+
+		# a new option gives the versions there are the value named for it
+		coating = {"attribute": "Coating", "values": ["None", "Conformal"]}
+		with self.assertRaises(frappe.ValidationError):
+			variants.set_options(simple["name"], [*OPTIONS, coating])
+		grown = variants.set_options(simple["name"], [*OPTIONS, coating], current={"Coating": "None"})
+		self.assertEqual(len(grown["variants"]), 8)
+		kept = next(v for v in grown["variants"] if v["item_code"] == item)
+		self.assertEqual(kept["attributes"], {"Size": "Small", "Colour": "Black", "Coating": "None"})
+		self.assertEqual(kept["stock"], 5)
 
 	# --- what the product page shows ------------------------------------------
 
