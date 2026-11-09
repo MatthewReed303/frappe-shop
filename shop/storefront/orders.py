@@ -28,12 +28,12 @@ def get_orders(start: int = 0, limit: int = 20) -> list[dict]:
 		start=cint(start),
 		limit=min(cint(limit) or 20, 50),
 	)
-	for order in orders:
-		order.formatted_total = frappe.utils.fmt_money(order.grand_total, currency=order.currency)
-		# the same status the order page shows: awaiting payment, preparing, shipped...
-		from shop.storefront import payment
+	from shop.storefront import payment, totals
 
+	for order in orders:
 		doc = frappe.get_doc("Sales Order", order.name)
+		# the total and status the order page shows: awaiting payment, preparing, shipped...
+		order.formatted_total = frappe.utils.fmt_money(totals.order_total(doc), currency=order.currency)
 		order.display_status = display_status(doc, payment.is_paid(doc))
 		order.formatted_date = frappe.utils.formatdate(order.transaction_date, "d MMM yyyy")
 		order.url = store_url(f"order-confirmation/{order.name}")
@@ -282,7 +282,7 @@ def display_status(order, paid: bool) -> str:
 		return _("Shipped")
 	if shipment and shipment.status == "Delivered":
 		return _("Delivered")
-	return STATUS_LABELS.get(order.status, order.status)
+	return _(STATUS_LABELS.get(order.status, order.status))
 
 
 def pay_url(order) -> str | None:
@@ -453,8 +453,7 @@ def shipping_label(order, charges=None) -> str:
 	charge += sum(
 		tax.tax_amount
 		for tax in order.taxes
-		if (shipping_account and tax.account_head == shipping_account and tax.charge_type == "Actual")
-		or (tax.description or "").strip().lower() == "shipping"
+		if shipping_account and tax.account_head == shipping_account and tax.charge_type == "Actual"
 	)
 	return frappe.utils.fmt_money(charge, currency=order.currency) if charge else _("Free")
 

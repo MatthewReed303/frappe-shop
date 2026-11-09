@@ -271,7 +271,8 @@ def product_details(cart) -> dict:
 
 
 def variant_name(item_code: str, product_name: str | None) -> dict:
-	"""A variant's line names its options: "Zip Hoodie - Medium / Charcoal" (an en dash)."""
+	"""A variant's line names its options after the product's name and an en dash, such as
+	"Product \u2013 Medium / Blue"."""
 	values = frappe.get_all(
 		"Item Variant Attribute", filters={"parent": item_code}, pluck="attribute_value", order_by="idx asc"
 	)
@@ -299,8 +300,8 @@ def validate_purchasable(item_code: str) -> str:
 
 def check_available(item_code: str, qty: float) -> None:
 	"""The shopper can buy this many: the item has a price for them and enough stock."""
-	name, uom = frappe.get_cached_value("Item", item_code, ["item_name", "sales_uom"]) or (item_code, None)
-	uom = uom or frappe.get_cached_value("Item", item_code, "stock_uom")
+	# the store sells in the stock unit, as orders are placed
+	name, uom = frappe.get_cached_value("Item", item_code, ["item_name", "stock_uom"]) or (item_code, None)
 	if flt(qty) != cint(qty) and frappe.get_cached_value("UOM", uom, "must_be_whole_number"):
 		frappe.throw(_("{0} is sold in whole numbers").format(name))
 	if item_code not in pricing.get_prices([item_code], {item_code: qty}):

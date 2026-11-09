@@ -52,6 +52,9 @@ def tax_template_for(address: frappe._dict | None) -> str | None:
 	if customer:
 		group, category = frappe.get_cached_value("Customer", customer, ["customer_group", "tax_category"])
 		args.update(customer_group=group, tax_category=category or "")
+	else:
+		# a guest is priced, and so taxed, as a new customer of the default Customer Group
+		args["customer_group"] = frappe.db.get_single_value("Selling Settings", "customer_group")
 	rule = get_tax_template(nowdate(), args)
 	if rule:
 		return rule
@@ -411,6 +414,22 @@ def compute(
 		and all(group.chosen and shipping_module.is_pickup(group.chosen) for group in groups)
 	):
 		return compute(cart, address, shipping_option, payment_method, currency, collected=True)
+	# goods collected are taxed where they are handed over, goods sent abroad aren't: one order is
+	# either collected or sent
+	partly_collected = (
+		not collected
+		and export
+		and any(group.chosen and shipping_module.is_pickup(group.chosen) for group in groups)
+	)
+	messages = list(
+		dict.fromkeys(message for group in groups for message in group.options.get("messages") or [])
+	)
+	if partly_collected:
+		messages.append(
+			_(
+				"An order sent abroad is either all collected or all sent: choose collection or delivery for every parcel."
+			)
+		)
 
 	fees = []
 	if order.flags.shop_export:
@@ -440,7 +459,9 @@ def compute(
 		tax_template=template,
 		coupon=coupon,
 		# the order ships when every parcel has a service
-		shipping=frappe._dict(first.chosen) if all(group.chosen for group in groups) else None,
+		shipping=frappe._dict(first.chosen)
+		if all(group.chosen for group in groups) and not partly_collected
+		else None,
 		shippings=[frappe._dict(group.chosen) for group in groups if group.chosen],
 		shipping_options=[
 			dict(option, customer_amount=shipping_line_amount(order, option)) for option in first.options["options"]
@@ -458,9 +479,7 @@ def compute(
 			)
 			for group in groups
 		],
-		shipping_messages=list(
-			dict.fromkeys(message for group in groups for message in group.options.get("messages") or [])
-		),
+		shipping_messages=messages,
 		shipping_pending=any(group.options.get("pending") for group in groups),
 		fees=fees,
 		total=order_total(order),

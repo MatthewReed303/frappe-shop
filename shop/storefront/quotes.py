@@ -269,7 +269,7 @@ def quote_payment_methods(quotation) -> list[dict]:
 			note = (
 				_("{0} {1} added").format(totals.fee_label(gateway), amount)
 				if gateway
-				else _("Transfer fee {0} added").format(amount)
+				else _("Bank fees {0} added").format(amount)
 			)
 			methods.append(dict(method, fee_note=note if fee else ""))
 	if quotation.party_name in session_customers():
@@ -282,7 +282,7 @@ def quote_payment_methods(quotation) -> list[dict]:
 
 
 def payment_fee(quotation, method: str) -> float:
-	"""What paying the quote this way adds to it: the card fee, or the bank's transfer fee."""
+	"""What paying the quote this way adds to it: the card fee, or the bank's fees."""
 	order = make_order(quotation)
 	add_payment_fee(order, quotation, method)
 	totals.calculate(order)
@@ -290,10 +290,15 @@ def payment_fee(quotation, method: str) -> float:
 
 
 def add_payment_fee(order, quotation, method: str) -> None:
+	"""The fees checkout adds for the payment method: the gateway's, or the bank account's
+	conversion and transfer fees."""
 	if totals.is_gateway(method):
 		totals.add_card_fee(order, is_export(quotation), totals.gateway_row(method))
 	elif method in totals.BANK_METHODS:
-		totals.add_transfer_fee(order, totals.bank_account(quotation.currency, method), method)
+		account = totals.bank_account(quotation.currency, method)
+		if quotation.currency != order.company_currency:
+			totals.add_conversion_fee(order, account)
+		totals.add_transfer_fee(order, account, method)
 
 
 def is_export(quotation) -> bool:
@@ -318,9 +323,9 @@ def tell_staff_prices_changed(quotation: str, order_total: float) -> None:
 		frappe.utils.fmt_money(order_total, currency=doc.currency),
 		frappe.utils.fmt_money(totals.order_total(doc), currency=doc.currency),
 	)
-	if frappe.db.exists(
-		"Comment", {"reference_doctype": "Quotation", "reference_name": quotation, "content": note}
-	):
+	from shop.storefront.payment import has_note
+
+	if has_note(doc, note):
 		return
 	doc.add_comment("Info", note)
 	emails.send(

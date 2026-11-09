@@ -31,17 +31,19 @@ def is_paid(order) -> bool:
 	invoice = order_invoice(order.name)
 	if invoice and flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) <= 0:
 		return True
-	return bool(
-		frappe.db.exists(
-			"Payment Request",
-			{
-				"reference_doctype": "Sales Order",
-				"reference_name": order.name,
-				"status": "Paid",
-				"docstatus": 1,
-			},
-		)
+	# paid in full through Payment Requests (a part payment requested in Desk isn't the whole order)
+	paid = frappe.get_all(
+		"Payment Request",
+		filters={
+			"reference_doctype": "Sales Order",
+			"reference_name": order.name,
+			"status": "Paid",
+			"docstatus": 1,
+			"currency": order.currency,
+		},
+		pluck="grand_total",
 	)
+	return bool(paid) and sum(flt(amount) for amount in paid) >= totals.order_total(order) - 0.005
 
 
 def payment_status(order) -> str:
@@ -288,7 +290,7 @@ def note_deposit_for_closed_order(transaction) -> None:
 def order_paid_by(transaction):
 	"""The one unpaid bank transfer order, in the deposit's currency, whose number is in the
 	deposit's reference or description."""
-	# bank references drop or change spaces, dashes and case ("mb 00058" pays MB-00058)
+	# bank references drop or change spaces, dashes and case ("so 00058" pays SO-00058)
 	text = compact(f"{transaction.reference_number or ''} {transaction.description or ''}")
 	names = frappe.get_all(
 		"Sales Order",
@@ -805,11 +807,8 @@ def chase_part_paid(order) -> None:
 	note = _(
 		"Past its pay-by date with {0} still owed. Ask for the rest, or cancel the order and refund what was paid."
 	).format(owed)
-	if frappe.db.exists(
-		"Comment", {"reference_doctype": "Sales Order", "reference_name": order.name, "content": note}
-	):
+	if not note_once(order, note):
 		return
-	order.add_comment("Info", note)
 	emails.send(
 		"payment_short",
 		order.contact_email,
@@ -827,17 +826,26 @@ def forget_checkout_on_amend(doc, method=None) -> None:
 		doc.shop_payment_due = None
 
 
-def note_once(order, note: str) -> None:
-	"""Add an Info comment to the order unless it is there already (Frappe stores it escaped)."""
-	if not frappe.db.exists(
-		"Comment",
-		{
-			"reference_doctype": "Sales Order",
-			"reference_name": order.name,
-			"content": ["in", [note, frappe.utils.escape_html(note)]],
-		},
-	):
-		order.add_comment("Info", note)
+def has_note(doc, note: str) -> bool:
+	"""Whether the document has this comment already; Frappe stores comments escaped."""
+	return bool(
+		frappe.db.exists(
+			"Comment",
+			{
+				"reference_doctype": doc.doctype,
+				"reference_name": doc.name,
+				"content": ["in", [note, frappe.utils.escape_html(note)]],
+			},
+		)
+	)
+
+
+def note_once(order, note: str) -> bool:
+	"""Add an Info comment to the order unless it is there already; whether it was added."""
+	if has_note(order, note):
+		return False
+	order.add_comment("Info", note)
+	return True
 
 
 def unmatched_deposits(order) -> list[str]:
@@ -895,8 +903,9 @@ def remind_unpaid_online_orders() -> None:
 			"status": ["not in", ["Closed", "Completed", "On Hold"]],
 			"advance_payment_status": ["!=", "Fully Paid"],
 			"creation": ["<", add_to_date(now_datetime(), hours=-hours)],
-			"shop_payment_due": [">=", nowdate()],
 		},
+		# an order with no due date (unpaid orders aren't cancelled) is reminded too
+		or_filters=[["shop_payment_due", ">=", nowdate()], ["shop_payment_due", "is", "not set"]],
 		pluck="name",
 	):
 		if frappe.db.exists(

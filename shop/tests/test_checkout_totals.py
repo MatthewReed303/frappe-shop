@@ -1604,6 +1604,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		from shop.storefront import emails
 
 		name, _doctype, subject, _body = emails.TEMPLATES["order_shipped"]
+		subject = str(subject)
 		frappe.delete_doc("Email Template", name, force=True, ignore_permissions=True)
 		old = dict(emails.TEMPLATES)
 		emails.TEMPLATES["order_shipped"] = (name, _doctype, "Old wording {{ doc.name }}", "<p>old</p>")

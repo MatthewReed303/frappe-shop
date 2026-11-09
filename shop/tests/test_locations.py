@@ -329,14 +329,28 @@ class TestLocations(IntegrationTestCase):
 		self.assertEqual(collected.tax_template, totals.tax_template_for(None))
 		self.assertEqual(sum(row.amount for row in collected.shippings), 0)
 
-	def test_a_collected_parcel_is_made_ready_then_collected(self):
+	def test_an_order_sent_abroad_is_not_partly_collected(self):
 		self.pickup_store()
+		abroad = dict(ADDRESS, country=self.abroad_country())
 		with patch("frappe.get_hooks", side_effect=with_rates):
 			self.basket()
 			choice = json.dumps({self.first: f"pickup:{self.first}", self.second: f"courier:{self.second}"})
-			name = checkout.place_order(customer=BUYER, address=ADDRESS, shipping_option=choice)[
-				"sales_order"
-			]
+			quote = totals.compute(cart.resolve_cart(), abroad, choice)
+		self.assertIsNone(quote.shipping)
+		self.assertIn("either all collected or all sent", " ".join(quote.shipping_messages))
+
+	def abroad_country(self) -> str:
+		home = frappe.get_cached_value("Company", frappe.get_cached_doc("Shop Settings").company, "country")
+		return "United States" if home != "United States" else "Australia"
+
+	def test_a_collected_parcel_is_made_ready_then_collected(self):
+		self.pickup_store()
+		company = frappe.get_cached_doc("Shop Settings").company
+		home = dict(ADDRESS, country=frappe.get_cached_value("Company", company, "country"))
+		with patch("frappe.get_hooks", side_effect=with_rates):
+			self.basket()
+			choice = json.dumps({self.first: f"pickup:{self.first}", self.second: f"courier:{self.second}"})
+			name = checkout.place_order(customer=BUYER, address=home, shipping_option=choice)["sales_order"]
 		service.send_paid_order(name)  # automatic sending is off here: staff send each parcel
 		first = service.send(name, warehouse=self.first)
 		self.assertEqual(frappe.db.get_value("Shop Fulfillment", first, "provider"), "pickup")

@@ -125,7 +125,7 @@ def summary(order_name: str) -> dict:
 		order_by="creation desc",
 	)
 	for request in requests:
-		request.line = f"{request.request_type} · {request.item_name}"
+		request.line = f"{_(request.request_type)} · {request.item_name}"
 	shipped_on = shipped_date(order_name)
 	days = window_days()
 	eligible = bool(days and shipped_on and now_datetime() <= get_datetime(add_days(shipped_on, days)))

@@ -1,3 +1,6 @@
+import math
+from itertools import pairwise
+
 import frappe
 from frappe import _
 from frappe.utils import cint, escape_html, flt
@@ -81,13 +84,6 @@ def applied_filters(form) -> list[str]:
 	return [key for key in FILTER_PARAMS if form.get(key)]
 
 
-PRICE_BUCKETS = [
-	("0-500", "Under {0}", (None, 500)),
-	("500-1000", "{0} to {1}", (500, 1000)),
-	("1000-2000", "{0} to {1}", (1000, 2000)),
-	("2000-", "Over {0}", (2000, None)),
-]
-
 SORT_OPTIONS = [
 	("ranking", "Featured"),
 	("newest", "Newest"),
@@ -98,10 +94,39 @@ SORT_OPTIONS = [
 
 
 def parse_price_bucket(bucket: str | None):
-	for key, _label, (low, high) in PRICE_BUCKETS:
-		if bucket == key:
-			return low, high
-	return None, None
+	"""A price range from the listing's URL, "low-high" with either end left open."""
+	low, _sep, high = (bucket or "").partition("-")
+	try:
+		return (float(low) if low else None), (float(high) if high else None)
+	except ValueError:
+		return None, None
+
+
+def tidy_amount(amount: float) -> float:
+	"""An amount rounded up to 1, 2, 2.5 or 5 of its order of magnitude, for a price range's edge."""
+	if amount <= 0:
+		return 0
+	scale = 10 ** math.floor(math.log10(amount))
+	return next(step * scale for step in (1, 2, 2.5, 5, 10) if amount <= step * scale)
+
+
+def price_buckets(rates: list[float]) -> list[tuple]:
+	"""Price ranges for the store's own prices: about a quarter of the products in each, with edges
+	at tidy amounts in the store's currency."""
+	rates = sorted(rate for rate in rates if rate > 0)
+	if len(rates) < 2:
+		return []
+	edges = sorted({tidy_amount(rates[int(len(rates) * share)]) for share in (0.25, 0.5, 0.75)})
+	edges = [edge for edge in edges if rates[0] < edge <= rates[-1]]
+	ends = [None, *edges, None]
+	return [
+		(
+			f"{low or 0:g}-{'' if high is None else f'{high:g}'}",
+			"Under {0}" if low is None else ("Over {0}" if high is None else "{0} to {1}"),
+			(low, high),
+		)
+		for low, high in pairwise(ends)
+	]
 
 
 def useful_price_buckets(form) -> list:
@@ -110,7 +135,7 @@ def useful_price_buckets(form) -> list:
 	rates = listed_prices(frappe.get_cached_doc("Shop Settings").price_list)
 	buckets = [
 		bucket
-		for bucket in PRICE_BUCKETS
+		for bucket in price_buckets(rates)
 		if any((bucket[2][0] or 0) <= rate and (bucket[2][1] is None or rate < bucket[2][1]) for rate in rates)
 	]
 	if len(buckets) < 2 and not form.get("price"):
@@ -139,9 +164,9 @@ def listing_filters(form, collections) -> list[dict]:
 	buckets = useful_price_buckets(form)
 	return [
 		{
-			"label": "Collection",
+			"label": _("Collection"),
 			"options": [
-				option("All", "collection", None),
+				option(_("All"), "collection", None),
 				# a collection inside another is listed under it
 				*[option("– " * row.level + row.title, "collection", row.slug) for row in collections],
 			],
@@ -149,11 +174,11 @@ def listing_filters(form, collections) -> list[dict]:
 		*(
 			[
 				{
-					"label": "Price",
+					"label": _("Price"),
 					"options": [
-						option("Any price", "price", None),
+						option(_("Any price"), "price", None),
 						*[
-							option(label.format(money(low or high), money(high or low)), "price", key)
+							option(_(label).format(money(low or high), money(high or low)), "price", key)
 							for key, label, (low, high) in buckets
 						],
 					],
@@ -163,12 +188,12 @@ def listing_filters(form, collections) -> list[dict]:
 			else []
 		),
 		{
-			"label": "Availability",
-			"options": [option("All", "stock", None), option("In stock", "stock", "in")],
+			"label": _("Availability"),
+			"options": [option(_("All"), "stock", None), option(_("In stock"), "stock", "in")],
 		},
 		{
-			"label": "Sort",
-			"options": [option(label, "sort", None if key == "ranking" else key) for key, label in SORT_OPTIONS],
+			"label": _("Sort"),
+			"options": [option(_(label), "sort", None if key == "ranking" else key) for key, label in SORT_OPTIONS],
 		},
 	]
 
@@ -240,7 +265,7 @@ def collection_page() -> dict:
 	return {
 		"store": store_details(),
 		"collection": collection,
-		# where the collection sits (Sensors › Temperature sensors), and the collections inside it
+		# where the collection sits (parent > child), and the collections inside it
 		"breadcrumbs": [
 			{"title": row.title, "route": store_url(f"collection/{row.slug}")} for row in catalog.ancestors(tree, name)
 		]
@@ -331,18 +356,38 @@ def account_html(customers: list[str]) -> str:
 	quotes = frappe.get_all(
 		"Quotation",
 		filters={"party_name": ["in", customers or [""]], "quotation_to": "Customer", "docstatus": ["<", 2]},
-		fields=["name", "transaction_date", "grand_total", "currency", "docstatus", "status", "shop_access_token"],
+		fields=[
+			"name",
+			"transaction_date",
+			"valid_till",
+			"grand_total",
+			"rounded_total",
+			"currency",
+			"docstatus",
+			"status",
+			"shop_access_token",
+		],
 		order_by="creation desc",
 		limit=20,
 	) if customers and frappe.get_meta("Quotation").has_field("shop_access_token") else []
 	if quotes:
 		html += f"<h2>{esc(_('Quotes'))}</h2><div class='account-table'>"
+		from frappe.utils import getdate, nowdate
+
+		from shop.storefront.quotes import quote_status
+
 		for row in quotes:
-			state = _("Being prepared") if row.docstatus == 0 else (_("Ordered") if row.status == "Ordered" else _("Ready to accept"))
-			link = store_url(f"quote/{row.name}?token={row.shop_access_token}") if row.docstatus == 1 else ""
+			expired = bool(row.valid_till and getdate(row.valid_till) < getdate(nowdate()))
+			closed = row.status in ("Lost", "Cancelled")
+			ordered = "Ordered" if row.status == "Ordered" else None
+			state = quote_status(row, ordered, expired, closed)
+			# a lost or expired quote has nothing to open
+			can_open = row.docstatus == 1 and (ordered or not (expired or closed))
+			link = store_url(f"quote/{row.name}?token={row.shop_access_token}") if can_open else ""
+			total = flt(row.rounded_total) or flt(row.grand_total)
 			html += (
 				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.transaction_date))}</span>'
-				f"<span>{esc(frappe.utils.fmt_money(row.grand_total, currency=row.currency))}</span><span>{esc(state)}</span>"
+				f"<span>{esc(frappe.utils.fmt_money(total, currency=row.currency))}</span><span>{esc(state)}</span>"
 				+ (f'<a href="{esc(link)}">{esc(_("View"))}</a>' if link else "<span></span>")
 				+ "</div>"
 			)
