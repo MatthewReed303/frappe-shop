@@ -98,6 +98,68 @@ BANK_ACCOUNT_FIELDS = (
 )
 
 
+def shipping_restrictions() -> dict:
+	"""The store's shipping restrictions, and the Item Groups that use one."""
+	return {
+		"shipping_restrictions": [
+			{
+				"name": doc.name,
+				"ships_to": doc.ships_to,
+				"countries": [row.country for row in doc.countries],
+				"customer_note": doc.customer_note or "",
+			}
+			for doc in (
+				frappe.get_doc("Shop Shipping Restriction", name)
+				for name in frappe.get_all("Shop Shipping Restriction", order_by="name", pluck="name")
+			)
+		],
+		"item_group_restrictions": frappe.get_all(
+			"Item Group",
+			filters={"shop_shipping_restriction": ["is", "set"]},
+			fields=["name as item_group", "shop_shipping_restriction as restriction"],
+			order_by="lft",
+		),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def save_shipping_restrictions(restrictions: list, item_groups: list) -> dict:
+	"""Save the restrictions as listed, remove the ones taken off the list, and set which Item
+	Groups use which."""
+	only_managers()
+	keep = []
+	for row in restrictions or []:
+		name = (row.get("name") or "").strip()
+		if not name:
+			continue
+		doc = (
+			frappe.get_doc("Shop Shipping Restriction", name)
+			if frappe.db.exists("Shop Shipping Restriction", name)
+			else frappe.new_doc("Shop Shipping Restriction")
+		)
+		doc.restriction_name = name
+		doc.ships_to = row.get("ships_to") or "Only to these countries"
+		doc.customer_note = row.get("customer_note") or None
+		doc.set("countries", [{"country": country} for country in row.get("countries") or []])
+		doc.save(ignore_permissions=True)
+		keep.append(doc.name)
+	wanted = {
+		row.get("item_group"): row.get("restriction") for row in item_groups or [] if row.get("item_group")
+	}
+	for group in frappe.get_all(
+		"Item Group", filters={"shop_shipping_restriction": ["is", "set"]}, pluck="name"
+	):
+		wanted.setdefault(group, None)
+	for group, restriction in wanted.items():
+		frappe.db.set_value("Item Group", group, "shop_shipping_restriction", restriction or None)
+		frappe.clear_document_cache("Item Group", group)
+	for name in frappe.get_all(
+		"Shop Shipping Restriction", filters={"name": ["not in", keep or [""]]}, pluck="name"
+	):
+		frappe.delete_doc("Shop Shipping Restriction", name, ignore_permissions=True)
+	return shipping_restrictions()
+
+
 @frappe.whitelist()
 def get_settings() -> dict:
 	only_managers()
@@ -136,6 +198,8 @@ def get_settings() -> dict:
 				{field: row.get(field) for field in DUTY_FIELDS} for row in settings.import_duties
 			],
 			"countries": frappe.get_all("Country", pluck="name", order_by="name"),
+			"item_groups": frappe.get_all("Item Group", pluck="name", order_by="lft"),
+			**shipping_restrictions(),
 			"tax_templates": frappe.get_all("Sales Taxes and Charges Template", pluck="name"),
 			"income_accounts": frappe.get_all(
 				"Account",

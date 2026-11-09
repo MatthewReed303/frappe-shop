@@ -242,6 +242,11 @@
 			list.innerHTML = item.stock_locations_html || "";
 			list.hidden = !item.stock_locations_html;
 		});
+		// where the variant can be sent (escaped by the server)
+		document.querySelectorAll('[data-shop="shipping-note"]').forEach((note) => {
+			note.innerHTML = item.shipping_note || "";
+			note.hidden = !item.shipping_note;
+		});
 	}
 
 	function initVariantPicker() {

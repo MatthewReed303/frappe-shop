@@ -61,7 +61,7 @@ def sync_agent():
 
 def custom_fields() -> dict:
 	"""The fields Shop adds to ERPNext's documents: the store details of orders, quotations,
-	customers, trade applications (Leads) and the terms a user accepted."""
+	customers, trade applications (Leads), the terms a user accepted and where products are sent."""
 	"""What the store records on each Sales Order: how it is paid and what was agreed at checkout."""
 	return {
 		"Sales Order": [
@@ -232,6 +232,26 @@ def custom_fields() -> dict:
 				"label": "Terms Accepted On",
 				"read_only": 1,
 				"insert_after": "shop_terms_version",
+			},
+		],
+		"Item": [
+			{
+				"fieldname": "shop_shipping_restriction",
+				"fieldtype": "Link",
+				"options": "Shop Shipping Restriction",
+				"label": "Shipping Restriction",
+				"insert_after": "customs_tariff_number",
+				"description": "Where the store can send it. Empty follows its Item Group",
+			},
+		],
+		"Item Group": [
+			{
+				"fieldname": "shop_shipping_restriction",
+				"fieldtype": "Link",
+				"options": "Shop Shipping Restriction",
+				"label": "Shipping Restriction",
+				"insert_after": "is_group",
+				"description": "Where the store can send its items. Empty follows its parent group",
 			},
 		],
 		"User": [

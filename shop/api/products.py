@@ -147,7 +147,8 @@ def save_product(payload: dict) -> dict:
 
 
 def item_details(item_code: str) -> dict:
-	"""The ERPNext Item fields the product editor shows: its group, weight, tax and stock keeping."""
+	"""The ERPNext Item fields the product editor shows: its group, weight, tax, stock keeping and
+	where it can be sent."""
 	item = frappe.get_cached_doc("Item", item_code)
 	return {
 		"item_group": item.item_group,
@@ -155,6 +156,7 @@ def item_details(item_code: str) -> dict:
 		"weight_uom": item.weight_uom,
 		"item_tax_template": item.taxes[0].item_tax_template if item.taxes else None,
 		"track_stock": item.is_stock_item,
+		"shipping_restriction": item.get("shop_shipping_restriction"),
 	}
 
 
@@ -172,6 +174,8 @@ def set_item_details(item_code: str, payload: dict) -> None:
 		item.taxes = []
 		if payload["item_tax_template"]:
 			item.append("taxes", {"item_tax_template": payload["item_tax_template"]})
+	if "shipping_restriction" in payload:
+		item.shop_shipping_restriction = payload["shipping_restriction"] or None
 	if item.as_dict() != before:
 		item.save(ignore_permissions=True)
 
@@ -306,6 +310,7 @@ def get_item_groups() -> dict:
 	company = frappe.get_cached_doc("Shop Settings").company
 	return {
 		"item_groups": frappe.get_all("Item Group", order_by="lft", pluck="name"),
+		"shipping_restrictions": frappe.get_all("Shop Shipping Restriction", order_by="name", pluck="name"),
 		"default": default_item_group(),
 		"item_tax_templates": frappe.get_all(
 			"Item Tax Template", filters={"company": company, "disabled": 0}, pluck="name"

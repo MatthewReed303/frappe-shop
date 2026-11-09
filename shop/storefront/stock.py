@@ -153,10 +153,15 @@ def available_qty(item_code: str) -> float | None:
 
 def availability(item_code: str, priced: bool = True) -> dict:
 	"""Whether the item can be bought online, and what the product page says about it (with its
-	stock at each location the store shows)."""
+	stock at each location the store shows, and where it can be sent)."""
+	from shop.storefront.shipping import shipping_restriction
+
 	if not priced:
 		return state(False, "unavailable", _("Not available online"))
 	result = qty_state(available_qty(item_code), item_code)
+	restriction = shipping_restriction(item_code)
+	if restriction:
+		result["shipping_note"] = frappe.utils.escape_html(restriction.note())
 	shown = location_stock(item_code)
 	if shown:
 		result["stock_locations"] = shown

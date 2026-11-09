@@ -1941,6 +1941,15 @@ def pdp_details(refs):
 		styles={"width": "100%"},
 		dynamicValues=[dv("product.stock_locations_html", "innerHTML")],
 	)
+	shipping_note = block(
+		"p",
+		name="Shipping Note",
+		attrs={"data-shop": "shipping-note"},
+		classes=["shipping-note"],
+		visibilityCondition={"key": "product.shipping_note", "comesFrom": "dataScript"},
+		styles={"width": "100%"},
+		dynamicValues=[dv("product.shipping_note", "innerHTML")],
+	)
 	stock_line = block(
 		"div",
 		name="Stock",
@@ -2042,6 +2051,7 @@ def pdp_details(refs):
 			),
 			stock_line,
 			stock_locations,
+			shipping_note,
 			repeater(
 				"product.highlights",
 				highlight,

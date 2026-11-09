@@ -356,6 +356,103 @@
 			</CatalogSection>
 
 			<CatalogSection
+				title="Shipping restrictions"
+				description="Where products can be sent. Pick a restriction here for an Item Group, or on a product to override its group."
+			>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div
+						v-for="(row, index) in restrictions.shipping_restrictions"
+						:key="index"
+						class="grid grid-cols-6 gap-3 rounded border border-outline-gray-2 p-3"
+					>
+						<FormControl
+							v-model="row.name"
+							label="Name"
+							placeholder="e.g. Domestic only"
+							:disabled="row.saved"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model="row.ships_to"
+							type="select"
+							label="Ships"
+							:options="shipsToOptions"
+							class="col-span-3"
+						/>
+						<Autocomplete
+							:model-value="row.countries.map((country) => ({ label: country, value: country }))"
+							label="Countries"
+							placeholder="Select countries"
+							:options="countryOptions"
+							multiple
+							class="col-span-6"
+							@update:model-value="(selected: Option[]) => (row.countries = selected.map((option) => option.value))"
+						/>
+						<FormControl
+							v-model="row.customer_note"
+							label="Note on product pages"
+							placeholder="Left empty, it lists the countries"
+							class="col-span-4"
+						/>
+						<Button
+							variant="ghost"
+							class="col-span-2 self-end"
+							@click="restrictions.shipping_restrictions.splice(index, 1)"
+						>
+							Remove
+						</Button>
+					</div>
+					<div>
+						<Button @click="addRestriction">Add restriction</Button>
+					</div>
+				</div>
+				<div class="flex max-w-3xl flex-col gap-3">
+					<div class="text-base font-medium text-ink-gray-8">Item Groups</div>
+					<div
+						v-for="(row, index) in restrictions.item_group_restrictions"
+						:key="index"
+						class="grid grid-cols-6 gap-3"
+					>
+						<FormControl
+							v-model="row.item_group"
+							type="select"
+							label="Item Group"
+							:options="listOptions(data.item_groups)"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-model="row.restriction"
+							type="select"
+							label="Restriction"
+							:options="restrictionOptions"
+							class="col-span-2"
+						/>
+						<Button
+							variant="ghost"
+							class="col-span-1 self-end"
+							@click="restrictions.item_group_restrictions.splice(index, 1)"
+						>
+							Remove
+						</Button>
+					</div>
+					<div>
+						<Button :disabled="!restrictionOptions.length" @click="addGroupRestriction">
+							Add Item Group
+						</Button>
+					</div>
+					<p class="text-p-sm text-ink-gray-5">
+						A group's restriction covers the groups under it. Checkout won't send a product where its
+						restriction doesn't allow; customers can still collect it from a store location.
+					</p>
+				</div>
+				<template #footer>
+					<Button variant="solid" :loading="saving === 'restrictions'" @click="saveRestrictions">
+						Save
+					</Button>
+				</template>
+			</CatalogSection>
+
+			<CatalogSection
 				title="Fulfillment"
 				description="The warehouses you sell from and who ships from each, first to last."
 			>
@@ -663,7 +760,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { FormControl, Switch, call, createResource, toast } from 'frappe-ui'
+import { Autocomplete, FormControl, Switch, call, createResource, toast } from 'frappe-ui'
 
 import LucideExternalLink from '~icons/lucide/external-link'
 
@@ -695,6 +792,10 @@ const shipping = reactive({
 	shipping_item: '',
 })
 const duties = reactive({ duties_item: '', import_duties: [] as DutyRow[] })
+const restrictions = reactive({
+	shipping_restrictions: [] as RestrictionRow[],
+	item_group_restrictions: [] as GroupRestrictionRow[],
+})
 const orders = reactive({
 	round_order_totals: true,
 	invoice_paid_orders: false,
@@ -715,6 +816,64 @@ const accounts = reactive({
 	allow_quote_requests: false,
 	quote_valid_days: 30,
 })
+type Option = { label: string; value: string }
+
+type RestrictionRow = {
+	name: string
+	ships_to: string
+	countries: string[]
+	customer_note: string
+	saved?: boolean
+}
+
+type GroupRestrictionRow = { item_group: string; restriction: string }
+
+const shipsToOptions = [
+	{ label: 'Only to these countries', value: 'Only to these countries' },
+	{ label: 'Everywhere except these countries', value: 'Everywhere except these countries' },
+]
+
+const restrictionOptions = computed(() =>
+	restrictions.shipping_restrictions
+		.filter((row) => row.saved)
+		.map((row) => ({ label: row.name, value: row.name })),
+)
+
+function addRestriction() {
+	restrictions.shipping_restrictions.push({
+		name: '',
+		ships_to: 'Only to these countries',
+		countries: data.value.company_country ? [data.value.company_country] : [],
+		customer_note: '',
+	})
+}
+
+function addGroupRestriction() {
+	const used = restrictions.item_group_restrictions.map((row) => row.item_group)
+	const next = (data.value.item_groups || []).find((group: string) => !used.includes(group))
+	restrictions.item_group_restrictions.push({
+		item_group: next || '',
+		restriction: restrictionOptions.value[0]?.value || '',
+	})
+}
+
+async function saveRestrictions() {
+	saving.value = 'restrictions'
+	try {
+		const saved = await call('shop.api.settings.save_shipping_restrictions', {
+			restrictions: restrictions.shipping_restrictions,
+			item_groups: restrictions.item_group_restrictions,
+		})
+		settings.data = { ...settings.data, ...saved }
+		toast.success('Settings saved')
+	} catch (error) {
+		const messages = (error as { messages?: string[] }).messages
+		toast.error(messages?.[0] || 'Could not save settings')
+	} finally {
+		saving.value = ''
+	}
+}
+
 type DutyRow = {
 	country: string
 	duty_rate: number
@@ -817,6 +976,14 @@ function hydrate(doc: Record<string, any>) {
 		free_shipping_above: doc.free_shipping_above || 0,
 		shipping_account: doc.shipping_account || '',
 		shipping_item: doc.shipping_item || '',
+	})
+	Object.assign(restrictions, {
+		shipping_restrictions: (doc.shipping_restrictions || []).map((row: RestrictionRow) => ({
+			...row,
+			countries: [...(row.countries || [])],
+			saved: true,
+		})),
+		item_group_restrictions: (doc.item_group_restrictions || []).map((row: GroupRestrictionRow) => ({ ...row })),
 	})
 	Object.assign(duties, {
 		duties_item: doc.duties_item || '',

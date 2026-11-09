@@ -99,6 +99,13 @@ def get_options(
 			],
 			"messages": [],
 		}
+	held = unsendable(parcel["items"] if parcel else cart.items, address.country)
+	if held:
+		pickup = pickup_option(parcel)
+		return {
+			"options": [pickup] if pickup else [],
+			"messages": [_("{0} can't be sent to {1}.").format(", ".join(held), _(address.country))],
+		}
 	key = quote_key(cart, address, parcel)
 	cached = cached_quotes(cart).get(key) or {}
 	if not refresh and fresh(cached):
@@ -128,6 +135,48 @@ def get_options(
 		options.append({"id": FLAT_RATE_ID, "label": _("Free shipping"), "amount": 0.0, "tax_included": True})
 	options.sort(key=lambda option: option["amount"])
 	return {"options": options, "messages": messages}
+
+
+def shipping_restriction(item_code: str):
+	"""Where an item can be sent: its own Shop Shipping Restriction, else its template's, else the
+	nearest Item Group's up the tree."""
+	item = frappe.get_cached_value(
+		"Item", item_code, ["shop_shipping_restriction", "variant_of", "item_group"], as_dict=True
+	)
+	if not item:
+		return None
+	name = item.shop_shipping_restriction
+	if not name and item.variant_of:
+		name = frappe.get_cached_value("Item", item.variant_of, "shop_shipping_restriction")
+	group = item.item_group
+	while not name and group:
+		name, group = frappe.get_cached_value(
+			"Item Group", group, ["shop_shipping_restriction", "parent_item_group"]
+		) or (None, None)
+	return frappe.get_cached_doc("Shop Shipping Restriction", name) if name else None
+
+
+def can_send(item_code: str, country: str | None) -> bool:
+	"""Whether the item, and every part of it when it is a Product Bundle, can be sent there."""
+	from shop.storefront.stock import bundle_parts
+
+	for code in [item_code, *(part for part, _qty in bundle_parts(item_code))]:
+		restriction = shipping_restriction(code)
+		if restriction and not restriction.allows(country):
+			return False
+	return True
+
+
+def unsendable(rows, country: str | None) -> list[str]:
+	"""The names of the goods among these rows that are sent but can't be sent to the country."""
+	from shop.storefront.stock import is_stock_item
+
+	names = []
+	for row in rows:
+		code = row.get("item_code")
+		if is_stock_item(code) and not can_send(code, country):
+			names.append(row.get("item_name") or frappe.get_cached_value("Item", code, "item_name") or code)
+	return list(dict.fromkeys(names))
 
 
 def ships(cart) -> bool:

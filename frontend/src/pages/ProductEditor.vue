@@ -158,6 +158,13 @@
 						:options="taxOptions"
 						description="An Item Tax Template changes the tax rate for this product, e.g. zero-rated."
 					/>
+					<FormControl
+						v-model="form.shipping_restriction"
+						type="select"
+						label="Ships to"
+						:options="restrictionOptions"
+						description="Where the store can send it. Restrictions are set up in Settings."
+					/>
 				</CatalogSection>
 
 				<CatalogSection v-if="!isLink" title="Inventory">
@@ -253,6 +260,11 @@ const taxOptions = computed(() => [
 	{ label: "The store's tax", value: '' },
 	...itemTaxTemplates.value.map((name) => ({ label: name, value: name })),
 ])
+const shippingRestrictions = ref<string[]>([])
+const restrictionOptions = computed(() => [
+	{ label: 'As its Item Group', value: '' },
+	...shippingRestrictions.value.map((name) => ({ label: name, value: name })),
+])
 const defaultItemGroup = ref('')
 const itemHasVariants = ref(false)
 const withOptions = ref(false)
@@ -276,6 +288,7 @@ const form = reactive({
 	weight: 0,
 	weight_uom: '',
 	item_tax_template: '',
+	shipping_restriction: '',
 	track_stock: true,
 })
 
@@ -358,6 +371,7 @@ function resetForm() {
 		weight: 0,
 		weight_uom: '',
 		item_tax_template: '',
+		shipping_restriction: '',
 		track_stock: true,
 	})
 	detail.value = null
@@ -380,6 +394,7 @@ async function loadItemGroups() {
 	defaultItemGroup.value = result.default
 	if (!form.item_group) form.item_group = result.default
 	itemTaxTemplates.value = result.item_tax_templates || []
+	shippingRestrictions.value = result.shipping_restrictions || []
 }
 
 async function loadProduct(name: string) {
@@ -401,6 +416,7 @@ async function loadProduct(name: string) {
 		weight: doc.weight || 0,
 		weight_uom: doc.weight_uom || '',
 		item_tax_template: doc.item_tax_template || '',
+		shipping_restriction: doc.shipping_restriction || '',
 		track_stock: !!doc.track_stock,
 	})
 }
@@ -498,9 +514,10 @@ async function createFresh() {
 	return finishCreate(result.product)
 }
 
-// create_product and create_variant_product take neither highlights, ranking, weight nor tax.
+// create_product and create_variant_product take neither highlights, ranking, weight, tax nor
+// shipping restriction.
 async function finishCreate(name: string) {
-	if (form.highlights || form.ranking || form.weight || form.item_tax_template) {
+	if (form.highlights || form.ranking || form.weight || form.item_tax_template || form.shipping_restriction) {
 		await call('shop.api.products.save_product', {
 			payload: {
 				name,
@@ -509,6 +526,7 @@ async function finishCreate(name: string) {
 				published: form.published,
 				weight: form.weight,
 				item_tax_template: form.item_tax_template,
+				shipping_restriction: form.shipping_restriction,
 			},
 		})
 	}
@@ -532,6 +550,7 @@ function payload() {
 		item_group: isEdit.value ? form.item_group : undefined,
 		weight: isEdit.value ? form.weight : undefined,
 		item_tax_template: isEdit.value ? form.item_tax_template : undefined,
+		shipping_restriction: isEdit.value ? form.shipping_restriction : undefined,
 		price: variantPricing.value ? undefined : form.price,
 	}
 }
