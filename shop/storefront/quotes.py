@@ -372,7 +372,11 @@ def make_order(quotation):
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=60)
 def accept_quote(
-	name: str, token: str, payment_method: str, accept_terms: int = 0, business_buyer: int = 0
+	name: str,
+	token: str | None = None,
+	payment_method: str | None = None,
+	accept_terms: int = 0,
+	business_buyer: int = 0,
 ) -> dict:
 	"""The customer accepts the quote: the order is placed at the quoted prices, then paid."""
 	from shop.storefront import terms
@@ -384,6 +388,9 @@ def accept_quote(
 		set_shop_details,
 	)
 
+	load_quote(name, token)
+	if not payment_method:
+		frappe.throw(_("Choose how to pay"))
 	if terms.required() and not cint(accept_terms):
 		frappe.throw(_("Please accept the terms and conditions"))
 	payment_method = totals.resolve_method(payment_method)
