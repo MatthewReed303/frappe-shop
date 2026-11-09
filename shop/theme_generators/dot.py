@@ -20,6 +20,7 @@ from shop.theme_generators.store_ui import (
 	card_summary,
 	catalog_menu_button,
 	catalog_menu_panel,
+	currency_picker,
 	forgot_password,
 	form_error,
 	hint,
@@ -778,11 +779,9 @@ def nav(refs):
 				mobile={"gap": "14px", "flexWrap": "wrap", "justifyContent": "flex-end", "rowGap": "8px"},
 				children=[
 					catalog_menu_button(refs),
-					block("a", text="Shop", attrs={"href": "/products"}, styles=dict(link_style)),
 					block("a", text="About", attrs={"href": "/about"}, styles=dict(link_style), mobile={"display": "none"}),
 					block("a", text="Contact", attrs={"href": "/contact"}, styles=dict(link_style), mobile={"display": "none"}),
-					block("div", text="", name="Currency Picker", classes=["store-currency"],
-						  dynamicValues=[dv("store.currency_picker_html", "innerHTML")]),
+					currency_picker(link_style),
 					block(
 						"a",
 						text="Create account",

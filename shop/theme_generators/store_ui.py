@@ -38,7 +38,10 @@ def store_css(refs, radius: str = "2px"):
 .buying-for {{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0 0 12px; font-size:14px; color:{ink}; }}
 .buying-for select {{ font:inherit; padding:6px 10px; border:1px solid {line}; border-radius:4px; background:transparent; color:{ink}; }}
 .shipping-note {{ margin:0; font-size:13px; color:{muted}; }}
-.currency-picker select {{ font: inherit; font-size:13px; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:{radius}; padding:5px 7px; cursor:pointer; }}
+.currency-picker {{ position:relative; display:inline-flex; align-items:center; }}
+.currency-picker select {{ appearance:none; -webkit-appearance:none; font:inherit; letter-spacing:inherit; text-transform:inherit; color:inherit; background:transparent; border:0; padding:2px 16px 2px 0; cursor:pointer; }}
+.currency-picker::after {{ content:""; position:absolute; right:2px; top:50%; width:5px; height:5px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:translateY(-70%) rotate(45deg); pointer-events:none; }}
+.currency-picker select:focus-visible {{ outline:2px solid currentColor; outline-offset:3px; border-radius:2px; }}
 .checkout-option {{ display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid {line}; border-radius:{radius}; cursor:pointer; width:100%; font-size:13px; }}
 .checkout-option input {{ accent-color:{ink}; width:15px; height:15px; flex-shrink:0; }}
 .checkout-option-label {{ flex-grow:1; }}
@@ -303,8 +306,9 @@ def shown_with_form(form: dict) -> dict:
 
 
 def catalog_menu_button(refs, size="13px"):
-	"""Opens the catalogue menu, which the store's script fills from its collections; hidden while
-	the store has none. Its label is the store's (page data key `store.menu_label`)."""
+	"""Opens the catalogue menu, which the store's script fills from its collections and ends with
+	all products; while the store has no collections it opens all products. Its label is the
+	store's (page data key `store.menu_label`)."""
 	return block(
 		"button",
 		text="Products",
@@ -314,11 +318,23 @@ def catalog_menu_button(refs, size="13px"):
 			"data-shop": "catalog-menu-toggle",
 			"aria-expanded": "false",
 			"aria-controls": "store-catalog-menu",
-			"hidden": "",
 		},
 		classes=["catalog-menu-toggle"],
 		styles={"color": refs["ink"], "fontSize": size, "fontWeight": "500"},
 		dynamicValues=[dv("store.menu_label", "innerHTML")],
+	)
+
+
+def currency_picker(styles: dict | None = None):
+	"""The currencies prices can be shown in (store.currency_picker_html), looking like the links
+	beside it (styles); empty with one currency."""
+	return block(
+		"div",
+		text="",
+		name="Currency Picker",
+		classes=["store-currency"],
+		styles=styles or {},
+		dynamicValues=[dv("store.currency_picker_html", "innerHTML")],
 	)
 
 
@@ -598,6 +614,10 @@ def browse_css(refs, radius: str = "2px"):
 .catalog-menu-group > a {{ display:flex; align-items:center; gap:10px; font-weight:600; font-size:14px; }}
 .catalog-menu-group img {{ width:40px; height:40px; object-fit:contain; background:{card}; border-radius:{radius}; }}
 .catalog-menu-group span {{ color:{muted}; font-size:12px; }}
+.catalog-menu-list li.catalog-menu-all {{ border-top:1px solid {line}; margin-top:8px; padding-top:8px; }}
+.catalog-menu-list li.catalog-menu-all a, a.catalog-menu-all {{ font-weight:600; }}
+.catalog-menu-flat > a.catalog-menu-all {{ display:block; margin-top:22px; padding-top:16px; border-top:1px solid {line}; color:{ink}; font-size:14px; text-decoration:none; }}
+.catalog-menu-flat > a.catalog-menu-all:hover {{ text-decoration:underline; }}
 @media (max-width: 760px) {{
 	.catalog-menu-inner {{ grid-template-columns:1fr; }}
 	.catalog-menu-list {{ border-right:0; border-bottom:1px solid {line}; }}

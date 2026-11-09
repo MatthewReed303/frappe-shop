@@ -1047,14 +1047,18 @@
 		const toggle = document.querySelector('[data-shop="catalog-menu-toggle"]');
 		const panel = document.querySelector('[data-shop="catalog-menu"]');
 		if (!toggle || !panel) return;
+		const allProducts = base + "/products";
 		let tree = [];
 		try {
-			tree = await call("shop.storefront.catalog.catalog_menu");
+			tree = (await call("shop.storefront.catalog.catalog_menu")) || [];
 		} catch (e) {
+			tree = [];
+		}
+		if (!tree.length) {
+			toggle.addEventListener("click", () => (window.location.href = allProducts));
 			return;
 		}
-		if (!tree || !tree.length) return;
-		toggle.hidden = false;
+		const all = `<a class="catalog-menu-all" href="${esc(allProducts)}">${esc(__("All products"))}</a>`;
 		const link = (entry, label) => `<a href="${esc(entry.route)}">${esc(label || entry.title)}</a>`;
 		const count = (entry) =>
 			`<span>${esc(entry.count === 1 ? __("1 product") : __("{0} products", [entry.count]))}</span>`;
@@ -1066,7 +1070,7 @@
 			</div>`;
 		if (!tree.some((entry) => entry.children.length)) {
 			// nothing inside the top collections: they are tiles
-			panel.innerHTML = `<div class="catalog-menu-inner catalog-menu-flat"><div class="catalog-menu-groups">${tree.map(tile).join("")}</div></div>`;
+			panel.innerHTML = `<div class="catalog-menu-inner catalog-menu-flat"><div class="catalog-menu-groups">${tree.map(tile).join("")}</div>${all}</div>`;
 		} else {
 			panel.innerHTML = `
 				<div class="catalog-menu-inner">
@@ -1078,6 +1082,7 @@
 									: `<li><a href="${esc(entry.route)}">${esc(entry.title)}${count(entry)}</a></li>`
 							)
 							.join("")}
+						<li class="catalog-menu-all">${all}</li>
 					</ul>
 					<div class="catalog-menu-detail"></div>
 				</div>`;
