@@ -175,9 +175,8 @@ def add_person(customer: str, full_name: str, email: str) -> list[dict]:
 	doc = frappe.get_doc("Customer", customer)
 	user_type = frappe.db.get_value("User", email, "user_type")
 	if user_type == "System User":
-		frappe.throw(
-			_("{0} is a staff login. Staff use Desk; add a separate email for buying in the store.").format(email)
-		)
+		message = _("{0} is a staff login. Staff use Desk; add a separate email for buying in the store.")
+		frappe.throw(message.format(email))
 	if not user_type:
 		create_user(email, full_name, record_terms=False)
 	elif frappe.db.exists("Role", "Customer") and "Customer" not in frappe.get_roles(email):
