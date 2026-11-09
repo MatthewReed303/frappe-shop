@@ -1,6 +1,8 @@
 (function () {
 	// Set by Shop when the storefront is served under a route prefix, e.g. "/store".
 	const base = window.shop_route_prefix || "";
+	// Frappe's translation when the page has it
+	const __ = window.__ || ((text) => text);
 	const state = {
 		product: window.page_data && window.page_data.product,
 		selection: {},
@@ -13,7 +15,7 @@
 		return div.innerHTML;
 	}
 
-	const GENERIC_ERROR = "Something went wrong. Please try again.";
+	const GENERIC_ERROR = __("Something went wrong. Please try again.");
 
 	async function call(method, args) {
 		let response;
@@ -27,7 +29,7 @@
 				body: JSON.stringify(args || {}),
 			});
 		} catch (e) {
-			throw new Error("We couldn't reach the store. Check your connection and try again.");
+			throw new Error(__("We couldn't reach the store. Check your connection and try again."));
 		}
 		let body = {};
 		try {
@@ -293,7 +295,9 @@
 			button.dataset.available = optionAvailable(button.dataset.attribute, button.dataset.value) ? "true" : "false";
 		});
 		const variant = selectedVariant();
-		const prices = document.querySelectorAll('[data-shop="pdp-price"], [data-shop="pdp-price-note"]');
+		const prices = document.querySelectorAll(
+			'[data-shop="pdp-price"], [data-shop="pdp-price-note"], [data-shop="pdp-compare-at"]'
+		);
 		if (!variant) {
 			// a combination the store doesn't sell: nothing of another variant stays on the page
 			syncAvailability({
@@ -371,7 +375,28 @@
 		if (picks.length) {
 			return JSON.stringify(Object.fromEntries(picks.map((input) => [input.name.slice("shipping_option:".length), input.value])));
 		}
-		return new FormData(form).get("shipping_option") || undefined;
+		const picked = new FormData(form).get("shipping_option");
+		if (picked) return picked;
+		// a choice restored before the quote has drawn its services
+		const held = Object.entries(checkout.heldChoices || {});
+		const parcels = held.filter(([name]) => name.startsWith("shipping_option:"));
+		if (parcels.length) {
+			return JSON.stringify(Object.fromEntries(parcels.map(([name, value]) => [name.slice("shipping_option:".length), value])));
+		}
+		return (checkout.heldChoices || {}).shipping_option || undefined;
+	}
+
+	// check the held choices among the services the quote drew, once
+	function applyHeldChoices(form) {
+		Object.entries(checkout.heldChoices || {}).forEach(([name, value]) => {
+			const radio = [...form.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`)].find(
+				(field) => field.value === value
+			);
+			if (radio) {
+				radio.checked = true;
+				delete checkout.heldChoices[name];
+			}
+		});
 	}
 
 	function shippingOptionsHtml(options, name) {
@@ -400,6 +425,8 @@
 	function scheduleQuote(delay) {
 		const form = checkoutForm();
 		if (!form || !document.querySelector('[data-shop="checkout-totals"]')) return;
+		// what changed may change the total: an order isn't placed at the old one
+		checkout.quote = null;
 		clearTimeout(checkout.timer);
 		checkout.timer = setTimeout(() => requestQuote(form), delay == null ? 450 : delay);
 	}
@@ -429,22 +456,37 @@
 	function renderQuote(form, quote) {
 		const options = form.querySelector('[data-shop="shipping-options"]');
 		if (options) {
+			const hints = (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
+			let html;
 			if (quote.shipping_pending) {
-				options.innerHTML = `<p class="checkout-hint">Enter your address to see shipping options.</p>`;
+				html = `<p class="checkout-hint">${esc(__("Enter your address to see shipping options."))}</p>`;
 			} else if ((quote.shipping_groups || []).length) {
-				options.innerHTML =
+				html =
 					quote.shipping_groups
 						.map(
 							(group) => `<div class="checkout-parcel"><p class="checkout-hint"><strong>${esc(group.label)}</strong> · ${esc(group.items)}</p>
-							${group.options.length ? shippingOptionsHtml(group.options, `shipping_option:${group.key}`) : `<div class="checkout-warning" role="alert"><p>We can't send this parcel to this address.</p></div>`}</div>`
+							${group.options.length ? shippingOptionsHtml(group.options, `shipping_option:${group.key}`) : `<div class="checkout-warning" role="alert"><p>${esc(__("We can't send this parcel to this address."))}</p></div>`}</div>`
 						)
-						.join("") + (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
+						.join("") + hints;
 			} else if (!quote.shipping_options.length) {
 				const reasons = (quote.shipping_messages || []).map((m) => `<p>${esc(m)}</p>`).join("");
-				options.innerHTML = `<div class="checkout-warning" role="alert">${reasons || "<p>We can't ship to this address. Check it, or contact us.</p>"}</div>`;
+				html = `<div class="checkout-warning" role="alert">${reasons || `<p>${esc(__("We can't ship to this address. Check it, or contact us."))}</p>`}</div>`;
 			} else {
-				options.innerHTML = shippingOptionsHtml(quote.shipping_options, "shipping_option") + (quote.shipping_messages || []).map((m) => `<p class="checkout-hint">${esc(m)}</p>`).join("");
+				html = shippingOptionsHtml(quote.shipping_options, "shipping_option") + hints;
 			}
+			// drawn again only when it changed, and the shopper keeps their place in it
+			if (options.dataset.rendered !== html) {
+				const focused = options.contains(document.activeElement) ? document.activeElement : null;
+				options.innerHTML = html;
+				options.dataset.rendered = html;
+				if (focused && focused.name) {
+					const again = [...options.querySelectorAll(`[name="${CSS.escape(focused.name)}"]`)].find(
+						(field) => field.value === focused.value
+					);
+					if (again) again.focus();
+				}
+			}
+			applyHeldChoices(form);
 		}
 		form.querySelectorAll('[data-shop="payment-fee"]').forEach((note) => {
 			const method = (quote.payment_methods || []).find((m) => m.method === note.dataset.method);
@@ -505,7 +547,7 @@
 		const submit = form.querySelector('[type="submit"]');
 		const terms = form.querySelector('[name="accept_terms"]');
 		if (terms && !terms.checked) {
-			showError("Please accept the terms and conditions.", form);
+			showError(__("Please accept the terms and conditions."), form);
 			terms.focus();
 			return;
 		}
@@ -739,7 +781,7 @@
 
 	async function submitReview(form) {
 		if (!state.reviewRating) {
-			showError("Pick a star rating first.", form);
+			showError(__("Pick a star rating first."), form);
 			return;
 		}
 		const data = new FormData(form);
@@ -754,7 +796,7 @@
 			});
 			const thanks = document.createElement("p");
 			thanks.className = "form-done";
-			thanks.textContent = "Thank you for your review.";
+			thanks.textContent = __("Thank you for your review.");
 			form.replaceWith(thanks);
 		} catch (error) {
 			showError(error.message, form);
@@ -790,8 +832,12 @@
 			return;
 		}
 		if (!draft) return;
+		checkout.heldChoices = {};
 		Object.entries(draft).forEach(([name, value]) => {
-			form.querySelectorAll(`[name="${name}"]`).forEach((field) => {
+			const fields = form.querySelectorAll(`[name="${CSS.escape(name)}"]`);
+			// services are drawn by the first quote: their choice waits for it
+			if (!fields.length && name.startsWith("shipping_option")) checkout.heldChoices[name] = value;
+			fields.forEach((field) => {
 				if (field.type === "radio") field.checked = field.value === value;
 				else if (field.type === "checkbox") field.checked = !!value;
 				else if (field.tagName === "SELECT" && !field.options.length) {
@@ -830,7 +876,7 @@
 		try {
 			result = await call("login", { usr: data.get("email"), pwd: data.get("password") });
 		} catch (error) {
-			showError("That email and password don't match an account. Check them, or reset your password.", form);
+			showError(__("That email and password don't match an account. Check them, or reset your password."), form);
 			if (submit) submit.disabled = false;
 			return;
 		}
@@ -845,7 +891,7 @@
 	async function forgotPassword(form) {
 		const email = form && form.querySelector('[name="email"]');
 		if (!email || !email.value || !email.checkValidity()) {
-			showError("Enter your email address first, then choose Forgot your password.", form);
+			showError(__("Enter your email address first, then choose Forgot your password."), form);
 			if (email) email.focus();
 			return;
 		}
@@ -854,7 +900,7 @@
 		try {
 			await call("frappe.core.doctype.user.user.reset_password", { user: email.value });
 			if (done) {
-				done.textContent = "If " + email.value + " has an account, we've emailed it a link to set a new password.";
+				done.textContent = __("If {0} has an account, we've emailed it a link to set a new password.").replace("{0}", email.value);
 				done.hidden = false;
 			}
 		} catch (error) {
@@ -866,7 +912,7 @@
 		try {
 			await call("logout", {});
 		} finally {
-			window.location.href = (window.page_data && window.page_data.store && window.page_data.store.home_url) || "/";
+			window.location.href = base || "/";
 		}
 	}
 
@@ -885,15 +931,22 @@
 		const chosen = addresses.find((address) => address.name === picker.value);
 		ADDRESS_FIELDS.forEach((field) => {
 			const input = document.querySelector(`[data-shop="checkout-form"] [name="${field}"]`);
-			if (input) input.value = (chosen && chosen[field]) || "";
+			// a new address keeps the country the shopper is in
+			if (!input || (!chosen && field === "country")) return;
+			input.value = (chosen && chosen[field]) || "";
 		});
 	}
 
 	function syncPaymentUI() {
 		const chosen = document.querySelector('input[name="payment_method"]:checked');
 		const submit = document.querySelector('[data-shop="checkout-form"] [type="submit"]');
-		const online = chosen && (chosen.value === "gateway" || chosen.value.startsWith("gateway:") || chosen.value === "card");
-		if (submit && chosen) submit.textContent = online ? "Continue to payment" : "Place order";
+		const online = chosen && (chosen.value === "gateway" || chosen.value.startsWith("gateway:"));
+		if (submit && chosen) {
+			// the theme's own button wording, when it sets one
+			submit.dataset.label = submit.dataset.label || submit.textContent;
+			const label = online ? submit.dataset.payLabel || __("Continue to payment") : submit.dataset.label;
+			submit.textContent = label;
+		}
 		const note = document.querySelector('[data-shop="gateway-note"]');
 		if (note) note.hidden = !online;
 	}
@@ -959,7 +1012,7 @@
 					window.location.reload();
 				} catch (error) {
 					select.disabled = false;
-					window.alert(error.message);
+					showError(error.message);
 				}
 			})
 		);

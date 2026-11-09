@@ -1394,13 +1394,13 @@ def delivery_card(refs):
 		children=[
 			block(
 				"p",
-				text="Free shipping on orders over $100",
+				text="Free shipping",
 				styles=mono(size="11px", color=refs["ink"], spacing="0.12em"),
 				visibilityCondition={"key": "store.delivery_note", "comesFrom": "dataScript"},
 				dynamicValues=[dv("store.delivery_note", "innerHTML")],
 			),
 			line(
-				"14-day returns",
+				"Returns accepted",
 				visibilityCondition={"key": "store.returns_note", "comesFrom": "dataScript"},
 				dynamicValues=[dv("store.returns_note", "innerHTML")],
 			),
@@ -1836,6 +1836,7 @@ def pdp_price(refs):
 			block(
 				"span",
 				text="",
+				attrs={"data-shop": "pdp-compare-at"},
 				visibilityCondition={"key": "product.formatted_compare_at", "comesFrom": "dataScript"},
 				styles={
 					**mono(size="13px", color=refs["muted"], spacing="0.04em", upper=False),
@@ -2735,7 +2736,7 @@ def checkout_blocks(refs):
 				styles={"gridColumn": "span 2", "marginTop": "6px", "width": "100%"},
 				children=[
 					block("summary", text="Need a quote instead? (larger quantities, purchase orders)"),
-					block("textarea", attrs={"name": "quote_message", "rows": "3",
+					block("textarea", attrs={"name": "quote_message", "rows": "3", "aria-label": "About your quote",
 											 "placeholder": "Anything we should know: quantities, delivery dates, your PO number"},
 						  styles=field_styles(refs)),
 					block("button", text="Request a quote", attrs={"type": "button", "data-shop": "request-quote"}, classes=["quote-button"]),
