@@ -20,8 +20,6 @@ LIVE_FOLDER = "Shop"
 @frappe.whitelist()
 def list_themes() -> list[dict]:
 	ensure_manager()
-	from builder.template_sync import get_all_group_manifests
-
 	settings = frappe.get_cached_doc("Shop Settings")
 	themes = [
 		{
@@ -33,9 +31,21 @@ def list_themes() -> list[dict]:
 			"pages": manifest.get("pages", []),
 			"active": group == settings.active_theme,
 		}
-		for group, manifest in get_all_group_manifests(app="shop").items()
+		for group, manifest in theme_manifests().items()
+		if template_pages(group)
 	]
 	return sorted(themes, key=lambda theme: theme["order"])
+
+
+def theme_manifests() -> dict[str, dict]:
+	"""Shop's themes, then those other apps generate into the site and register in the
+	`shop_themes` hook as {"group", "title", "description", "order"}."""
+	from builder.template_sync import get_all_group_manifests
+
+	manifests = get_all_group_manifests(app="shop")
+	for theme in frappe.get_hooks("shop_themes") or []:
+		manifests.setdefault(theme["group"], theme)
+	return manifests
 
 
 def home_preview(group: str) -> str | None:
@@ -69,6 +79,12 @@ def apply_theme(group: str) -> None:
 	templates = template_pages(group)
 	if not templates:
 		frappe.throw(_("Theme {0} has no pages").format(group))
+	if any(stale_components(page_blocks(template)) for template in templates):
+		frappe.throw(
+			_(
+				"Theme {0} doesn't match its components (navbar, footer and the like). Update the site, then try again."
+			).format(group)
+		)
 	settings = frappe.get_doc("Shop Settings")
 	unpublish_active_theme(settings)
 	tracked = {
@@ -76,17 +92,68 @@ def apply_theme(group: str) -> None:
 		for row in settings.theme_pages
 		if row.template_group == group and frappe.db.exists("Builder Page", row.page)
 	}
+	prefix = get_prefix()
 	for template in templates:
-		if template in tracked:
-			republish(tracked[template].page)
-		else:
+		if template not in tracked:
 			clone_template(template, group, settings)
+		elif stale_components(page_blocks(tracked[template].page)):
+			# its navbar, footer or drawer has changed since the page was kept, and Builder would show them empty
+			update_from_template(tracked[template].page, template, prefix)
+		else:
+			republish(tracked[template].page)
 	settings.active_theme = group
-	settings.applied_route_prefix = get_prefix()
+	settings.applied_route_prefix = prefix
 	settings.save(ignore_permissions=True)
-	relink_components(get_prefix())
+	relink_components(prefix)
 	set_home_page()
 	clear_render_cache()
+
+
+def page_blocks(name: str):
+	return frappe.db.get_value("Builder Page", name, "blocks")
+
+
+def stale_components(blocks, component_block=None) -> set[str]:
+	"""Components a page lists out of step with the component itself: parts it no longer has,
+	or has gained since. Builder renders only the parts a page lists, so these come out empty
+	or incomplete."""
+	component_block = component_block or (
+		lambda name: frappe.db.get_value("Builder Component", name, "block")
+	)
+	parts = {}
+	stale = set()
+
+	def walk(node):
+		name = node.get("extendedFromComponent")
+		if name:
+			if name not in parts:
+				block = component_block(name)
+				parts[name] = descendant_ids(frappe.parse_json(block)) if block else None
+			if parts[name] is None or listed_parts(node, name) != parts[name]:
+				stale.add(name)
+		for child in node.get("children") or []:
+			walk(child)
+
+	for node in frappe.parse_json(blocks) or []:
+		walk(node)
+	return stale
+
+
+def descendant_ids(block: dict) -> set[str]:
+	ids = set()
+	for child in block.get("children") or []:
+		ids.add(child.get("blockId"))
+		ids |= descendant_ids(child)
+	return ids
+
+
+def listed_parts(block: dict, component: str) -> set[str]:
+	ids = set()
+	for child in block.get("children") or []:
+		if child.get("isChildOfComponent") == component:
+			ids.add(child.get("referenceBlockId"))
+			ids |= listed_parts(child, component)
+	return ids
 
 
 def clear_render_cache():
@@ -119,6 +186,26 @@ def republish(name: str):
 	page = frappe.get_doc("Builder Page", name)
 	page.published = 1
 	page.published_at = now()
+	page.project_folder = ensure_folder(LIVE_FOLDER)
+	page.save(ignore_permissions=True)
+
+
+def update_from_template(name: str, template_name: str, prefix: str):
+	template = frappe.get_doc("Builder Page", template_name)
+	page = frappe.get_doc("Builder Page", name)
+	page.route = page_route(template.route, prefix)
+	page.blocks = rewrite_blocks(template.blocks, prefix)
+	page.draft_blocks = page.blocks
+	page.page_data_script = template.page_data_script
+	page.page_title = template.page_title
+	page.authenticated_access = template.authenticated_access
+	page.meta_description = template.meta_description
+	page.body_html = with_prefix_script(template.body_html, prefix)
+	page.client_scripts = []
+	for script in template.client_scripts:
+		page.append("client_scripts", {"builder_script": script.builder_script})
+	page.published = 1
+	page.published_at = page.published_at or now()
 	page.project_folder = ensure_folder(LIVE_FOLDER)
 	page.save(ignore_permissions=True)
 
@@ -184,21 +271,8 @@ def refresh_theme(group: str):
 	}
 	prefix = get_prefix()
 	for template_name in template_pages(group):
-		template = frappe.get_doc("Builder Page", template_name)
 		if template_name in tracked:
-			page = frappe.get_doc("Builder Page", tracked[template_name].page)
-			page.route = page_route(template.route, prefix)
-			page.blocks = rewrite_blocks(template.blocks, prefix)
-			page.draft_blocks = page.blocks
-			page.page_data_script = template.page_data_script
-			page.page_title = template.page_title
-			page.authenticated_access = template.authenticated_access
-			page.meta_description = template.meta_description
-			page.body_html = with_prefix_script(template.body_html, prefix)
-			page.client_scripts = []
-			for script in template.client_scripts:
-				page.append("client_scripts", {"builder_script": script.builder_script})
-			page.save(ignore_permissions=True)
+			update_from_template(tracked[template_name].page, template_name, prefix)
 		else:
 			clone_template(template_name, group, settings)
 	settings.applied_route_prefix = prefix

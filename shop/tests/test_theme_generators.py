@@ -1,3 +1,5 @@
+import glob
+import os
 from unittest.mock import patch
 
 import frappe
@@ -6,9 +8,21 @@ from frappe.tests import IntegrationTestCase
 
 from shop.theme_generators import dot
 from shop.theme_generators import frappe as frappe_theme
+from shop.themes import stale_components
 
 
 class TestThemeGenerators(IntegrationTestCase):
+	def test_shipped_themes_match_their_components(self):
+		root = frappe.get_app_path("shop", "builder_templates")
+		components = {}
+		for path in glob.glob(os.path.join(root, "*", "components", "*", "*.json")):
+			fixture = frappe.parse_json(read(path))
+			components[fixture["name"]] = fixture["block"]
+		for path in glob.glob(os.path.join(root, "*", "pages", "*", "*.json")):
+			with self.subTest(page=os.path.relpath(path, root)):
+				blocks = frappe.parse_json(read(path))["blocks"]
+				self.assertFalse(stale_components(blocks, components.get))
+
 	def test_site_theme_in_each_generator(self):
 		for generator, prefix in ((frappe_theme, "shop"), (dot, "dot")):
 			with self.subTest(generator=generator.GROUP):
@@ -43,6 +57,10 @@ class TestThemeGenerators(IntegrationTestCase):
 			patch(f"{BuilderClientScript.__module__}.BuilderClientScript.update_script_file"),
 		):
 			generator.generate(site_theme)
+			saved = theme_records(group)
+			generator.generate(site_theme)
+		# generating again changes nothing, so the exported templates only change when the theme does
+		self.assertEqual(theme_records(group), saved)
 
 		pages = frappe.get_all(
 			"Builder Page",
@@ -50,6 +68,8 @@ class TestThemeGenerators(IntegrationTestCase):
 			fields=["route", "blocks"],
 		)
 		routes = {page.route: page for page in pages}
+		for page in pages:
+			self.assertFalse(stale_components(page.blocks), page.route)
 		self.assertNotIn("about", routes)
 		self.assertIn("checkout", routes)
 		self.assertIn("Do you ship to the moon?", routes["faq"].blocks)
@@ -75,6 +95,22 @@ class TestThemeGenerators(IntegrationTestCase):
 		self.assertIn(f"{group}-hero", routes["home"].blocks)
 		self.assertNotIn(f'"{prefix}-hero"', routes["home"].blocks)
 		self.assertEqual(generator.THEME.group, generator.GROUP)
+
+
+def theme_records(group: str) -> dict:
+	return {
+		doctype: frappe.get_all(doctype, filters=filters, fields=["name", "modified"], order_by="name")
+		for doctype, filters in (
+			("Builder Page", {"template_group": group}),
+			("Builder Component", {"name": ["like", f"{group}-%"]}),
+			("Builder Client Script", {"name": ["like", f"{group}-%"]}),
+		)
+	}
+
+
+def read(path: str) -> str:
+	with open(path, encoding="utf-8") as f:
+		return f.read()
 
 
 def block_names(blocks) -> list[str]:
