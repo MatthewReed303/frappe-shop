@@ -1,11 +1,14 @@
+import re
+
 import frappe
+from frappe import _
 from frappe.utils import cint, flt
 
 from shop.routes import store_url
 from shop.storefront import pricing, stock
 
-MAX_PAGE_SIZE = 60
-MAX_CATALOG_SIZE = 500
+MAX_PAGE_SIZE = 96
+MAX_CATALOG_SIZE = 2000
 
 SORT_ORDERS = {
 	"ranking": "ranking desc, modified desc",
@@ -14,6 +17,19 @@ SORT_ORDERS = {
 	"price_asc": None,
 	"price_desc": None,
 }
+
+
+PRODUCT_FIELDS = [
+	"name",
+	"product_name",
+	"slug",
+	"short_description",
+	"has_variants",
+	"item",
+	"compare_at_price",
+]
+BRAND = "brand"
+PLACEHOLDER_IMAGE = "/assets/builder/images/fallback.png"
 
 
 @frappe.whitelist(allow_guest=True)
@@ -26,35 +42,140 @@ def get_products(
 	price_min: float | None = None,
 	price_max: float | None = None,
 	in_stock: bool = False,
+	chosen: dict | None = None,
 ) -> dict:
+	"""Published products, a page of them, with what they can be narrowed by.
+
+	chosen holds the values picked for each narrowing ("brand", "spec:<Specification>",
+	"option:<Item Attribute>"): a product has one of a narrowing's values, for every narrowing.
+	Each narrowing lists its values with how many products have them given the others."""
 	filters = {"published": 1}
 	if collection:
-		filters["name"] = ["in", collection_members(collection)]
-	products = frappe.get_all(
+		filters["name"] = ["in", collection_members(collection) or [""]]
+	candidates = frappe.get_all(
 		"Shop Product",
 		filters=filters,
 		or_filters=search_filters(search),
-		fields=[
-			"name",
-			"product_name",
-			"slug",
-			"short_description",
-			"has_variants",
-			"item",
-			"compare_at_price",
-		],
+		fields=PRODUCT_FIELDS,
 		order_by=SORT_ORDERS.get(sort) or SORT_ORDERS["ranking"],
 		limit=MAX_CATALOG_SIZE,
 	)
-	decorate(products)
-	products = apply_post_filters(products, price_min, price_max, in_stock)
-	if sort in ("price_asc", "price_desc"):
-		products.sort(key=lambda p: p.price if p.price is not None else float("inf"))
-		if sort == "price_desc":
-			products.reverse()
+	chosen = {key: set(values) for key, values in (chosen or {}).items() if values}
+	traits = product_traits(candidates)
+	facets = narrowings(candidates, traits, chosen)
+	products = [p for p in candidates if has_all(traits[p.name], chosen)]
+	by_price = sort in ("price_asc", "price_desc")
+	if by_price or price_min is not None or price_max is not None or in_stock:
+		decorate(products)
+		products = apply_post_filters(products, price_min, price_max, in_stock)
+		if by_price:
+			products.sort(key=lambda p: p.price if p.price is not None else float("inf"))
+			if sort == "price_desc":
+				products.reverse()
+		decorated = True
+	else:
+		decorated = False
 	start = cint(start)
 	limit = min(cint(limit) or 24, MAX_PAGE_SIZE)
-	return {"products": products[start : start + limit], "total": len(products)}
+	page = products[start : start + limit]
+	if not decorated:
+		decorate(page)
+	return {"products": page, "total": len(products), "narrowings": facets}
+
+
+def product_traits(products: list) -> dict:
+	"""What each product can be narrowed by: its brand, its specifications' values and the values
+	its sellable variants have for each option."""
+	traits = {p.name: {} for p in products}
+	if not products:
+		return traits
+	items = {p.item: p.name for p in products}
+	for row in frappe.get_all("Item", filters={"name": ["in", list(items)]}, fields=["name", "brand"]):
+		if row.brand:
+			traits[items[row.name]][BRAND] = {row.brand}
+	for row in frappe.get_all(
+		"Shop Product Specification",
+		filters={"parenttype": "Shop Product", "parent": ["in", list(traits)]},
+		fields=["parent", "specification", "value"],
+	):
+		traits[row.parent].setdefault(f"spec:{row.specification}", set()).add(row.value.strip())
+	templates = [p.item for p in products if p.has_variants]
+	variants = variants_by_template(templates)
+	owner = {code: items[template] for template, codes in variants.items() for code in codes}
+	for row in frappe.get_all(
+		"Item Variant Attribute",
+		filters={"parent": ["in", list(owner) or [""]]},
+		fields=["parent", "attribute", "attribute_value"],
+	):
+		if row.attribute_value:
+			traits[owner[row.parent]].setdefault(f"option:{row.attribute}", set()).add(row.attribute_value)
+	return traits
+
+
+def has_all(traits: dict, chosen: dict, skip: str | None = None) -> bool:
+	return all(key == skip or traits.get(key, set()) & values for key, values in chosen.items())
+
+
+def narrowings(products: list, traits: dict, chosen: dict) -> list[dict]:
+	"""Each way the products can be narrowed, with its values and how many products have each
+	given the other narrowings chosen. One with a single value narrows nothing and is left out,
+	unless it is chosen."""
+	specifications = {
+		row.name: row
+		for row in frappe.get_all(
+			"Shop Specification",
+			fields=["name", "unit", "use_as_filter", "ranking"],
+			order_by="ranking desc, name",
+		)
+	}
+	keys = {key for product_traits in traits.values() for key in product_traits} | set(chosen)
+	keys = [
+		key
+		for key in keys
+		if not key.startswith("spec:") or (specifications.get(key[5:]) or {}).get("use_as_filter")
+	]
+
+	def order(key):
+		if key == BRAND:
+			return (0, 0, "")
+		if key.startswith("spec:"):
+			return (1, -cint(specifications[key[5:]].ranking), key)
+		return (2, 0, key)
+
+	result = []
+	for key in sorted(keys, key=order):
+		counts: dict[str, int] = {}
+		for product in products:
+			if has_all(traits[product.name], chosen, skip=key):
+				for value in traits[product.name].get(key, ()):
+					counts[value] = counts.get(value, 0) + 1
+		picked = chosen.get(key, set())
+		if len(counts) < 2 and not picked:
+			continue
+		unit = specifications[key[5:]].unit if key.startswith("spec:") else None
+		values = sorted(set(counts) | picked, key=value_order)
+		result.append(
+			{
+				"key": key,
+				"label": frappe._("Brand") if key == BRAND else key.split(":", 1)[1],
+				"values": [
+					{
+						"value": value,
+						"label": f"{value} {unit}" if unit else value,
+						"count": counts.get(value, 0),
+						"chosen": value in picked,
+					}
+					for value in values
+				],
+			}
+		)
+	return result
+
+
+def value_order(value: str):
+	"""Values that start with a number by its size (2 before 10), then the others by name."""
+	number = re.match(r"\s*(\d+(?:\.\d+)?)", value)
+	return (0, float(number.group(1)), value.lower()) if number else (1, 0, value.lower())
 
 
 def apply_post_filters(products, price_min, price_max, in_stock):
@@ -74,6 +195,32 @@ def apply_post_filters(products, price_min, price_max, in_stock):
 		return True
 
 	return [product for product in products if keep(product)]
+
+
+@frappe.whitelist(allow_guest=True)
+def catalog_menu() -> list[dict]:
+	"""The store's collections as a tree, for the catalogue menu: each with its link, image and
+	how many products it has, and the collections inside it."""
+	rows = get_collections(nested=True)
+	by_name = {
+		row.name: {
+			"title": row.title,
+			"route": row.route,
+			"image": row.image,
+			"count": row.product_count,
+			"children": [],
+		}
+		for row in rows
+	}
+	tree = []
+	for row in rows:
+		parent = by_name.get(row.parent_collection)
+		(parent["children"] if parent else tree).append(by_name[row.name])
+
+	def shown(entries):
+		return [{**entry, "children": shown(entry["children"])} for entry in entries if entry["count"]]
+
+	return shown(tree)
 
 
 @frappe.whitelist(allow_guest=True)
@@ -98,7 +245,7 @@ def published_collections() -> dict:
 	rows = frappe.get_all(
 		"Shop Collection",
 		filters={"published": 1},
-		fields=["name", "title", "slug", "description", "image", "parent_collection"],
+		fields=["name", "title", "slug", "description", "image", "parent_collection", "item_group"],
 		order_by="ranking desc, title asc",
 	)
 	tree = {row.name: row for row in rows}
@@ -143,10 +290,34 @@ def collection_members(slug: str) -> list[str]:
 	collection = next((row for row in tree.values() if row.slug == slug), None)
 	if not collection:
 		return []
-	names = [row.name for row in with_descendants(tree, collection)]
-	return list(
-		set(frappe.get_all("Shop Product Collection", filters={"collection": ["in", names]}, pluck="parent"))
-	)
+	return list(members(with_descendants(tree, collection)))
+
+
+def members(collections: list) -> set:
+	"""The products added to these collections, and those in the Item Groups they include."""
+	names = {
+		*frappe.get_all(
+			"Shop Product Collection",
+			filters={"collection": ["in", [c.name for c in collections]]},
+			pluck="parent",
+		)
+	}
+	return names | group_products([c.item_group for c in collections if c.get("item_group")])
+
+
+def group_products(item_groups: list[str]) -> set:
+	"""Products whose item is in one of these Item Groups or a group inside one."""
+	if not item_groups:
+		return set()
+	inside = set()
+	for lft, rgt in frappe.get_all(
+		"Item Group", filters={"name": ["in", item_groups]}, fields=["lft", "rgt"], as_list=True
+	):
+		inside.update(
+			frappe.get_all("Item Group", filters={"lft": [">=", lft], "rgt": ["<=", rgt]}, pluck="name")
+		)
+	items = frappe.get_all("Item", filters={"item_group": ["in", list(inside) or [""]]}, pluck="name")
+	return set(frappe.get_all("Shop Product", filters={"item": ["in", items or [""]]}, pluck="name"))
 
 
 def collection_counts(collections: list[str]) -> dict:
@@ -156,17 +327,12 @@ def collection_counts(collections: list[str]) -> dict:
 	tree = published_collections()
 	if not any(name in tree for name in collections):
 		return {}
-	inside = {
-		name: [row.name for row in with_descendants(tree, tree[name])] for name in collections if name in tree
+	published = set(frappe.get_all("Shop Product", filters={"published": 1}, pluck="name"))
+	return {
+		name: len(members(with_descendants(tree, tree[name])) & published)
+		for name in collections
+		if name in tree
 	}
-	members = {}
-	for row in frappe.get_all(
-		"Shop Product Collection",
-		filters={"collection": ["in", list({n for names in inside.values() for n in names})]},
-		fields=["collection", "parent"],
-	):
-		members.setdefault(row.collection, set()).add(row.parent)
-	return {name: len(set().union(*(members.get(n, set()) for n in names))) for name, names in inside.items()}
 
 
 def search_filters(search: str | None) -> list | None:
@@ -189,7 +355,7 @@ def decorate(products: list) -> None:
 	ratings = reviews.summaries([p.name for p in products])
 	for product in products:
 		product.route = store_url(f"product/{product.slug}")
-		product.image = images.get(product.name)
+		product.image = images.get(product.name) or PLACEHOLDER_IMAGE
 		price = prices.get(product.item, {})
 		product.price = price.get("rate")
 		product.formatted_price = price.get("display")
@@ -197,6 +363,13 @@ def decorate(products: list) -> None:
 		if price.get("retail"):
 			product.compare_at_price = max(flt(product.get("compare_at_price")), flt(price["retail"]))
 		product.in_stock = availability.get(product.item, False)
+		product.stock_state = "in" if product.in_stock else "out"
+		product.stock_label = _("In stock") if product.in_stock else _("Out of stock")
+		# a product of one version is added from its card; one with options is chosen on its page
+		product.can_add = (
+			"true" if not product.has_variants and product.in_stock and product.price is not None else None
+		)
+		product.choose_options = "true" if product.has_variants else None
 		apply_compare_at(product, product.price)
 		rating = ratings.get(product.name)
 		product.rating_average = rating["average"] if rating else None

@@ -12,6 +12,7 @@
   "route_prefix",
   "applied_route_prefix",
   "customers_land_in_store",
+  "menu_label",
   "onboarding_complete",
   "commerce_section",
   "company",
@@ -123,6 +124,12 @@
    "fieldtype": "Check",
    "label": "Customers Land in the Store",
    "description": "After signing in or setting a password, customers go to their store account rather than the site's home page (the Customer role's home page), and Frappe's /me page sends them there too"
+  },
+  {
+   "fieldname": "menu_label",
+   "fieldtype": "Data",
+   "label": "Catalogue Menu Label",
+   "description": "The name of the menu that lists the store's collections. Empty shows \"Products\""
   },
   {
    "default": "0",
@@ -542,7 +549,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-09 22:00:00.000000",
+ "modified": "2026-11-10 14:30:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Settings",

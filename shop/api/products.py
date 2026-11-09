@@ -113,6 +113,9 @@ def get_product(name: str) -> dict:
 		"has_variants": doc.has_variants,
 		"images": [{"image": row.image, "alt_text": row.alt_text} for row in doc.images],
 		"collections": [row.collection for row in doc.collections],
+		"specifications": [
+			{"specification": row.specification, "value": row.value} for row in doc.specifications
+		],
 		**item_details(doc.item),
 		"price": prices.get(doc.item, {}).get("rate") if not doc.has_variants else None,
 		"variants": [
@@ -148,6 +151,8 @@ def save_product(payload: dict) -> dict:
 		doc.slug = cleanup_page_name(payload["slug"])
 	set_images(doc, payload.get("images"))
 	set_collections(doc, payload.get("collections"))
+	if "specifications" in payload:
+		set_specifications(doc, payload["specifications"])
 	doc.save(ignore_permissions=True) if doc.get("name") and not doc.is_new() else doc.insert(
 		ignore_permissions=True
 	)
@@ -163,6 +168,7 @@ def item_details(item_code: str) -> dict:
 	item = frappe.get_cached_doc("Item", item_code)
 	return {
 		"item_group": item.item_group,
+		"brand": item.brand,
 		"weight": item.weight_per_unit,
 		"weight_uom": item.weight_uom,
 		"item_tax_template": item.taxes[0].item_tax_template if item.taxes else None,
@@ -176,6 +182,8 @@ def set_item_details(item_code: str, payload: dict) -> None:
 	before = item.as_dict()
 	if payload.get("item_group"):
 		item.item_group = payload["item_group"]
+	if "brand" in payload:
+		item.brand = ensure_named("Brand", "brand", payload["brand"])
 	if "weight" in payload:
 		item.weight_per_unit = flt(payload["weight"])
 		if item.weight_per_unit and not item.weight_uom:
@@ -196,6 +204,26 @@ def set_item_details(item_code: str, payload: dict) -> None:
 		item.shop_shipping_restriction = payload["shipping_restriction"] or None
 	if item.as_dict() != before:
 		item.save(ignore_permissions=True)
+
+
+def ensure_named(doctype: str, field: str, name: str | None) -> str | None:
+	"""A record named this (a Brand or a Shop Specification), made when staff type a new one."""
+	name = (name or "").strip()
+	if name and not frappe.db.exists(doctype, name):
+		frappe.get_doc({"doctype": doctype, field: name}).insert(ignore_permissions=True)
+	return name or None
+
+
+def set_specifications(doc, rows: list[dict]) -> None:
+	"""The product's specifications in the order given; a row without a value is left out."""
+	doc.specifications = []
+	for row in rows or []:
+		value = (row.get("value") or "").strip()
+		if not value:
+			continue
+		name = ensure_named("Shop Specification", "specification_name", row.get("specification"))
+		if name:
+			doc.append("specifications", {"specification": name, "value": value})
 
 
 def default_weight_uom() -> str | None:
@@ -334,6 +362,8 @@ def get_item_groups() -> dict:
 	company = frappe.get_cached_doc("Shop Settings").company
 	return {
 		"item_groups": frappe.get_all("Item Group", order_by="lft", pluck="name"),
+		"brands": frappe.get_all("Brand", order_by="name", pluck="name"),
+		"specifications": frappe.get_all("Shop Specification", order_by="ranking desc, name", pluck="name"),
 		"shipping_restrictions": frappe.get_all("Shop Shipping Restriction", order_by="name", pluck="name"),
 		"default": default_item_group(),
 		"item_tax_templates": frappe.get_all(
@@ -390,15 +420,26 @@ def get_collections() -> list[dict]:
 	only_managers()
 	collections = frappe.get_all(
 		"Shop Collection",
-		fields=["name", "title", "slug", "description", "image", "published", "ranking", "parent_collection"],
+		fields=[
+			"name",
+			"title",
+			"slug",
+			"description",
+			"image",
+			"published",
+			"ranking",
+			"parent_collection",
+			"item_group",
+		],
 		order_by="ranking desc, title asc",
 	)
+	from shop.storefront.catalog import members
+
 	titles = {collection.name: collection.title for collection in collections}
 	for collection in collections:
 		collection["parent_title"] = titles.get(collection.parent_collection)
-		collection["product_count"] = frappe.db.count(
-			"Shop Product Collection", {"collection": collection.name}
-		)
+		# those added to it, and those of the Item Group it includes
+		collection["product_count"] = len(members([collection]))
 	return collections
 
 
@@ -416,6 +457,7 @@ def save_collection(payload: dict) -> None:
 	doc.ranking = cint(payload.get("ranking"))
 	doc.published = 1 if payload.get("published") else 0
 	doc.parent_collection = payload.get("parent_collection") or None
+	doc.item_group = payload.get("item_group") or None
 	doc.save(ignore_permissions=True) if not doc.is_new() else doc.insert(ignore_permissions=True)
 
 
@@ -570,3 +612,66 @@ def move_products(item_codes: list[str], item_group: str) -> dict:
 				item.flags.ignore_permissions = True
 				item.save(ignore_permissions=True)
 	return get_item_group(item_group)
+
+
+@frappe.whitelist()
+def get_specifications() -> list[dict]:
+	"""The kinds of specification products are described by, with how many products use each."""
+	only_managers()
+	counts = dict(
+		frappe.get_all(
+			"Shop Product Specification",
+			filters={"parenttype": "Shop Product"},
+			fields=["specification", {"COUNT": "*", "as": "count"}],
+			group_by="specification",
+			as_list=True,
+		)
+	)
+	rows = frappe.get_all(
+		"Shop Specification",
+		fields=["name", "unit", "use_as_filter", "ranking"],
+		order_by="ranking desc, name",
+	)
+	for row in rows:
+		row["products"] = counts.get(row.name, 0)
+	return rows
+
+
+@frappe.whitelist(methods=["POST"])
+def save_specification(
+	specification_name: str,
+	unit: str | None = None,
+	use_as_filter: int = 1,
+	ranking: int = 0,
+	name: str | None = None,
+) -> list[dict]:
+	"""Make a specification, or rename and change one; products keep their values."""
+	only_managers()
+	specification_name = (specification_name or "").strip()
+	if not specification_name:
+		frappe.throw(_("Name the specification"))
+	if name and name != specification_name:
+		from frappe.model.rename_doc import rename_doc
+
+		name = rename_doc("Shop Specification", name, specification_name, ignore_permissions=True)
+	doc = frappe.get_doc("Shop Specification", name) if name else frappe.new_doc("Shop Specification")
+	doc.update(
+		{
+			"specification_name": specification_name,
+			"unit": (unit or "").strip() or None,
+			"use_as_filter": 1 if cint(use_as_filter) else 0,
+			"ranking": cint(ranking),
+		}
+	)
+	doc.save(ignore_permissions=True)
+	return get_specifications()
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_specification(name: str) -> list[dict]:
+	"""Remove a specification no product uses."""
+	only_managers()
+	if frappe.db.exists("Shop Product Specification", {"specification": name, "parenttype": "Shop Product"}):
+		frappe.throw(_("Products use {0}. Take it off them first").format(frappe.bold(name)))
+	frappe.delete_doc("Shop Specification", name, ignore_permissions=True)
+	return get_specifications()

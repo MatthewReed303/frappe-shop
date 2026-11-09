@@ -2,7 +2,8 @@
 	// Set by Shop when the storefront is served under a route prefix, e.g. "/store".
 	const base = window.shop_route_prefix || "";
 	// Frappe's translation when the page has it
-	const __ = window.__ || ((text) => text);
+	const __ =
+		window.__ || ((text, values) => text.replace(/\{(\d+)\}/g, (match, index) => (values && values[index] != null ? values[index] : match)));
 	const state = {
 		product: window.page_data && window.page_data.product,
 		selection: {},
@@ -89,10 +90,11 @@
 		} catch (e) {}
 	}
 
-	// how many the shopper chose on the product page; null when it isn't a quantity
-	function chosenQty() {
+	// how many the shopper chose on the product page; null when it isn't a quantity. A product card
+	// adds one.
+	function chosenQty(button) {
 		const input = document.querySelector('[data-shop="pdp-qty"]');
-		if (!input) return 1;
+		if (!input || (button && button.closest(".product-card"))) return 1;
 		const qty = parseFloat(input.value);
 		if (qty > 0) return qty;
 		showError(__("Enter how many you want."));
@@ -102,7 +104,7 @@
 
 	async function addToCart(button) {
 		const itemCode = button.dataset.itemCode;
-		const qty = chosenQty();
+		const qty = chosenQty(button);
 		if (!itemCode || qty === null) return;
 		button.disabled = true;
 		const label = button.textContent;
@@ -1027,10 +1029,98 @@
 		const panel = document.querySelector('[data-shop="filter-panel"]');
 		if (!toggle || !panel) return;
 		// applying a filter reloads the page, so the panel folds away on its own
-		toggle.addEventListener("click", () => {
-			const open = panel.dataset.open !== "true";
+		const setOpen = (open) => {
 			panel.dataset.open = open ? "true" : "false";
 			toggle.setAttribute("aria-expanded", open ? "true" : "false");
+		};
+		toggle.addEventListener("click", () => setOpen(panel.dataset.open !== "true"));
+		const close = panel.querySelector('[data-shop="filter-close"]');
+		if (close)
+			close.addEventListener("click", () => {
+				setOpen(false);
+				toggle.focus();
+			});
+	}
+
+	// ---- the catalogue menu: the store's collections, and those inside each ----
+	async function initCatalogMenu() {
+		const toggle = document.querySelector('[data-shop="catalog-menu-toggle"]');
+		const panel = document.querySelector('[data-shop="catalog-menu"]');
+		if (!toggle || !panel) return;
+		let tree = [];
+		try {
+			tree = await call("shop.storefront.catalog.catalog_menu");
+		} catch (e) {
+			return;
+		}
+		if (!tree || !tree.length) return;
+		toggle.hidden = false;
+		const link = (entry, label) => `<a href="${esc(entry.route)}">${esc(label || entry.title)}</a>`;
+		const count = (entry) =>
+			`<span>${esc(entry.count === 1 ? __("1 product") : __("{0} products", [entry.count]))}</span>`;
+		const tile = (entry) => `
+			<div class="catalog-menu-group">
+				<a href="${esc(entry.route)}">${entry.image ? `<img src="${esc(entry.image)}" alt="" loading="lazy">` : ""}${esc(entry.title)}</a>
+				${entry.children.map((child) => link(child)).join("")}
+				${entry.children.length ? "" : count(entry)}
+			</div>`;
+		if (!tree.some((entry) => entry.children.length)) {
+			// nothing inside the top collections: they are tiles
+			panel.innerHTML = `<div class="catalog-menu-inner catalog-menu-flat"><div class="catalog-menu-groups">${tree.map(tile).join("")}</div></div>`;
+		} else {
+			panel.innerHTML = `
+				<div class="catalog-menu-inner">
+					<ul class="catalog-menu-list">
+						${tree
+							.map((entry, index) =>
+								entry.children.length
+									? `<li><button type="button" data-index="${index}" aria-expanded="false">${esc(entry.title)}<span aria-hidden="true">&rsaquo;</span></button></li>`
+									: `<li><a href="${esc(entry.route)}">${esc(entry.title)}${count(entry)}</a></li>`
+							)
+							.join("")}
+					</ul>
+					<div class="catalog-menu-detail"></div>
+				</div>`;
+			const detail = panel.querySelector(".catalog-menu-detail");
+			const buttons = panel.querySelectorAll("button[data-index]");
+			const show = (index) => {
+				const entry = tree[index];
+				buttons.forEach((button) => button.setAttribute("aria-expanded", button.dataset.index === String(index)));
+				detail.innerHTML = `${link(entry, __("Shop all {0}", [entry.title]))}
+					<div class="catalog-menu-groups">${entry.children.map(tile).join("")}</div>`;
+			};
+			show(Number(buttons[0].dataset.index));
+			buttons.forEach((button) => {
+				const select = () => show(Number(button.dataset.index));
+				button.addEventListener("mouseenter", select);
+				button.addEventListener("focus", select);
+				button.addEventListener("click", select);
+			});
+		}
+		const setOpen = (open) => {
+			panel.hidden = !open;
+			toggle.setAttribute("aria-expanded", open ? "true" : "false");
+		};
+		toggle.addEventListener("click", () => setOpen(panel.hidden));
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Escape" && !panel.hidden) {
+				setOpen(false);
+				toggle.focus();
+			}
+		});
+		document.addEventListener("click", (event) => {
+			if (!panel.hidden && !panel.contains(event.target) && !toggle.contains(event.target)) setOpen(false);
+		});
+	}
+
+	// a select of links: it shows the one in use, and choosing another opens it
+	function initLinkSelects() {
+		document.querySelectorAll('[data-shop="link-select"]').forEach((select) => {
+			const current = select.querySelector('option[data-active="true"]');
+			if (current) select.value = current.value;
+			select.addEventListener("change", () => {
+				if (select.value) window.location.href = select.value;
+			});
 		});
 	}
 
@@ -1089,6 +1179,8 @@
 		syncPaymentUI();
 		initBuyBar();
 		initFilters();
+		initLinkSelects();
+		initCatalogMenu();
 		document
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));

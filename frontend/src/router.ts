@@ -73,6 +73,11 @@ const routes = [
 			{ path: 'trade-applications', redirect: { path: '/trade-accounts', query: { tab: 'applications' } } },
 			{ path: 'trade-applications/:name', redirect: (to) => `/trade-accounts/applications/${to.params.name}` },
 			{ path: 'item-groups', name: 'ItemGroups', component: () => import('@/pages/ItemGroups.vue') },
+			{
+				path: 'specifications',
+				name: 'Specifications',
+				component: () => import('@/pages/Specifications.vue'),
+			},
 			{ path: 'reviews', name: 'Reviews', component: () => import('@/pages/Reviews.vue') },
 			{ path: 'discounts', name: 'Discounts', component: () => import('@/pages/Discounts.vue') },
 			{ path: 'carts', name: 'Carts', component: () => import('@/pages/Carts.vue') },

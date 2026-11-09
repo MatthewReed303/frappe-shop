@@ -16,6 +16,8 @@
   "description",
   "compare_at_price",
   "highlights",
+  "specifications_section",
+  "specifications",
   "media_section",
   "images",
   "organization_section",
@@ -93,6 +95,18 @@
    "label": "Highlights"
   },
   {
+   "fieldname": "specifications_section",
+   "fieldtype": "Section Break",
+   "label": "Specifications"
+  },
+  {
+   "fieldname": "specifications",
+   "fieldtype": "Table",
+   "label": "Specifications",
+   "options": "Shop Product Specification",
+   "description": "Shown as a table on the product page; those that are filters narrow a collection's products"
+  },
+  {
    "fieldname": "media_section",
    "fieldtype": "Section Break",
    "label": "Images"
@@ -150,7 +164,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-09 18:00:00.000000",
+ "modified": "2026-11-10 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Product",

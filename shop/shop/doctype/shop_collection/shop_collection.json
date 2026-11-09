@@ -11,6 +11,7 @@
   "slug",
   "ranking",
   "parent_collection",
+  "item_group",
   "details_section",
   "description",
   "image"
@@ -54,6 +55,13 @@
    "options": "Shop Collection"
   },
   {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Include Item Group",
+   "options": "Item Group",
+   "description": "Products in this Item Group, or a group inside it, are in the collection without being added one by one"
+  },
+  {
    "fieldname": "details_section",
    "fieldtype": "Section Break",
    "label": "Details"
@@ -70,7 +78,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-08 12:00:00.000000",
+ "modified": "2026-11-10 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Collection",

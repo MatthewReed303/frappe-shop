@@ -115,6 +115,36 @@
 						placeholder="Dishwasher safe"
 					/>
 				</CatalogSection>
+
+				<CatalogSection
+					title="Specifications"
+					description="Shown as a table on the product page. Those set as filters let shoppers narrow a collection by them."
+				>
+					<div v-for="(row, index) in form.specifications" :key="index" class="flex items-end gap-2">
+						<FormControl
+							v-model="row.specification"
+							:label="index ? undefined : 'Specification'"
+							placeholder="Capacity"
+							list="shop-specifications"
+							class="flex-1"
+						/>
+						<FormControl
+							v-model="row.value"
+							:label="index ? undefined : 'Value'"
+							placeholder="1 TB"
+							class="flex-1"
+						/>
+						<Button variant="ghost" :aria-label="`Remove ${row.specification || 'specification'}`" @click="form.specifications.splice(index, 1)">
+							<template #icon><LucideTrash2 class="size-4" /></template>
+						</Button>
+					</div>
+					<datalist id="shop-specifications">
+						<option v-for="name in specificationNames" :key="name" :value="name" />
+					</datalist>
+					<Button class="w-fit" @click="form.specifications.push({ specification: '', value: '' })">
+						Add specification
+					</Button>
+				</CatalogSection>
 			</div>
 
 			<div class="space-y-6 lg:sticky lg:top-16">
@@ -133,6 +163,17 @@
 						placeholder="Select an Item Group"
 						:options="itemGroupOptions"
 					/>
+					<FormControl
+						v-if="isEdit || !isLink"
+						v-model="form.brand"
+						label="Brand"
+						placeholder="No brand"
+						list="shop-brands"
+						description="A brand shoppers can filter by. Type a new one to add it."
+					/>
+					<datalist id="shop-brands">
+						<option v-for="name in brandNames" :key="name" :value="name" />
+					</datalist>
 					<Autocomplete
 						v-model="collectionValue"
 						label="Collections"
@@ -294,12 +335,16 @@ const form = reactive({
 	images: [] as string[],
 	collections: [] as string[],
 	item_group: '',
+	brand: '',
+	specifications: [] as { specification: string; value: string }[],
 	weight: 0,
 	weight_uom: '',
 	item_tax_template: '',
 	shipping_restriction: '',
 	track_stock: true,
 })
+const brandNames = ref<string[]>([])
+const specificationNames = ref<string[]>([])
 
 const title = computed(() => {
 	if (isEdit.value) return form.product_name || 'Product'
@@ -377,6 +422,8 @@ function resetForm() {
 		images: [],
 		collections: [],
 		item_group: '',
+		brand: '',
+		specifications: [],
 		weight: 0,
 		weight_uom: '',
 		item_tax_template: '',
@@ -404,6 +451,8 @@ async function loadItemGroups() {
 	if (!form.item_group) form.item_group = result.default
 	itemTaxTemplates.value = result.item_tax_templates || []
 	shippingRestrictions.value = result.shipping_restrictions || []
+	brandNames.value = result.brands || []
+	specificationNames.value = result.specifications || []
 }
 
 async function loadProduct(name: string) {
@@ -422,6 +471,8 @@ async function loadProduct(name: string) {
 		images: (doc.images || []).map((row: { image: string }) => row.image),
 		collections: doc.collections || [],
 		item_group: doc.item_group || '',
+		brand: doc.brand || '',
+		specifications: (doc.specifications || []).map((row: { specification: string; value: string }) => ({ ...row })),
 		weight: doc.weight || 0,
 		weight_uom: doc.weight_uom || '',
 		item_tax_template: doc.item_tax_template || '',
@@ -526,10 +577,20 @@ async function createFresh() {
 // create_product and create_variant_product take neither highlights, ranking, weight, tax nor
 // shipping restriction.
 async function finishCreate(name: string) {
-	if (form.highlights || form.ranking || form.weight || form.item_tax_template || form.shipping_restriction) {
+	if (
+		form.highlights ||
+		form.ranking ||
+		form.weight ||
+		form.item_tax_template ||
+		form.shipping_restriction ||
+		form.brand ||
+		form.specifications.length
+	) {
 		await call('shop.api.products.save_product', {
 			payload: {
 				name,
+				brand: form.brand,
+				specifications: form.specifications,
 				highlights: form.highlights,
 				ranking: form.ranking,
 				published: form.published,
@@ -557,6 +618,8 @@ function payload() {
 		images: form.images,
 		collections: form.collections,
 		item_group: isEdit.value ? form.item_group : undefined,
+		brand: isEdit.value ? form.brand : undefined,
+		specifications: form.specifications,
 		weight: isEdit.value ? form.weight : undefined,
 		item_tax_template: isEdit.value ? form.item_tax_template : undefined,
 		shipping_restriction: isEdit.value ? form.shipping_restriction : undefined,

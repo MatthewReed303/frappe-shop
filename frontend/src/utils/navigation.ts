@@ -28,6 +28,7 @@ export const navGroups = [
 			{ label: 'Inventory', route: '/inventory', icon: 'lucide-boxes' },
 			{ label: 'Collections', route: '/collections', icon: 'lucide-folder-open' },
 			{ label: 'Item Groups', route: '/item-groups', icon: 'lucide-folder-tree' },
+			{ label: 'Specifications', route: '/specifications', icon: 'lucide-list-checks' },
 			{ label: 'Reviews', route: '/reviews', icon: 'lucide-star' },
 		],
 	},

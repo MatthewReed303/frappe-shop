@@ -6,6 +6,25 @@ from shop.storefront import pricing, stock
 
 
 @frappe.whitelist(allow_guest=True)
+def specifications(doc) -> list[dict]:
+	"""The product's specifications as the page lists them, each value with its unit."""
+	units = dict(
+		frappe.get_all(
+			"Shop Specification",
+			filters={"name": ["in", [row.specification for row in doc.specifications] or [""]]},
+			fields=["name", "unit"],
+			as_list=True,
+		)
+	)
+	return [
+		{
+			"label": row.specification,
+			"value": f"{row.value} {units[row.specification]}" if units.get(row.specification) else row.value,
+		}
+		for row in doc.specifications
+	]
+
+
 def get_product(slug: str) -> dict:
 	name = frappe.db.get_value("Shop Product", {"slug": slug, "published": 1})
 	if not name:
@@ -26,6 +45,7 @@ def get_product(slug: str) -> dict:
 			{"label": line.strip()} for line in (doc.highlights or "").splitlines() if line.strip()
 		],
 		"images": [{"image": row.image, "alt_text": row.alt_text} for row in doc.images],
+		"specifications": specifications(doc) or None,
 		"collections": product_collections(doc),
 		"rating": reviews.summary(doc.name),
 	}
@@ -86,7 +106,9 @@ def variant_details(template: str, compare_at: float | None = None, doc=None) ->
 		],
 		"variants": variants,
 		"price": min(rates) if rates else None,
-		"formatted_price": pricing.display_price(min(rates), pricing.item_tax_rate(template)) if rates else None,
+		"formatted_price": pricing.display_price(min(rates), pricing.item_tax_rate(template))
+		if rates
+		else None,
 		"price_note": pricing.display_price_without_tax(min(rates), pricing.item_tax_rate(template))
 		if rates
 		else None,
@@ -119,9 +141,7 @@ def variant_position(variant: dict, options: list[tuple[str, list[str]]]) -> tup
 
 
 def load_variants(template: str, compare_at: float | None = None) -> list[dict]:
-	rows = frappe.get_all(
-		"Item", filters={"variant_of": template, "disabled": 0}, fields=["name", "image"]
-	)
+	rows = frappe.get_all("Item", filters={"variant_of": template, "disabled": 0}, fields=["name", "image"])
 	items = [row.name for row in rows]
 	images = {row.name: row.image for row in rows if row.image}
 	prices = pricing.get_prices(items)
@@ -174,9 +194,7 @@ def attribute_options(template: str, variants: list[dict]) -> list[dict]:
 	for attribute in order:
 		values = ordered_values(attribute)
 		used = {v["attributes"].get(attribute) for v in variants}
-		options.append(
-			{"attribute": attribute, "values": [v for v in values if v in used or not variants]}
-		)
+		options.append({"attribute": attribute, "values": [v for v in values if v in used or not variants]})
 	return options
 
 

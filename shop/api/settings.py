@@ -47,6 +47,7 @@ EDITABLE = (
 	"weight_uom",
 	"route_prefix",
 	"customers_land_in_store",
+	"menu_label",
 	"business_buyer_label",
 	"terms_checkbox_note",
 )

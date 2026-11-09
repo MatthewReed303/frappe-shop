@@ -297,3 +297,365 @@ def shown_with_form(form: dict) -> dict:
 	"""The form, shown only when the page data says so (key `show_form`)."""
 	form["visibilityCondition"] = {"key": "show_form", "comesFrom": "dataScript"}
 	return form
+
+
+# --- browsing: the catalogue menu, filters and the product listing --------------------------------
+
+
+def catalog_menu_button(refs, size="13px"):
+	"""Opens the catalogue menu, which the store's script fills from its collections; hidden while
+	the store has none. Its label is the store's (page data key `store.menu_label`)."""
+	return block(
+		"button",
+		text="Products",
+		name="Catalogue Menu",
+		attrs={
+			"type": "button",
+			"data-shop": "catalog-menu-toggle",
+			"aria-expanded": "false",
+			"aria-controls": "store-catalog-menu",
+			"hidden": "",
+		},
+		classes=["catalog-menu-toggle"],
+		styles={"color": refs["ink"], "fontSize": size, "fontWeight": "500"},
+		dynamicValues=[dv("store.menu_label", "innerHTML")],
+	)
+
+
+def catalog_menu_panel():
+	return block(
+		"div",
+		name="Catalogue Menu Panel",
+		attrs={"id": "store-catalog-menu", "data-shop": "catalog-menu", "hidden": ""},
+		classes=["catalog-menu"],
+	)
+
+
+def filter_sidebar():
+	"""What the products can be narrowed by (page data key `filter_groups`): each group's values as
+	links with how many products have them."""
+	option = block(
+		"a",
+		name="Filter Value",
+		attrs={"href": "#", "data-active": "false"},
+		classes=["filter-value"],
+		dynamicValues=[dv("url", "href", "attribute"), dv("active", "data-active", "attribute")],
+		children=[
+			block("span", text="Value", classes=["filter-value-label"], dynamicValues=[dv("label", "innerHTML")]),
+			block(
+				"span",
+				text="",
+				classes=["filter-value-count"],
+				visibilityCondition={"key": "count", "comesFrom": "dataScript"},
+				dynamicValues=[dv("count", "innerHTML")],
+			),
+		],
+	)
+	group = block(
+		"div",
+		name="Filter Group",
+		classes=["filter-group"],
+		dynamicValues=[dv("multiple", "data-multiple", "attribute"), dv("single", "data-single", "attribute")],
+		children=[
+			block("p", text="Filter", classes=["filter-group-label"], dynamicValues=[dv("label", "innerHTML")]),
+			repeater("options", option, {"display": "flex", "flexDirection": "column", "gap": "2px"}, name="Filter Values"),
+		],
+	)
+	return block(
+		"aside",
+		name="Filters",
+		attrs={"data-shop": "filter-panel", "aria-label": "Filters"},
+		classes=["listing-filters"],
+		children=[
+			block(
+				"div",
+				classes=["listing-filters-head"],
+				children=[
+					block("strong", text="Filters"),
+					block("button", text="Done", attrs={"type": "button", "data-shop": "filter-close"}),
+				],
+			),
+			repeater("filter_groups", group, {"display": "flex", "flexDirection": "column", "gap": "22px"}, name="Filter Groups"),
+		],
+	)
+
+
+def link_select(label: str, key: str):
+	"""A select whose options are links (page data key `key`: label, url, active); choosing one
+	opens it."""
+	option = block("option", text="Option", dynamicValues=[dv("label", "innerHTML"), dv("url", "value", "attribute"), dv("active", "data-active", "attribute")])
+	return block(
+		"label",
+		name=label,
+		classes=["listing-select"],
+		children=[
+			block("span", text=label),
+			repeater(key, option, {}, element="select", attrs={"data-shop": "link-select"}, name=f"{label} Options"),
+		],
+	)
+
+
+def listing_toolbar():
+	"""How many products there are, the filters button on small screens, sort, products per page and
+	grid or list."""
+	return block(
+		"div",
+		name="Listing Toolbar",
+		classes=["listing-toolbar"],
+		children=[
+			block(
+				"div",
+				classes=["listing-count"],
+				children=[
+					block("strong", text="0 products", dynamicValues=[dv("total_label", "innerHTML")]),
+					block("span", text="", dynamicValues=[dv("page_label", "innerHTML")]),
+				],
+			),
+			block(
+				"div",
+				classes=["listing-controls"],
+				children=[
+					block(
+						"button",
+						name="Show Filters",
+						attrs={"type": "button", "data-shop": "filter-toggle", "aria-expanded": "false"},
+						classes=["filter-toggle"],
+						children=[
+							block("span", text="Filters"),
+							block(
+								"span",
+								text="",
+								classes=["filter-toggle-count"],
+								visibilityCondition={"key": "filter_count", "comesFrom": "dataScript"},
+								dynamicValues=[dv("filter_count", "innerHTML")],
+							),
+						],
+					),
+					link_select("Sort by", "sort_options"),
+					link_select("Per page", "per_page_options"),
+					block(
+						"div",
+						classes=["view-toggle"],
+						attrs={"role": "group", "aria-label": "View"},
+						children=[
+							block(
+								"a",
+								text="▦",
+								attrs={"href": "#", "aria-label": "Grid", "title": "Grid"},
+								dynamicValues=[dv("grid_url", "href", "attribute"), dv("grid_active", "data-active", "attribute")],
+							),
+							block(
+								"a",
+								text="☰",
+								attrs={"href": "#", "aria-label": "List", "title": "List"},
+								dynamicValues=[dv("list_url", "href", "attribute"), dv("list_active", "data-active", "attribute")],
+							),
+						],
+					),
+				],
+			),
+		],
+	)
+
+
+def applied_filters():
+	"""The filters chosen, each removable, and one link clearing them all."""
+	chip = block(
+		"a",
+		text="Filter",
+		attrs={"href": "#"},
+		classes=["applied-filter"],
+		dynamicValues=[dv("label", "innerHTML"), dv("url", "href", "attribute")],
+	)
+	return block(
+		"div",
+		name="Applied Filters",
+		classes=["applied-filters"],
+		visibilityCondition={"key": "applied", "comesFrom": "dataScript"},
+		children=[
+			repeater("applied", chip, {"display": "flex", "flexWrap": "wrap", "gap": "8px"}, name="Applied"),
+			block(
+				"a",
+				text="Clear filters",
+				attrs={"href": "#"},
+				classes=["clear-filters"],
+				dynamicValues=[dv("clear_url", "href", "attribute")],
+			),
+		],
+	)
+
+
+def card_summary():
+	"""The product's short description, shown when products are listed rather than in a grid."""
+	return block(
+		"p",
+		text="",
+		classes=["product-card-summary"],
+		visibilityCondition={"key": "short_description", "comesFrom": "dataScript"},
+		dynamicValues=[dv("short_description", "innerHTML")],
+	)
+
+
+def card_buy():
+	"""Whether it is in stock, and Add to cart for a product of one version or Choose options."""
+	return block(
+		"div",
+		classes=["product-card-buy"],
+		children=[
+			block(
+				"span",
+				text="",
+				classes=["product-card-stock"],
+				dynamicValues=[dv("stock_label", "innerHTML"), dv("stock_state", "data-stock-state", "attribute")],
+			),
+			block(
+				"button",
+				text="Add to cart",
+				attrs={"type": "button", "data-shop": "add-to-cart", "data-label": "Add to cart", "data-added-label": "Added ✓"},
+				classes=["product-card-action"],
+				visibilityCondition={"key": "can_add", "comesFrom": "dataScript"},
+				dynamicValues=[dv("item", "data-item-code", "attribute")],
+			),
+			block(
+				"a",
+				text="Choose options",
+				attrs={"href": "#"},
+				classes=["product-card-action"],
+				visibilityCondition={"key": "choose_options", "comesFrom": "dataScript"},
+				dynamicValues=[dv("route", "href", "attribute")],
+			),
+		],
+	)
+
+
+def spec_table(heading: dict):
+	"""The product's specifications (page data key `product.specifications`) under a heading."""
+	row = block(
+		"div",
+		classes=["spec-row"],
+		children=[
+			block("dt", text="Specification", dynamicValues=[dv("label", "innerHTML")]),
+			block("dd", text="Value", dynamicValues=[dv("value", "innerHTML")]),
+		],
+	)
+	return block(
+		"div",
+		name="Specifications",
+		classes=["spec-table"],
+		visibilityCondition={"key": "product.specifications", "comesFrom": "dataScript"},
+		children=[heading, repeater("product.specifications", row, {}, element="dl", name="Specification Rows")],
+	)
+
+
+def listing(grid: dict, empty: dict, pager_block: dict):
+	"""Filters beside the products: the toolbar, the filters chosen, the products (as a grid or a
+	list, page data key `view`) and the pages."""
+	grid.setdefault("classes", []).append("product-grid")
+	grid.setdefault("dynamicValues", []).append(dv("view", "data-view", "attribute"))
+	return block(
+		"div",
+		name="Listing",
+		classes=["listing"],
+		children=[
+			filter_sidebar(),
+			block(
+				"div",
+				name="Listing Results",
+				classes=["listing-results"],
+				children=[listing_toolbar(), applied_filters(), grid, empty, pager_block],
+			),
+		],
+	)
+
+
+def browse_css(refs, radius: str = "2px"):
+	"""Styles for the catalogue menu, the listing's filters, toolbar and list view, and product
+	cards' buying row."""
+	ink, muted, line, card, paper, ok = (
+		refs["ink"],
+		refs["muted"],
+		refs["line"],
+		refs["card"],
+		refs["paper"],
+		refs["success"],
+	)
+	return f"""
+.catalog-menu-toggle {{ background:none; border:0; padding:0; cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }}
+.catalog-menu-toggle::before {{ content:"\\2630"; font-size:15px; line-height:1; }}
+.catalog-menu {{ position:absolute; left:0; right:0; top:100%; z-index:40; background:{paper}; border-bottom:1px solid {line}; box-shadow:0 18px 40px rgba(0,0,0,.08); }}
+.catalog-menu-inner {{ display:grid; grid-template-columns:260px 1fr; max-width:1200px; margin:0 auto; min-height:320px; }}
+.catalog-menu-list {{ list-style:none; margin:0; padding:12px 0; border-right:1px solid {line}; }}
+.catalog-menu-list button, .catalog-menu-list a {{ display:flex; justify-content:space-between; width:100%; padding:10px 20px; background:none; border:0; font:inherit; font-size:14px; color:{ink}; text-align:left; text-decoration:none; cursor:pointer; }}
+.catalog-menu-list [aria-expanded="true"] {{ background:{card}; font-weight:600; }}
+.catalog-menu-list a span {{ color:{muted}; font-size:12px; white-space:nowrap; }}
+.catalog-menu-flat {{ display:block; min-height:0; padding:24px 28px; }}
+.catalog-menu-detail {{ padding:20px 28px; display:flex; flex-direction:column; gap:16px; }}
+.catalog-menu-detail > a {{ font-weight:600; color:{ink}; font-size:15px; }}
+.catalog-menu-groups {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:18px 24px; }}
+.catalog-menu-group {{ display:flex; flex-direction:column; gap:6px; font-size:13px; }}
+.catalog-menu-group a {{ color:{ink}; text-decoration:none; }}
+.catalog-menu-group a:hover, .catalog-menu-list a:hover {{ text-decoration:underline; }}
+.catalog-menu-group > a {{ display:flex; align-items:center; gap:10px; font-weight:600; font-size:14px; }}
+.catalog-menu-group img {{ width:40px; height:40px; object-fit:contain; background:{card}; border-radius:{radius}; }}
+.catalog-menu-group span {{ color:{muted}; font-size:12px; }}
+@media (max-width: 760px) {{
+	.catalog-menu-inner {{ grid-template-columns:1fr; }}
+	.catalog-menu-list {{ border-right:0; border-bottom:1px solid {line}; }}
+}}
+.listing {{ display:grid; grid-template-columns:240px minmax(0, 1fr); gap:40px; width:100%; align-items:start; }}
+.listing-filters {{ display:flex; flex-direction:column; gap:22px; }}
+.listing-filters-head {{ display:none; }}
+.filter-group-label {{ margin:0 0 8px; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:{muted}; }}
+.filter-value {{ display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-size:14px; color:{ink}; text-decoration:none; }}
+.filter-value:hover .filter-value-label {{ text-decoration:underline; }}
+.filter-value[data-active="true"] {{ font-weight:600; background:none; color:{ink}; }}
+.filter-group[data-single="true"] .filter-value-label::before {{ content:""; display:inline-block; width:14px; height:14px; margin-right:9px; vertical-align:-2px; border:1px solid {line}; border-radius:50%; }}
+.filter-group[data-single="true"] .filter-value[data-active="true"] .filter-value-label::before {{ background:{ink}; border-color:{ink}; box-shadow:inset 0 0 0 3px {paper}; }}
+.filter-group[data-multiple="true"] .filter-value-label::before {{ content:""; display:inline-block; width:14px; height:14px; margin-right:9px; vertical-align:-2px; border:1px solid {line}; border-radius:3px; }}
+.filter-group[data-multiple="true"] .filter-value[data-active="true"] .filter-value-label::before {{ background:{ink}; border-color:{ink}; box-shadow:inset 0 0 0 2px {paper}; }}
+.filter-value-count {{ color:{muted}; font-size:12px; }}
+.listing-results {{ display:flex; flex-direction:column; gap:18px; min-width:0; }}
+.listing-toolbar {{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px 20px; padding-bottom:14px; border-bottom:1px solid {line}; }}
+.listing-count {{ display:flex; align-items:baseline; gap:12px; font-size:14px; }}
+.listing-count span {{ color:{muted}; font-size:13px; }}
+.listing-controls {{ display:flex; align-items:center; flex-wrap:wrap; gap:14px; }}
+.listing-select {{ display:flex; align-items:center; gap:8px; font-size:13px; color:{muted}; }}
+.listing-select select {{ font:inherit; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:{radius}; padding:6px 8px; cursor:pointer; }}
+.view-toggle {{ display:flex; border:1px solid {line}; border-radius:{radius}; overflow:hidden; }}
+.view-toggle a {{ padding:4px 10px; font-size:16px; line-height:1.3; color:{muted}; text-decoration:none; }}
+.view-toggle a[data-active="true"] {{ background:{ink}; color:{paper}; }}
+.filter-toggle {{ display:none; align-items:center; gap:6px; font:inherit; font-size:13px; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:{radius}; padding:6px 12px; cursor:pointer; }}
+.filter-toggle-count {{ background:{ink}; color:{paper}; border-radius:9px; font-size:11px; padding:0 6px; }}
+.applied-filters {{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }}
+.applied-filter {{ display:inline-flex; align-items:center; gap:6px; padding:5px 10px; font-size:13px; color:{paper}; background:{ink}; border-radius:{radius}; text-decoration:none; }}
+.applied-filter::after {{ content:"\\00d7"; font-size:15px; line-height:1; }}
+.clear-filters {{ font-size:13px; color:{ink}; text-decoration:underline; }}
+.spec-table {{ display:flex; flex-direction:column; gap:16px; width:100%; max-width:860px; }}
+.spec-table dl {{ margin:0; border-top:1px solid {line}; }}
+.spec-row {{ display:grid; grid-template-columns:minmax(120px, 30%) 1fr; gap:16px; padding:10px 0; border-bottom:1px solid {line}; font-size:14px; }}
+.spec-row dt {{ color:{muted}; }}
+.spec-row dd {{ margin:0; color:{ink}; }}
+.product-card-buy {{ display:flex; flex-direction:column; gap:8px; margin-top:auto; }}
+.product-card-stock {{ font-size:12px; color:{ok}; }}
+.product-card-stock[data-stock-state="out"] {{ color:{muted}; }}
+.product-card-action {{ display:block; text-align:center; font:inherit; font-size:13px; font-weight:600; padding:9px 12px; border-radius:{radius}; cursor:pointer; text-decoration:none; border:1px solid {ink}; }}
+button.product-card-action {{ background:{ink}; color:{paper}; }}
+a.product-card-action {{ background:transparent; color:{ink}; }}
+.product-card-summary {{ display:none; margin:0; font-size:13px; line-height:1.5; color:{muted}; }}
+.product-grid[data-view="list"] {{ grid-template-columns:minmax(0, 1fr) !important; gap:0 !important; }}
+.product-grid[data-view="list"] > * {{ border-bottom:1px solid {line}; padding:18px 0; }}
+.product-grid[data-view="list"] .product-card {{ display:grid !important; grid-template-columns:150px minmax(0, 1fr) 200px; gap:6px 24px; align-items:start; }}
+.product-grid[data-view="list"] .product-card > :first-child {{ grid-row:1 / span 6; }}
+.product-grid[data-view="list"] .product-card .product-card-buy {{ grid-column:3; grid-row:1 / span 6; margin-top:0; }}
+.product-grid[data-view="list"] .product-card-summary {{ display:block; }}
+@media (max-width: 900px) {{
+	.listing {{ grid-template-columns:minmax(0, 1fr); gap:20px; }}
+	.listing-filters {{ display:none; }}
+	.listing-filters[data-open="true"] {{ display:flex; position:fixed; inset:0; z-index:80; overflow-y:auto; background:{paper}; padding:20px; }}
+	.listing-filters-head {{ display:flex; justify-content:space-between; align-items:center; position:sticky; top:-20px; margin:-20px -20px 0; padding:16px 20px; background:{paper}; border-bottom:1px solid {line}; }}
+	.listing-filters-head button {{ font:inherit; font-weight:600; color:{paper}; background:{ink}; border:0; border-radius:{radius}; padding:8px 16px; cursor:pointer; }}
+	.filter-toggle {{ display:inline-flex; }}
+	.product-grid[data-view="list"] .product-card {{ grid-template-columns:96px minmax(0, 1fr); }}
+	.product-grid[data-view="list"] .product-card .product-card-buy {{ grid-column:2; grid-row:auto; }}
+}}
+"""

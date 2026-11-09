@@ -15,12 +15,19 @@ from shop.theme_generators.blocks import (
 )
 from shop.theme_generators.store_ui import (
 	breadcrumbs,
+	browse_css,
+	card_buy,
+	card_summary,
+	catalog_menu_button,
+	catalog_menu_panel,
 	forgot_password,
 	form_error,
 	hint,
+	listing,
 	notice,
 	pager,
 	shown_with_form,
+	spec_table,
 	store_css,
 	sub_collections,
 	terms_box,
@@ -121,7 +128,6 @@ def register_components(refs):
 		("shop-hero", "Shop Hero", "hero", hero),
 		("shop-product-card", "Shop Product Card", "product_card", product_card),
 		("shop-collection-tile", "Shop Collection Tile", "collection_tile", collection_tile),
-		("shop-filter-bar", "Shop Filter Bar", "filter_bar", filter_bar),
 		("shop-review-card", "Shop Review Card", "review_card", review_card),
 		("shop-delivery-card", "Shop Delivery Promise", "delivery_card", delivery_card),
 		("shop-trust-row", "Shop Trust Row", "trust_row", trust_row),
@@ -366,7 +372,7 @@ input::placeholder {{ color: {refs["muted"]}; }}
 	.pdp-buybar {{ transition: none; }}
 }}
 #reviews {{ scroll-margin-top: 24px; }}
-""" + store_css(refs, radius="2px")
+""" + store_css(refs, radius="2px") + browse_css(refs, radius="2px")
 
 
 def shell(refs, children):
@@ -577,9 +583,11 @@ def nav(refs):
 			"flexDirection": "row",
 			"flexShrink": 0,
 			"justifyContent": "center",
+			"position": "relative",
 			"width": "100%",
 		},
 		children=[
+			catalog_menu_panel(),
 			block(
 				"div",
 				styles={
@@ -599,6 +607,7 @@ def nav(refs):
 						styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "26px"},
 						mobile={"gap": "14px", "flexWrap": "wrap", "justifyContent": "flex-end", "rowGap": "8px"},
 						children=[
+							catalog_menu_button(refs),
 							block("a", text="Shop all", attrs={"href": "/products"}, styles={**link_style, "whiteSpace": "nowrap"}),
 							block("a", text="About", attrs={"href": "/about"}, styles=dict(link_style), mobile={"display": "none"}),
 							block("a", text="Contact", attrs={"href": "/contact"}, styles=dict(link_style), mobile={"display": "none"}),
@@ -974,47 +983,53 @@ def card_price_row(refs):
 
 
 def product_card(refs):
+	title_style = {
+		"color": refs["ink"],
+		"fontSize": "14px",
+		"fontWeight": "500",
+		"height": "fit-content",
+		"lineHeight": "1.4",
+		"textDecoration": "none",
+		"width": "100%",
+	}
 	return block(
-		"a",
+		"div",
 		name="Product Card",
-		attrs={"href": "#"},
-		styles={
-			"color": refs["ink"],
-			"display": "flex",
-			"flexDirection": "column",
-			"gap": "10px",
-			"textDecoration": "none",
-			"width": "100%",
-		},
-		dynamicValues=[dv("route", "href", "attribute")],
+		classes=["product-card"],
+		styles={"display": "flex", "flexDirection": "column", "gap": "10px", "height": "100%", "width": "100%"},
 		children=[
 			block(
-				"img",
-				attrs={"src": "/assets/builder/images/fallback.png", "alt": "", "loading": "lazy"},
-				styles={
-					"aspectRatio": "4 / 5",
-					"backgroundColor": refs["card"],
-					"borderRadius": "4px",
-					"display": "block",
-					"objectFit": "cover",
-					"width": "100%",
-				},
-				dynamicValues=[dv("image", "src", "attribute"), dv("product_name", "alt", "attribute")],
+				"a",
+				attrs={"href": "#", "tabindex": "-1", "aria-hidden": "true"},
+				styles={"display": "block", "width": "100%"},
+				dynamicValues=[dv("route", "href", "attribute")],
+				children=[
+					block(
+						"img",
+						attrs={"src": "/assets/builder/images/fallback.png", "alt": "", "loading": "lazy"},
+						styles={
+							"aspectRatio": "4 / 5",
+							"backgroundColor": refs["card"],
+							"borderRadius": "4px",
+							"display": "block",
+							"objectFit": "cover",
+							"width": "100%",
+						},
+						dynamicValues=[dv("image", "src", "attribute")],
+					),
+				],
 			),
 			block(
-				"h3",
+				"a",
 				text="Product",
-				styles={
-					"fontSize": "14px",
-					"fontWeight": "500",
-					"height": "fit-content",
-					"lineHeight": "1.4",
-					"width": "100%",
-				},
-				dynamicValues=[dv("product_name", "innerHTML")],
+				attrs={"href": "#"},
+				styles=title_style,
+				dynamicValues=[dv("route", "href", "attribute"), dv("product_name", "innerHTML")],
 			),
 			card_rating_row(refs),
 			card_price_row(refs),
+			card_summary(),
+			card_buy(),
 		],
 	)
 
@@ -1306,85 +1321,6 @@ def search_form(refs):
 	)
 
 
-def filter_bar(refs):
-	option_chip = block(
-		"a",
-		name="Filter Option",
-		text="Option",
-		attrs={"href": "#", "data-active": "false"},
-		styles={
-			"borderColor": refs["line"],
-			"borderRadius": "2px",
-			"borderStyle": "solid",
-			"borderWidth": "1px",
-			"color": refs["ink"],
-			"fontSize": "12px",
-			"fontWeight": "500",
-			"height": "fit-content",
-			"padding": "6px 13px",
-			"textDecoration": "none",
-			"whiteSpace": "nowrap",
-			"width": "fit-content",
-		},
-		dynamicValues=[
-			dv("url", "href", "attribute"),
-			dv("label", "innerHTML"),
-			dv("active", "data-active", "attribute"),
-		],
-	)
-	filter_group = block(
-		"div",
-		name="Filter Group",
-		styles={
-			"alignItems": "baseline",
-			"display": "flex",
-			"flexDirection": "row",
-			"gap": "18px",
-			"width": "100%",
-		},
-		mobile={"flexDirection": "column", "gap": "8px"},
-		children=[
-			block(
-				"p",
-				text="Filter",
-				styles={
-					"color": refs["muted"],
-					"flexShrink": 0,
-					"fontSize": "11px",
-					"fontWeight": "600",
-					"height": "fit-content",
-					"letterSpacing": "0.1em",
-					"minWidth": "88px",
-					"textTransform": "uppercase",
-					"width": "fit-content",
-				},
-				dynamicValues=[dv("label", "innerHTML")],
-			),
-			repeater(
-				"options",
-				option_chip,
-				{"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "gap": "8px", "width": "100%"},
-				name="Filter Options",
-			),
-		],
-	)
-	return repeater(
-		"filters",
-		filter_group,
-		{
-			"borderTopColor": refs["line"],
-			"borderTopStyle": "solid",
-			"borderTopWidth": "1px",
-			"display": "flex",
-			"flexDirection": "column",
-			"gap": "12px",
-			"paddingTop": "20px",
-			"width": "100%",
-		},
-		name="Filters",
-	)
-
-
 def products_blocks(refs):
 	header = named_section("Section · Listing Header", 
 		[
@@ -1403,7 +1339,7 @@ def products_blocks(refs):
 						"div",
 						styles={"display": "flex", "flexDirection": "column", "gap": "8px", "width": "fit-content"},
 						children=[
-							heading(refs, "All Products", size="30px", mobile_size="24px"),
+							listing_title(refs),
 							block(
 								"p",
 								text=THEME.listing_subtitle or "Official merchandise for the builder community.",
@@ -1434,7 +1370,6 @@ def products_blocks(refs):
 					search_form(refs),
 				],
 			),
-			component_ref("shop-filter-bar"),
 		],
 		styles={"gap": "24px", "padding": "52px 40px 8px"},
 	)
@@ -1465,8 +1400,27 @@ def products_blocks(refs):
 			),
 		],
 	)
-	grid = named_section("Section · Product Grid", [product_grid(refs, "products", "products", columns=3), empty, pager(refs)], styles={"padding": "36px 40px 88px"})
-	return shell(refs, [component_ref("shop-navbar"), header, grid, component_ref("shop-footer")])
+	body = named_section("Section · Listing", [listing(product_grid(refs, "products", "products", columns=3), empty, pager(refs))], styles={"padding": "28px 40px 88px"}, mobile={"padding": "20px 18px 64px"})
+	return shell(refs, [component_ref("shop-navbar"), header, body, component_ref("shop-footer")])
+
+
+def listing_title(refs):
+	title = heading(refs, "All Products", size="30px", mobile_size="24px")
+	title["dynamicValues"] = [dv("title", "innerHTML")]
+	return title
+
+
+def no_results(refs):
+	return block(
+		"div",
+		name="No Results",
+		visibilityCondition={"key": "no_results", "comesFrom": "dataScript"},
+		styles={"alignItems": "center", "display": "flex", "flexDirection": "column", "gap": "10px", "padding": "48px 0 16px", "textAlign": "center", "width": "100%"},
+		children=[
+			block("p", text="No products match these filters.", styles={"fontSize": "15px", "fontWeight": "500", "height": "fit-content", "width": "fit-content"}),
+			block("a", text="Clear filters", attrs={"href": "#"}, visibilityCondition={"key": "clear_url", "comesFrom": "dataScript"}, styles={"color": refs["ink"], "fontSize": "13px", "height": "fit-content", "textDecoration": "underline", "width": "fit-content"}, dynamicValues=[dv("clear_url", "href", "attribute")]),
+		],
+	)
 
 
 def breadcrumb(refs, trail_key):
@@ -2455,12 +2409,20 @@ def product_blocks(refs):
 		},
 		mobile={"gridTemplateColumns": "minmax(0, 1fr)", "gap": "28px", "padding": "20px 18px 40px"},
 	)
+	specifications = named_section(
+		"Section · Specifications",
+		[spec_table(heading(refs, "Specifications", size="26px", mobile_size="22px", element="h2", serif=True))],
+		styles={"padding": "8px 40px 40px"},
+		mobile={"padding": "8px 18px 28px"},
+	)
+	specifications["visibilityCondition"] = {"key": "product.specifications", "comesFrom": "dataScript"}
 	blocks = shell(
 		refs,
 		[
 			component_ref("shop-navbar"),
 			crumbs,
 			main,
+			specifications,
 			*([description_section(refs)] if below else []),
 			reviews_section(refs),
 			review_form_section(refs),
@@ -2494,8 +2456,8 @@ def collection_blocks(refs):
 	inside = named_section("Section · Sub-collections", [sub_collections(component_ref("shop-collection-tile"))],
 						   styles={"padding": "20px 40px 0px"}, mobile={"padding": "16px 18px 0px"})
 	inside["visibilityCondition"] = {"key": "sub_collections", "comesFrom": "dataScript"}
-	grid = named_section("Section · Collection Grid", [product_grid(refs, "products", "collection", columns=3), pager(refs)], styles={"padding": "28px 40px 88px"})
-	return shell(refs, [component_ref("shop-navbar"), header, inside, grid, component_ref("shop-footer")])
+	body = named_section("Section · Listing", [listing(product_grid(refs, "products", "collection", columns=3), no_results(refs), pager(refs))], styles={"padding": "28px 40px 88px"}, mobile={"padding": "20px 18px 64px"})
+	return shell(refs, [component_ref("shop-navbar"), header, inside, body, component_ref("shop-footer")])
 
 
 def summary_card(refs, children):

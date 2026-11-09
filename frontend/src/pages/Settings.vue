@@ -922,6 +922,13 @@
 					description="Serve the storefront under a path of the site, such as /store. Empty serves it at the site's root."
 					class="max-w-sm"
 				/>
+				<FormControl
+					v-model="storefront.menu_label"
+					label="Catalogue menu label"
+					placeholder="Products"
+					description="The menu in the store's header that lists your collections. Empty shows Products."
+					class="max-w-sm"
+				/>
 				<Switch
 					v-model="storefront.customers_land_in_store"
 					label="Customers land in the store"
@@ -1006,7 +1013,7 @@ const accounts = reactive({
 	allow_trade_applications: true,
 	staff_notification_emails: '',
 })
-const storefront = reactive({ route_prefix: '', customers_land_in_store: true })
+const storefront = reactive({ route_prefix: '', menu_label: '', customers_land_in_store: true })
 type Option = { label: string; value: string }
 
 type RestrictionRow = {
@@ -1319,6 +1326,7 @@ function hydrate(doc: Record<string, any>, only = '') {
 	if (fill('storefront'))
 		Object.assign(storefront, {
 			route_prefix: doc.route_prefix || '',
+			menu_label: doc.menu_label || '',
 			customers_land_in_store: !!doc.customers_land_in_store,
 		})
 }

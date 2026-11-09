@@ -9,8 +9,6 @@ from frappe.utils.caching import redis_cache
 from shop.routes import signin_url, store_url
 from shop.storefront import cart, catalog, checkout, orders, pricing, product
 
-PAGE_SIZE = 24
-
 
 @frappe.whitelist(allow_guest=True)
 def home() -> dict:
@@ -21,67 +19,217 @@ def home() -> dict:
 	}
 
 
+PER_PAGE = (24, 48, 96)
+LIST_PARAMS = ("search", "sort", "price", "stock", "per_page", "view", "collection")
+
+
 @frappe.whitelist(allow_guest=True)
 def listing() -> dict:
+	"""Every published product, narrowed by what the shopper picked."""
+	return browse(title=_("All Products"))
+
+
+@frappe.whitelist(allow_guest=True)
+def collection_page() -> dict:
+	"""A collection's products (with those of the collections inside it), its sub-collections as
+	tiles and where it sits."""
+	tree = catalog.published_collections()
+	row = next((row for row in tree.values() if row.slug == frappe.form_dict.slug), None)
+	if not row:
+		frappe.throw(_("Collection not found"), frappe.DoesNotExistError)
+	trail = catalog.ancestors(tree, row.name)
+	return {
+		"collection": {key: row.get(key) for key in ("title", "slug", "description", "image")},
+		"breadcrumbs": [{"title": r.title, "route": store_url(f"collection/{r.slug}")} for r in trail]
+		or None,
+		"sub_collections": catalog.get_collections(parent=row.name) or None,
+		**browse(title=row.title, description=row.description, collection=row),
+	}
+
+
+def narrowing_params() -> dict[str, str]:
+	"""The URL parameter for each way products can be narrowed: brand, spec_<name>, option_<name>."""
+	params = {"brand": catalog.BRAND}
+	for name in frappe.get_all("Shop Specification", filters={"use_as_filter": 1}, pluck="name"):
+		params[f"spec_{frappe.scrub(name)}"] = f"spec:{name}"
+	for name in frappe.get_all("Item Attribute", pluck="name"):
+		params[f"option_{frappe.scrub(name)}"] = f"option:{name}"
+	return params
+
+
+def picked(form, param: str) -> list[str]:
+	return [value for value in (form.get(param) or "").split("|") if value]
+
+
+def browse(title: str, description: str | None = None, collection=None) -> dict:
+	"""A page of products with the filters beside them, the toolbar above and the filters applied."""
 	form = frappe.form_dict
+	params = narrowing_params()
+	keys = {key: param for param, key in params.items()}
+	chosen = {key: picked(form, param) for param, key in params.items() if form.get(param)}
+	per_page = cint(form.get("per_page")) if cint(form.get("per_page")) in PER_PAGE else PER_PAGE[0]
 	page = max(cint(form.get("page")) or 1, 1)
 	price_min, price_max = parse_price_bucket(form.get("price"))
-	collections = catalog.get_collections(nested=True)
 	result = catalog.get_products(
-		collection=form.get("collection"),
+		collection=collection.slug if collection else form.get("collection"),
 		search=form.get("search"),
 		sort=form.get("sort") or "ranking",
-		start=(page - 1) * PAGE_SIZE,
-		limit=PAGE_SIZE,
+		start=(page - 1) * per_page,
+		limit=per_page,
 		price_min=price_min,
 		price_max=price_max,
 		in_stock=form.get("stock") == "in",
+		chosen=chosen,
 	)
-	applied = applied_filters(form)
+	total = result["total"]
+	last = max((total + per_page - 1) // per_page, 1)
+	view = "list" if form.get("view") == "list" else "grid"
+
+	def url(changes: dict, keep_page: bool = False) -> str:
+		return listing_url(form, params, changes, keep_page)
+
+	def option(label, param, value, count=None):
+		active = (form.get(param) or "") == (value or "")
+		return {
+			"label": label,
+			"url": url({param: value}),
+			"active": "true" if active else "false",
+			"count": count,
+		}
+
+	groups = []
+	inside = catalog.get_collections(parent=collection.name) if collection else catalog.get_collections()
+	if inside:
+		groups.append(
+			{
+				"label": _("Category"),
+				"options": [
+					{
+						"label": row.title,
+						"url": row.route,
+						"active": "false",
+						"count": row.product_count,
+					}
+					for row in inside
+					if row.product_count
+				],
+			}
+		)
+	groups.append(
+		{
+			"label": _("Availability"),
+			"single": "true",
+			"options": [option(_("All"), "stock", None), option(_("In stock"), "stock", "in")],
+		}
+	)
+	buckets = {key: price_label(label, low, high) for key, label, (low, high) in useful_price_buckets(form)}
+	if buckets:
+		groups.append(
+			{
+				"label": _("Price"),
+				"single": "true",
+				"options": [
+					option(_("Any price"), "price", None),
+					*[option(label, "price", key) for key, label in buckets.items()],
+				],
+			}
+		)
+	applied = []
+	for narrowing in result["narrowings"]:
+		param = keys[narrowing["key"]]
+		current = picked(form, param)
+		options = []
+		for value in narrowing["values"]:
+			others = [v for v in current if v != value["value"]]
+			toggled = others if value["chosen"] else [*current, value["value"]]
+			options.append(
+				{
+					"label": value["label"],
+					"url": url({param: "|".join(toggled)}),
+					"active": "true" if value["chosen"] else "false",
+					"count": value["count"],
+				}
+			)
+			if value["chosen"]:
+				applied.append(
+					{
+						"label": f"{narrowing['label']}: {value['label']}",
+						"url": url({param: "|".join(others)}),
+					}
+				)
+		groups.append({"label": narrowing["label"], "options": options, "multiple": "true"})
+	if form.get("stock") == "in":
+		applied.insert(0, {"label": _("In stock"), "url": url({"stock": None})})
+	if form.get("price"):
+		label = buckets.get(form.get("price"), form.get("price"))
+		applied.insert(0, {"label": _("Price: {0}").format(label), "url": url({"price": None})})
 	return {
 		"store": store_details(),
-		"collections": collections,
-		"filters": listing_filters(form, collections),
-		"filters_applied": "true" if applied else None,
-		"filter_count": str(len(applied)) if applied else None,
+		"title": title,
+		"description": description,
 		# page data is put into the page as HTML, so what the shopper typed is escaped
 		"search": escape_html(form.get("search") or ""),
-		"search_label": escape_html(_('Results for "{0}"').format(form.get("search"))) if form.get("search") else None,
+		"search_label": escape_html(_('Results for "{0}"').format(form.get("search")))
+		if form.get("search")
+		else None,
+		"filter_groups": groups,
+		"applied": applied or None,
+		"clear_url": url({key: None for key in (*params, "price", "stock")}) if applied else None,
+		"filter_count": str(len(applied)) if applied else None,
+		"total_label": _("{0} products").format(total) if total != 1 else _("1 product"),
+		"page_label": _("Page {0} of {1}").format(min(page, last), last),
+		"sort_options": [
+			option(_(label), "sort", None if key == "ranking" else key) for key, label in SORT_OPTIONS
+		],
+		"per_page_options": [
+			option(str(n), "per_page", None if n == PER_PAGE[0] else str(n)) for n in PER_PAGE
+		],
+		"view": view,
+		"grid_url": url({"view": None}, keep_page=True),
+		"list_url": url({"view": "list"}, keep_page=True),
+		"grid_active": "true" if view == "grid" else "false",
+		"list_active": "true" if view == "list" else "false",
 		"no_results": None if result["products"] else "true",
 		"page": page,
-		"has_more": page * PAGE_SIZE < result["total"],
-		"pager": pager(page, result["total"]),
-		**result,
+		"pager": {
+			"prev_url": url({"page": str(page - 1) if page > 2 else None}, keep_page=True)
+			if page > 1
+			else None,
+			"next_url": url({"page": str(page + 1)}, keep_page=True) if page < last else None,
+		}
+		if last > 1
+		else None,
+		"products": result["products"],
+		"total": total,
 	}
 
 
-def pager(page: int, total: int) -> dict | None:
-	"""Links to the pages before and after this one, keeping the shopper's filters."""
+def price_label(label: str, low: float | None, high: float | None) -> str:
+	from frappe.utils import fmt_money
+
+	currency = frappe.get_cached_doc("Shop Settings").currency
+	return _(label).format(
+		fmt_money(low or high, currency=currency, precision=0),
+		fmt_money(high or low, currency=currency, precision=0),
+	)
+
+
+def listing_url(form, params: dict, changes: dict, keep_page: bool = False) -> str:
+	"""This page's URL with the shopper's filters, changed as given; a new filter starts at page 1."""
 	from urllib.parse import urlencode
 
-	request_path = frappe.local.request.path if getattr(frappe.local, "request", None) else ""
-
-	def url(number: int) -> str:
-		query = {k: v for k, v in frappe.form_dict.items() if k in (*FILTER_PARAMS, "search") and v}
-		if number > 1:
-			query["page"] = number
-		return f"{request_path}?{urlencode(query)}" if query else request_path
-
-	last = max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
-	links = {
-		# past the end, back to the last page there is
-		"prev_url": url(min(page - 1, last)) if page > 1 else None,
-		"next_url": url(page + 1) if page * PAGE_SIZE < total else None,
-	}
-	return links if any(links.values()) else None
-
-
-FILTER_PARAMS = ("collection", "price", "stock", "sort")
-
-
-def applied_filters(form) -> list[str]:
-	"""Which filters the shopper actually set, so the listing can say so when they are hidden."""
-	return [key for key in FILTER_PARAMS if form.get(key)]
+	request_path = (
+		frappe.local.request.path if getattr(frappe.local, "request", None) else store_url("products")
+	)
+	query = {key: form.get(key) for key in (*LIST_PARAMS, *params) if form.get(key)}
+	if keep_page and form.get("page"):
+		query["page"] = form.get("page")
+	for key, value in changes.items():
+		if value:
+			query[key] = value
+		else:
+			query.pop(key, None)
+	return request_path + (f"?{urlencode(query)}" if query else "")
 
 
 SORT_OPTIONS = [
@@ -136,7 +284,9 @@ def useful_price_buckets(form) -> list:
 	buckets = [
 		bucket
 		for bucket in price_buckets(rates)
-		if any((bucket[2][0] or 0) <= rate and (bucket[2][1] is None or rate < bucket[2][1]) for rate in rates)
+		if any(
+			(bucket[2][0] or 0) <= rate and (bucket[2][1] is None or rate < bucket[2][1]) for rate in rates
+		)
 	]
 	if len(buckets) < 2 and not form.get("price"):
 		return []
@@ -149,67 +299,6 @@ def listed_prices(price_list: str) -> list[float]:
 	products = frappe.get_all("Shop Product", filters={"published": 1}, fields=["item", "has_variants"])
 	prices = catalog.display_prices(products, customer=None)
 	return [flt(prices[p.item]["rate"]) for p in products if p.item in prices]
-
-
-def listing_filters(form, collections) -> list[dict]:
-	def option(label, param, value):
-		current = form.get(param)
-		active = (current or "") == (value or "")
-		return {"label": label, "url": filter_url(form, {param: value}), "active": "true" if active else "false"}
-
-	from frappe.utils import fmt_money
-
-	currency = frappe.get_cached_doc("Shop Settings").currency
-	money = lambda amount: f"{fmt_money(amount, currency=currency, precision=0)} {currency}"
-	buckets = useful_price_buckets(form)
-	return [
-		{
-			"label": _("Collection"),
-			"options": [
-				option(_("All"), "collection", None),
-				# a collection inside another is listed under it
-				*[option("– " * row.level + row.title, "collection", row.slug) for row in collections],
-			],
-		},
-		*(
-			[
-				{
-					"label": _("Price"),
-					"options": [
-						option(_("Any price"), "price", None),
-						*[
-							option(_(label).format(money(low or high), money(high or low)), "price", key)
-							for key, label, (low, high) in buckets
-						],
-					],
-				}
-			]
-			if buckets
-			else []
-		),
-		{
-			"label": _("Availability"),
-			"options": [option(_("All"), "stock", None), option(_("In stock"), "stock", "in")],
-		},
-		{
-			"label": _("Sort"),
-			"options": [option(_(label), "sort", None if key == "ranking" else key) for key, label in SORT_OPTIONS],
-		},
-	]
-
-
-def filter_url(form, changes: dict) -> str:
-	from urllib.parse import urlencode
-
-	params = {
-		key: form.get(key) for key in ("collection", "search", "sort", "price", "stock") if form.get(key)
-	}
-	for key, value in changes.items():
-		if value:
-			params[key] = value
-		else:
-			params.pop(key, None)
-	return store_url("products") + (f"?{urlencode(params)}" if params else "")
 
 
 @frappe.whitelist(allow_guest=True)
@@ -249,31 +338,6 @@ def related_products(detail: dict) -> list:
 	else:
 		result = catalog.get_products(limit=5)["products"]
 	return [product for product in result if product.slug != detail["slug"]][:4]
-
-
-@frappe.whitelist(allow_guest=True)
-def collection_page() -> dict:
-	slug = frappe.form_dict.slug
-	tree = catalog.published_collections()
-	row = next((row for row in tree.values() if row.slug == slug), None)
-	if not row:
-		frappe.throw(frappe._("Collection not found"), frappe.DoesNotExistError)
-	name = row.name
-	collection = {key: row.get(key) for key in ("title", "slug", "description", "image")}
-	page = max(cint(frappe.form_dict.get("page")) or 1, 1)
-	result = catalog.get_products(collection=slug, start=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE)
-	return {
-		"store": store_details(),
-		"collection": collection,
-		# where the collection sits (parent > child), and the collections inside it
-		"breadcrumbs": [
-			{"title": row.title, "route": store_url(f"collection/{row.slug}")} for row in catalog.ancestors(tree, name)
-		]
-		or None,
-		"sub_collections": catalog.get_collections(parent=name) or None,
-		"pager": pager(page, result["total"]),
-		**result,
-	}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -326,18 +390,22 @@ def account_html(customers: list[str]) -> str:
 			note += " " + _("You can pay on account ({0}).").format(trade.get("payment_terms"))
 		html += f'<div class="account-note">{esc(note)}</div>'
 	elif trade and trade.get("status") == "Pending":
-		html += f'<div class="account-note">{esc(_("Your trade account application is being reviewed."))}</div>'
+		html += (
+			f'<div class="account-note">{esc(_("Your trade account application is being reviewed."))}</div>'
+		)
 	else:
 		html += (
 			f'<div class="account-note">{esc(_("Buying for a business?"))} '
 			f'<a href="{store_url("account/trade")}">{esc(_("Apply for a trade account"))}</a></div>'
 		)
 	rows = accounts.invoices(customers)
-	if customers and frappe.db.exists("GL Entry", {"party_type": "Customer", "party": ["in", customers], "is_cancelled": 0}):
+	if customers and frappe.db.exists(
+		"GL Entry", {"party_type": "Customer", "party": ["in", customers], "is_cancelled": 0}
+	):
 		html += (
 			f'<div class="account-actions"><a class="account-statement" '
 			f'href="/api/method/shop.storefront.statements.statement_pdf">{esc(_("Download statement"))}</a> '
-			f'<span>{esc(_("Your invoices and payments for the last 12 months."))}</span></div>'
+			f"<span>{esc(_('Your invoices and payments for the last 12 months.'))}</span></div>"
 		)
 	if rows:
 		html += f"<h2>{esc(_('Invoices'))}</h2><div class='account-table'>"
@@ -353,23 +421,31 @@ def account_html(customers: list[str]) -> str:
 				f'<a href="{esc(row.pdf_url)}">{esc(_("PDF"))}</a></div>'
 			)
 		html += "</div>"
-	quotes = frappe.get_all(
-		"Quotation",
-		filters={"party_name": ["in", customers or [""]], "quotation_to": "Customer", "docstatus": ["<", 2]},
-		fields=[
-			"name",
-			"transaction_date",
-			"valid_till",
-			"grand_total",
-			"rounded_total",
-			"currency",
-			"docstatus",
-			"status",
-			"shop_access_token",
-		],
-		order_by="creation desc",
-		limit=20,
-	) if customers and frappe.get_meta("Quotation").has_field("shop_access_token") else []
+	quotes = (
+		frappe.get_all(
+			"Quotation",
+			filters={
+				"party_name": ["in", customers or [""]],
+				"quotation_to": "Customer",
+				"docstatus": ["<", 2],
+			},
+			fields=[
+				"name",
+				"transaction_date",
+				"valid_till",
+				"grand_total",
+				"rounded_total",
+				"currency",
+				"docstatus",
+				"status",
+				"shop_access_token",
+			],
+			order_by="creation desc",
+			limit=20,
+		)
+		if customers and frappe.get_meta("Quotation").has_field("shop_access_token")
+		else []
+	)
 	if quotes:
 		html += f"<h2>{esc(_('Quotes'))}</h2><div class='account-table'>"
 		from frappe.utils import getdate, nowdate
@@ -404,7 +480,9 @@ def register_page() -> dict:
 		"store": store_details(),
 		"terms": checkout.terms_details(),
 		"show_form": None if signed_in else "true",
-		"notice": _("You're signed in. Your orders and invoices are on your account page.") if signed_in else None,
+		"notice": _("You're signed in. Your orders and invoices are on your account page.")
+		if signed_in
+		else None,
 		"trade_applications": trade_applications(),
 	}
 
@@ -420,7 +498,9 @@ def signin_page() -> dict:
 	return {
 		"store": store_details(),
 		"show_form": None if signed_in else "true",
-		"notice": _("You're signed in. Your orders and invoices are on your account page.") if signed_in else None,
+		"notice": _("You're signed in. Your orders and invoices are on your account page.")
+		if signed_in
+		else None,
 		"redirect_to": return_path(frappe.form_dict.get("redirect-to")),
 		"register_url": store_url("account/register"),
 		"trade_applications": trade_applications(),
@@ -456,14 +536,21 @@ def trade_page() -> dict:
 		**trade_form_state(accounts.trade_status()),
 		# what the business does: ERPNext's Industry Types, as on a Lead
 		"industries": [{"value": "", "label": frappe._("What does your business do?")}]
-		+ [{"value": name, "label": name} for name in frappe.get_all("Industry Type", pluck="name", order_by="name")],
+		+ [
+			{"value": name, "label": name}
+			for name in frappe.get_all("Industry Type", pluck="name", order_by="name")
+		],
 	}
 
 
 def trade_form_state(trade: dict | None) -> dict:
 	"""Whether the trade application form shows, or what to tell a business that has applied."""
 	if not trade_applications():
-		return {"trade": trade, "show_form": None, "notice": _("We aren't taking trade account applications.")}
+		return {
+			"trade": trade,
+			"show_form": None,
+			"notice": _("We aren't taking trade account applications."),
+		}
 	status = (trade or {}).get("status")
 	notice = {
 		"Approved": _("Your trade account is open. Sign in to see your trade prices."),
@@ -484,7 +571,12 @@ def quote_page() -> dict:
 	except (frappe.PermissionError, frappe.DoesNotExistError):
 		frappe.clear_messages()
 		quote = None
-	return {"store": store_details(), "quote": quote, "quote_invalid": None if quote else "true", "terms": checkout.terms_details()}
+	return {
+		"store": store_details(),
+		"quote": quote,
+		"quote_invalid": None if quote else "true",
+		"terms": checkout.terms_details(),
+	}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -518,6 +610,7 @@ def store_details() -> dict:
 		"account_url": store_url("account/orders") if signed_in else signin_url(store_url("account/orders")),
 		"register_url": None if signed_in else store_url("account/register"),
 		"home_url": store_url(""),
+		"menu_label": settings.get("menu_label") or frappe._("Products"),
 		"display_currency": pricing.display_currency(),
 		"currency_picker_html": pricing.currency_picker_html(),
 	}

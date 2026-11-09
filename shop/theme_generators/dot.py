@@ -15,12 +15,19 @@ from shop.theme_generators.blocks import (
 )
 from shop.theme_generators.store_ui import (
 	breadcrumbs,
+	browse_css,
+	card_buy,
+	card_summary,
+	catalog_menu_button,
+	catalog_menu_panel,
 	forgot_password,
 	form_error,
 	hint,
+	listing,
 	notice,
 	pager,
 	shown_with_form,
+	spec_table,
 	store_css,
 	sub_collections,
 	terms_box,
@@ -123,7 +130,6 @@ def register_components(refs):
 		("dot-hero", "Dot Hero", "hero", hero),
 		("dot-product-card", "Dot Product Card", "product_card", product_card),
 		("dot-collection-tile", "Dot Collection Tile", "collection_tile", collection_tile),
-		("dot-filter-bar", "Dot Filter Bar", "filter_bar", filter_bar),
 		("dot-review-card", "Dot Review Card", "review_card", review_card),
 		("dot-delivery-card", "Dot Delivery Promise", "delivery_card", delivery_card),
 		("dot-trust-row", "Dot Spec Row", "trust_row", trust_row),
@@ -408,7 +414,7 @@ a[data-active="true"] {{
 	[data-shop="remove"], .drawer-remove {{ padding: 8px 6px; }}
 }}
 #reviews {{ scroll-margin-top: 100px; }}
-""" + store_css(refs, radius="12px")
+""" + store_css(refs, radius="12px") + browse_css(refs, radius="12px")
 
 
 def mono(size="12px", weight="400", color=None, spacing="0.1em", upper=True) -> dict:
@@ -771,6 +777,7 @@ def nav(refs):
 				styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "26px"},
 				mobile={"gap": "14px", "flexWrap": "wrap", "justifyContent": "flex-end", "rowGap": "8px"},
 				children=[
+					catalog_menu_button(refs),
 					block("a", text="Shop", attrs={"href": "/products"}, styles=dict(link_style)),
 					block("a", text="About", attrs={"href": "/about"}, styles=dict(link_style), mobile={"display": "none"}),
 					block("a", text="Contact", attrs={"href": "/contact"}, styles=dict(link_style), mobile={"display": "none"}),
@@ -816,7 +823,7 @@ def nav(refs):
 			"zIndex": "70",
 		},
 		mobile={"padding": "0 12px", "top": "10px"},
-		children=[capsule],
+		children=[capsule, catalog_menu_panel()],
 	)
 
 
@@ -1113,7 +1120,7 @@ def product_card(refs):
 				"img",
 				attrs={"src": "/assets/builder/images/fallback.png", "alt": "", "loading": "lazy"},
 				styles={"display": "block", "height": "100%", "objectFit": "cover", "width": "100%"},
-				dynamicValues=[dv("image", "src", "attribute"), dv("product_name", "alt", "attribute")],
+				dynamicValues=[dv("image", "src", "attribute")],
 			)
 		],
 	)
@@ -1181,35 +1188,38 @@ def product_card(refs):
 		],
 	)
 	return block(
-		"a",
+		"div",
 		name="Product Card",
-		attrs={"href": "#"},
-		styles={
-			"color": refs["ink"],
-			"display": "flex",
-			"flexDirection": "column",
-			"gap": "12px",
-			"textDecoration": "none",
-			"width": "100%",
-		},
-		dynamicValues=[dv("route", "href", "attribute")],
+		classes=["product-card"],
+		styles={"display": "flex", "flexDirection": "column", "gap": "12px", "height": "100%", "width": "100%"},
 		children=[
-			well,
 			block(
-				"h3",
+				"a",
+				attrs={"href": "#", "tabindex": "-1", "aria-hidden": "true"},
+				styles={"display": "block", "width": "100%"},
+				dynamicValues=[dv("route", "href", "attribute")],
+				children=[well],
+			),
+			block(
+				"a",
 				text="Product",
+				attrs={"href": "#"},
 				styles={
+					"color": refs["ink"],
 					"fontSize": "14px",
 					"fontWeight": "500",
 					"height": "fit-content",
 					"letterSpacing": "-0.01em",
 					"lineHeight": "1.35",
+					"textDecoration": "none",
 					"width": "100%",
 				},
-				dynamicValues=[dv("product_name", "innerHTML")],
+				dynamicValues=[dv("route", "href", "attribute"), dv("product_name", "innerHTML")],
 			),
 			rating_row,
 			price_row,
+			card_summary(),
+			card_buy(),
 		],
 	)
 
@@ -1286,65 +1296,6 @@ def collection_tile(refs):
 		},
 		dynamicValues=[dv("route", "href", "attribute")],
 		children=[photo, title_pill],
-	)
-
-
-def filter_bar(refs):
-	option_chip = block(
-		"a",
-		name="Filter Option",
-		text="Option",
-		attrs={"href": "#", "data-active": "false"},
-		styles={
-			"borderColor": refs["line"],
-			"borderRadius": "999px",
-			"borderStyle": "solid",
-			"borderWidth": "1px",
-			"color": refs["ink"],
-			"fontFamily": THEME.mono,
-			"fontSize": "10px",
-			"height": "fit-content",
-			"letterSpacing": "0.06em",
-			"padding": "6px 12px",
-			"textDecoration": "none",
-			"whiteSpace": "nowrap",
-			"width": "fit-content",
-		},
-		dynamicValues=[
-			dv("url", "href", "attribute"),
-			dv("label", "innerHTML"),
-			dv("active", "data-active", "attribute"),
-		],
-	)
-	filter_group = block(
-		"div",
-		name="Filter Group",
-		styles={"alignItems": "center", "display": "flex", "flexDirection": "row", "gap": "14px", "width": "100%"},
-		mobile={"alignItems": "flex-start", "flexDirection": "column", "gap": "6px"},
-		children=[
-			block(
-				"p",
-				text="Filter",
-				styles={
-					**mono(size="9px", color=refs["muted"], spacing="0.14em"),
-					"flexShrink": 0,
-					"minWidth": "74px",
-				},
-				dynamicValues=[dv("label", "innerHTML")],
-			),
-			repeater(
-				"options",
-				option_chip,
-				{"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "gap": "6px", "width": "100%"},
-				name="Filter Options",
-			),
-		],
-	)
-	return repeater(
-		"filters",
-		filter_group,
-		{"display": "flex", "flexDirection": "column", "gap": "8px", "width": "100%"},
-		name="Filters",
 	)
 
 
@@ -1476,42 +1427,6 @@ def home_blocks(refs):
 	)
 
 
-def filter_toggle(refs):
-	node = pill(
-		refs,
-		"",
-		variant="outline",
-		attrs={"data-shop": "filter-toggle", "aria-expanded": "false", "aria-controls": "filters"},
-		name="Filter Toggle",
-	)
-	node["baseStyles"].update({"alignItems": "center", "display": "flex", "gap": "8px", "padding": "9px 18px"})
-	node.pop("innerHTML", None)
-	node["children"] = [
-		block("span", text="Filters", styles={"fontSize": "11px", "letterSpacing": "0.14em", "width": "fit-content"}),
-		block(
-			"span",
-			text="",
-			name="Applied Count",
-			classes=["filter-count"],
-			visibilityCondition={"key": "filters_applied", "comesFrom": "dataScript"},
-			styles={
-				"alignItems": "center",
-				"backgroundColor": refs["ink"],
-				"borderRadius": "999px",
-				"color": refs["paper"],
-				"display": "flex",
-				"fontSize": "9px",
-				"height": "16px",
-				"justifyContent": "center",
-				"minWidth": "16px",
-				"padding": "0 4px",
-			},
-			dynamicValues=[dv("filter_count", "innerHTML")],
-		),
-	]
-	return node
-
-
 def listing_controls(refs):
 	return block(
 		"div",
@@ -1527,7 +1442,7 @@ def listing_controls(refs):
 			"width": "fit-content",
 		},
 		mobile={"justifyContent": "flex-start", "width": "100%"},
-		children=[filter_toggle(refs), search_form(refs)],
+		children=[search_form(refs)],
 	)
 
 
@@ -1591,37 +1506,8 @@ def products_blocks(refs):
 		THEME.listing_subtitle or "Everything in the store, filtered however you like.",
 		extra=[active_search],
 		aside=listing_controls(refs),
+		title_value="title",
 	)
-	clear_all = block(
-		"div",
-		name="Clear Filters",
-		visibilityCondition={"key": "filters_applied", "comesFrom": "dataScript"},
-		styles={
-			"borderTopColor": refs["line"],
-			"borderTopStyle": "solid",
-			"borderTopWidth": "1px",
-			"display": "flex",
-			"marginTop": "4px",
-			"paddingTop": "12px",
-			"width": "100%",
-		},
-		children=[
-			block(
-				"a",
-				text="Clear all filters",
-				attrs={"href": "/products"},
-				styles={**mono(size="10px", color=refs["muted"], spacing="0.14em"), "textDecoration": "underline"},
-			)
-		],
-	)
-	controls = panel(
-		refs,
-		[component_ref("dot-filter-bar"), clear_all],
-		styles={"padding": "18px 28px"},
-		mobile={"padding": "16px 14px"},
-		name="Section · Controls",
-	)
-	controls["attributes"].update({"data-shop": "filter-panel", "data-open": "false", "id": "filters"})
 	empty = block(
 		"div",
 		name="No Results",
@@ -1639,16 +1525,15 @@ def products_blocks(refs):
 			block(
 				"a",
 				text="Clear all",
-				attrs={"href": "/products"},
+				attrs={"href": "#"},
+				visibilityCondition={"key": "clear_url", "comesFrom": "dataScript"},
 				styles={**mono(size="10px", color=refs["muted"], spacing="0.14em"), "textDecoration": "underline"},
+				dynamicValues=[dv("clear_url", "href", "attribute")],
 			),
 		],
 	)
-	grid = panel(refs, [product_grid(refs, "products", "products"), empty, pager(refs)], name="Section · Product Grid")
-	return shell(
-		refs,
-		[component_ref("dot-navbar"), stack([header, controls, grid]), component_ref("dot-footer")],
-	)
+	body = panel(refs, [listing(product_grid(refs, "products", "products", columns=3), empty, pager(refs))], name="Section · Listing")
+	return shell(refs, [component_ref("dot-navbar"), stack([header, body]), component_ref("dot-footer")])
 
 
 def collection_blocks(refs):
@@ -1675,8 +1560,14 @@ def collection_blocks(refs):
 		children=[label(refs, "( Collection )"), breadcrumbs(refs, size="12px"), title, description],
 	)
 	inside = sub_collections(component_ref("dot-collection-tile"))
-	grid = panel(refs, [product_grid(refs, "products", "collection"), pager(refs)], name="Section · Collection Grid")
-	return shell(refs, [component_ref("dot-navbar"), stack([header, inside, grid]), component_ref("dot-footer")])
+	empty = block(
+		"p",
+		text="Nothing matches those filters",
+		visibilityCondition={"key": "no_results", "comesFrom": "dataScript"},
+		styles={**mono(size="12px", color=refs["ink"], spacing="0.1em"), "padding": "40px 0", "textAlign": "center"},
+	)
+	body = panel(refs, [listing(product_grid(refs, "products", "collection", columns=3), empty, pager(refs))], name="Section · Listing")
+	return shell(refs, [component_ref("dot-navbar"), stack([header, inside, body]), component_ref("dot-footer")])
 
 
 def inset(refs, children, styles=None, **extra):
@@ -2369,6 +2260,12 @@ def product_blocks(refs):
 		],
 		name="Section · Product",
 	)
+	specifications = panel(
+		refs,
+		[spec_table(display(refs, "Specifications", size="26px", mobile_size="22px", element="h2"))],
+		name="Section · Specifications",
+	)
+	specifications["visibilityCondition"] = {"key": "product.specifications", "comesFrom": "dataScript"}
 	related = panel(
 		refs,
 		[
@@ -2383,6 +2280,7 @@ def product_blocks(refs):
 			component_ref("dot-navbar"),
 			stack(
 				[breadcrumb(refs, "product.product_name"), main]
+				+ [specifications]
 				+ ([description_panel(refs)] if below else [])
 				+ [reviews_panel(refs), review_form_panel(refs), related]
 			),
