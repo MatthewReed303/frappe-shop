@@ -73,9 +73,9 @@ class AmazonProvider(FulfillmentProvider):
 			"Amazon Fulfillment Settings, then enable it."
 		)
 
-	def create_shipment(self, order, items: list[dict]) -> dict:
+	def create_shipment(self, order, items: list[dict], fulfillment=None) -> dict:
 		address = shipping_address(order)
-		fulfillment_order_id = self.fulfillment_order_id(order.name)
+		fulfillment_order_id = self.fulfillment_order_id(order, fulfillment.warehouse if fulfillment else None)
 		# a request that timed out may still have reached Amazon: that order is the one to follow
 		existing = self.request("GET", f"{BASE_PATH}/{fulfillment_order_id}", missing_ok=True)
 		existing_status = ((existing or {}).get("payload") or {}).get("fulfillmentOrder", {}).get(
@@ -107,15 +107,20 @@ class AmazonProvider(FulfillmentProvider):
 			"raw": response,
 		}
 
-	def fulfillment_order_id(self, order_name: str) -> str:
-		"""Amazon keeps every fulfillment order ID, cancelled ones too, so sending an order again
-		needs a new one."""
-		sent = frappe.db.count(
-			"Shop Fulfillment",
-			{"sales_order": order_name, "provider": self.key, "external_id": ["is", "set"]},
-		)
-		suffix = f"-{sent + 1}" if sent else ""
-		return order_name[: 40 - len(suffix)] + suffix
+	def fulfillment_order_id(self, order, warehouse: str | None = None) -> str:
+		"""Amazon keeps every fulfillment order ID, cancelled ones too, so sending a parcel again
+		needs a new one; each parcel of an order sent from several warehouses has its own."""
+		from shop.fulfillment.service import parcels
+
+		filters = {"sales_order": order.name, "provider": self.key, "external_id": ["is", "set"]}
+		groups = list(parcels(order))
+		parcel = ""
+		if warehouse and len(groups) > 1 and warehouse in groups:
+			filters["warehouse"] = warehouse
+			parcel = f"-P{groups.index(warehouse) + 1}"
+		sent = frappe.db.count("Shop Fulfillment", filters)
+		suffix = parcel + (f"-{sent + 1}" if sent else "")
+		return order.name[: 40 - len(suffix)] + suffix
 
 	def fetch_status(self, fulfillment) -> dict:
 		response = self.request("GET", f"{BASE_PATH}/{fulfillment.external_id}")

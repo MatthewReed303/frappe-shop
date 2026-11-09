@@ -1,3 +1,5 @@
+from frappe import _
+
 from shop.fulfillment.provider import FulfillmentProvider
 
 
@@ -6,7 +8,11 @@ class PickupProvider(FulfillmentProvider):
 	(the customer is told, with the location's pickup instructions) and when it was collected."""
 
 	key = "pickup"
-	label = "Collected by the customer"
+	for_locations = False
+
+	@property
+	def label(self) -> str:
+		return _("Collected by the customer")
 
 	def create_shipment(self, order, items: list[dict], fulfillment=None) -> dict:
 		warehouse = fulfillment.get("warehouse") if fulfillment else None

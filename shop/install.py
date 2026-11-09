@@ -3,6 +3,8 @@ import os
 import click
 import frappe
 
+TRADE_SOURCE = "Store Trade Application"
+
 
 def after_install():
 	from shop.patches.set_order_policy_defaults import execute as set_order_policy_defaults
@@ -62,7 +64,6 @@ def sync_agent():
 def custom_fields() -> dict:
 	"""The fields Shop adds to ERPNext's documents: the store details of orders, quotations,
 	customers, trade applications (Leads), the terms a user accepted and where products are sent."""
-	"""What the store records on each Sales Order: how it is paid and what was agreed at checkout."""
 	return {
 		"Sales Order": [
 			{
@@ -102,6 +103,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_shipping_option",
+				"no_copy": 1,
 				"fieldtype": "Small Text",
 				"label": "Shipping Chosen",
 				"read_only": 1,
@@ -160,6 +162,7 @@ def custom_fields() -> dict:
 			},
 			{
 				"fieldname": "shop_shipping_option",
+				"no_copy": 1,
 				"fieldtype": "Small Text",
 				"label": "Shipping Chosen",
 				"read_only": 1,
@@ -192,7 +195,7 @@ def custom_fields() -> dict:
 				"label": "Trade Account Application",
 				"insert_after": "utm_campaign",
 				"collapsible": 1,
-				"depends_on": "eval:doc.utm_source == 'Store Trade Application'",
+				"depends_on": f"eval:doc.utm_source == '{TRADE_SOURCE}'",
 			},
 			{
 				"fieldname": "shop_tax_id",
@@ -273,9 +276,6 @@ def custom_fields() -> dict:
 			},
 		],
 	}
-
-
-TRADE_SOURCE = "Store Trade Application"
 
 
 def create_custom_fields():

@@ -73,7 +73,8 @@ def shipping_set_up(settings) -> bool:
 	from shop.storefront.shipping import flat_rate_option
 
 	return bool(flat_rate_option(0)) or any(
-		row.fulfillment_provider not in (None, "", "manual") for row in settings.get("fulfillment_locations") or []
+		row.fulfillment_provider not in (None, "", "manual", "pickup")
+		for row in settings.get("fulfillment_locations") or []
 	)
 
 

@@ -104,9 +104,13 @@ def send(order_name: str, provider_key: str | None = None, warehouse: str | None
 
 
 def keep_failure(name: str, record: dict) -> None:
-	if not frappe.db.exists("Shop Fulfillment", name):
-		frappe.get_doc(record).insert(ignore_permissions=True)
-		frappe.db.commit()  # nosemgrep: the failed request's own transaction was rolled back
+	"""The failed hand-over again after its request was rolled back, while the order is there."""
+	if frappe.db.exists("Shop Fulfillment", name) or not frappe.db.exists(
+		"Sales Order", record.get("sales_order")
+	):
+		return
+	frappe.get_doc(record).insert(ignore_permissions=True)
+	frappe.db.commit()  # nosemgrep: the failed request's own transaction was rolled back
 
 
 def is_pickup(option: dict | None) -> bool:
