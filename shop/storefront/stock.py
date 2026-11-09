@@ -20,6 +20,8 @@ def locations() -> list[frappe._dict]:
 			provider=row.fulfillment_provider or "manual",
 			ship_from=row.ship_from_address or warehouse_address(row.warehouse),
 			auto_send=cint(row.auto_send),
+			allow_pickup=cint(row.get("allow_pickup")),
+			pickup_instructions=row.get("pickup_instructions") or "",
 		)
 		for row in settings.get("fulfillment_locations") or []
 		if row.warehouse

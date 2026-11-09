@@ -55,6 +55,18 @@ def mark_shipped(fulfillment: str, carrier: str | None = None, tracking_number: 
 	return service.summary(doc)
 
 
+@frappe.whitelist(methods=["POST"])
+def mark_delivered(fulfillment: str) -> dict:
+	"""Record that a parcel you send yourself arrived, or that the customer collected it."""
+	only_managers()
+	doc = frappe.get_doc("Shop Fulfillment", fulfillment)
+	provider = get_provider(doc.provider)
+	if not hasattr(provider, "mark_delivered"):
+		frappe.throw(_("{0} reports delivery automatically").format(provider.label))
+	service.apply_result(doc, provider.mark_delivered(doc))
+	return service.summary(doc)
+
+
 @frappe.whitelist()
 def list_fulfillments(status: str | None = None, start: int = 0, limit: int = 20) -> dict:
 	only_managers()

@@ -138,6 +138,14 @@ TEMPLATES = {
 		'{% if tracking_url %}<p><a href="{{ tracking_url }}">Track your parcel</a></p>{% endif %}'
 		'<p><a href="{{ order_url }}">View your order</a></p>',
 	),
+	"ready_for_pickup": (
+		"Shop: Ready for Pickup",
+		ORDER,
+		"Your order {{ doc.name }} is ready to collect",
+		"<p>Your order {{ doc.name }} is ready to collect{% if location %} from {{ location | e }}{% endif %}.</p>"
+		"{% if instructions %}<p>{{ instructions | e }}</p>{% endif %}"
+		'<p><a href="{{ order_url }}">View your order</a></p>',
+	),
 	"order_delivered": (
 		"Shop: Order Delivered",
 		ORDER,

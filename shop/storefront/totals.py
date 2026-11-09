@@ -356,15 +356,18 @@ def compute(
 	payment_method: str | None = None,
 	currency: str | None = None,
 	refresh_shipping: bool = False,
+	collected: bool = False,
 ) -> frappe._dict:
 	"""The order as it stands, priced, taxed and totalled by ERPNext on an unsaved Sales Order, so
-	the total shown is the total charged. Amounts are in the order currency."""
+	the total shown is the total charged. Amounts are in the order currency. An order the customer
+	collects from the store is taxed where it is collected, whatever their address."""
 	from shop.storefront import cart as cart_module
 	from shop.storefront import pricing
 
 	address = shipping_module.normalize_address(address)
-	export = is_export(address)
-	template = tax_template_for(address)
+	taxed_at = frappe._dict(country=company_country()) if collected else address
+	export = is_export(taxed_at)
+	template = tax_template_for(taxed_at)
 	method = resolve_method(payment_method)
 	if method == SWIFT and currency in bank_currencies() and not bank_account(currency, SWIFT):
 		method = BANK
@@ -384,7 +387,11 @@ def compute(
 		wanted = (
 			choice.get(parcel.key if parcel else "") if isinstance(choice, dict) else (choice if index == 0 else None)
 		)
-		chosen = shipping_module.find_option(options["options"], wanted) or next(iter(options["options"]), None)
+		# delivery, not collection, unless the customer picks collection
+		chosen = shipping_module.find_option(options["options"], wanted) or next(
+			(option for option in options["options"] if not shipping_module.is_pickup(option)),
+			next(iter(options["options"]), None),
+		)
 		if chosen and parcel:
 			chosen = dict(chosen, warehouse=parcel.warehouse, parcel=parcel.key)
 			if len(parcels) > 1:
@@ -393,6 +400,13 @@ def compute(
 			add_shipping(order, chosen)
 		groups.append(frappe._dict(parcel=parcel, options=options, chosen=chosen))
 	first = groups[0]
+	if (
+		not collected
+		and export
+		and parcels
+		and all(group.chosen and shipping_module.is_pickup(group.chosen) for group in groups)
+	):
+		return compute(cart, address, shipping_option, payment_method, currency, collected=True)
 
 	fees = []
 	if is_gateway(method):

@@ -289,3 +289,75 @@ class TestLocations(IntegrationTestCase):
 			[group["label"] for group in shown["shipping_groups"]],
 			["Parcel 1 of 2 from Town store", "Parcel 2 of 2"],
 		)
+
+	def pickup_store(self):
+		use_locations(
+			self,
+			{
+				"warehouse": self.first,
+				"display_name": "Town store",
+				"allow_pickup": 1,
+				"pickup_instructions": "Counter at the back, 9 to 5.",
+				"fulfillment_provider": "manual",
+			},
+			{
+				"warehouse": self.second,
+				"display_name": "Depot",
+				"allow_pickup": 1,
+				"fulfillment_provider": "manual",
+			},
+		)
+
+	def test_customers_can_collect_from_a_location_that_allows_it(self):
+		self.pickup_store()
+		with patch("frappe.get_hooks", side_effect=with_rates):
+			quote = totals.compute(self.basket(), ADDRESS)
+			shown = totals.payload(quote)
+			first = shown["shipping_groups"][0]["options"]
+			self.assertIn(
+				{"id": f"pickup:{self.first}", "label": "Collect from Town store", "formatted": "Free"},
+				[{k: option[k] for k in ("id", "label", "formatted")} for option in first],
+			)
+			# delivery stays the choice until the customer picks collection
+			self.assertFalse(any(row.id.startswith("pickup:") for row in quote.shippings))
+			self.assertTrue(quote.export)
+
+			# collected in the store: taxed where it is collected, not at the customer's address abroad
+			both = json.dumps({self.first: f"pickup:{self.first}", self.second: f"pickup:{self.second}"})
+			collected = totals.compute(cart.resolve_cart(), ADDRESS, both)
+		self.assertFalse(collected.export)
+		self.assertEqual(collected.tax_template, totals.tax_template_for(None))
+		self.assertEqual(sum(row.amount for row in collected.shippings), 0)
+
+	def test_a_collected_parcel_is_made_ready_then_collected(self):
+		self.pickup_store()
+		with patch("frappe.get_hooks", side_effect=with_rates):
+			self.basket()
+			choice = json.dumps({self.first: f"pickup:{self.first}", self.second: f"courier:{self.second}"})
+			name = checkout.place_order(customer=BUYER, address=ADDRESS, shipping_option=choice)[
+				"sales_order"
+			]
+		service.send_paid_order(name)  # automatic sending is off here: staff send each parcel
+		first = service.send(name, warehouse=self.first)
+		self.assertEqual(frappe.db.get_value("Shop Fulfillment", first, "provider"), "pickup")
+		second = service.send(name, warehouse=self.second)
+		self.assertEqual(frappe.db.get_value("Shop Fulfillment", second, "provider"), "manual")
+		self.assertIn("ready to collect from Town store", orders.shipment_summary(name).line)
+
+		frappe.db.set_single_value("Shop Settings", "send_shipping_emails", 1)
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "send_shipping_emails", 0)
+		frappe.clear_cache(doctype="Shop Settings")
+		with patch("shop.storefront.emails.send") as send:
+			fulfillment_api.mark_shipped(first)
+		self.assertEqual(send.call_args.args[0], "ready_for_pickup")
+		self.assertEqual(send.call_args.kwargs["location"], "Town store")
+		self.assertEqual(send.call_args.kwargs["instructions"], "Counter at the back, 9 to 5.")
+		summary = orders.shipment_summary(name)
+		self.assertIn("Ready to collect from Town store. Counter at the back, 9 to 5.", summary.line)
+
+		fulfillment_api.mark_delivered(first)
+		self.assertIn("Collected from Town store.", orders.shipment_summary(name).line)
+		notes = frappe.get_all(
+			"Delivery Note Item", filters={"against_sales_order": name, "docstatus": 1}, pluck="item_code"
+		)
+		self.assertEqual(notes, [SMALL])

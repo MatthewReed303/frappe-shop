@@ -73,6 +73,8 @@ LOCATION_FIELDS = (
 	"ship_from_address",
 	"auto_send",
 	"show_stock",
+	"allow_pickup",
+	"pickup_instructions",
 )
 GATEWAY_FIELDS = (
 	"payment_gateway",

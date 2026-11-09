@@ -120,6 +120,9 @@ def get_options(
 	flat = flat_rate_option(subtotal)
 	if flat:
 		options.append(flat)
+	pickup = pickup_option(parcel)
+	if pickup:
+		options.append(pickup)
 	if not options and not active and not messages:
 		# a store with no shipping set up ships for free
 		options.append({"id": FLAT_RATE_ID, "label": _("Free shipping"), "amount": 0.0, "tax_included": True})
@@ -199,6 +202,32 @@ def free_shipping_note() -> str | None:
 	if not threshold or not flat_rate_option(0):
 		return None
 	return _("Free shipping on orders over {0}").format(fmt_money(threshold, currency=settings.currency))
+
+
+PICKUP_PREFIX = "pickup:"
+
+
+def pickup_option(parcel: frappe._dict | None) -> dict | None:
+	"""Collecting the parcel from its location, when the store lets customers collect there."""
+	from shop.storefront.stock import location
+
+	place = location(parcel.warehouse) if parcel else None
+	if not place or not place.allow_pickup:
+		return None
+	return {
+		"id": PICKUP_PREFIX + place.warehouse,
+		"label": _("Collect from {0}").format(place.label),
+		"amount": 0.0,
+		"tax_included": True,
+		"carrier": None,
+		"service": None,
+		"eta": None,
+		"meta": {"pickup": place.warehouse},
+	}
+
+
+def is_pickup(option: dict | None) -> bool:
+	return bool(option) and str(option.get("id") or "").startswith(PICKUP_PREFIX)
 
 
 def flat_rate_option(subtotal: float) -> dict | None:

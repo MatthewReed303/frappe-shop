@@ -67,7 +67,9 @@ def send(order_name: str, provider_key: str | None = None, warehouse: str | None
 		frappe.throw(_("Nothing in this order is sent from {0}").format(warehouse))
 	if open_fulfillment(order_name, warehouse):
 		frappe.throw(_("This parcel is already with a fulfillment provider"))
-	key = provider_key or parcel_provider(warehouse)
+	option = chosen_option(order, warehouse)
+	# a parcel the customer collects goes to no carrier
+	key = provider_key or ("pickup" if is_pickup(option) else parcel_provider(warehouse))
 	provider = get_provider(key)
 	if not provider.is_configured():
 		frappe.throw(_("{0} is not set up yet. {1}").format(provider.label, provider.setup_hint()))
@@ -75,7 +77,6 @@ def send(order_name: str, provider_key: str | None = None, warehouse: str | None
 
 	place = location(warehouse)
 	items = groups[warehouse]
-	option = chosen_option(order, warehouse)
 	record = {
 		"doctype": "Shop Fulfillment",
 		"sales_order": order_name,
@@ -96,6 +97,10 @@ def send(order_name: str, provider_key: str | None = None, warehouse: str | None
 		frappe.get_doc({**record, "status": "Failed", "error": str(error)[:500]}).insert(ignore_permissions=True)
 		raise
 	return fulfillment.name
+
+
+def is_pickup(option: dict | None) -> bool:
+	return bool(option) and str(option.get("id") or "").startswith("pickup:")
 
 
 def create_shipment(provider, order, items: list[dict], fulfillment) -> dict:
@@ -166,6 +171,16 @@ def notify_customer(fulfillment, status: str) -> None:
 	link = frappe.utils.get_url(
 		order_url(order.name) if access_token(order.name) else store_url("account/orders")
 	)
+	if fulfillment.provider == "pickup":
+		if status == "Shipped":
+			from shop.storefront.stock import location
+
+			place = location(fulfillment.get("warehouse"))
+			emails.send(
+				"ready_for_pickup", order.contact_email, order, order_url=link,
+				location=place.label if place else "", instructions=place.pickup_instructions if place else "",
+			)
+		return
 	if status == "Shipped":
 		from shop.storefront.orders import shipment_summary
 

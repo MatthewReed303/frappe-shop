@@ -270,6 +270,10 @@ def display_status(order, paid: bool) -> str:
 	if not paid and order.get("shop_payment_method") in (*totals.BANK_METHODS, totals.GATEWAY):
 		return _("Awaiting payment")
 	shipment = shipment_summary(order.name)
+	if shipment and shipment.collect and shipment.status == "Shipped":
+		return _("Ready to collect")
+	if shipment and shipment.collect and shipment.status == "Delivered":
+		return _("Collected")
 	if shipment and shipment.partly_shipped:
 		return _("Partly shipped")
 	if shipment and shipment.status in ("Pending", "Accepted"):
@@ -358,6 +362,27 @@ def has_payment(order_name: str) -> bool:
 STAGES = {"Failed": 0, "Pending": 0, "Accepted": 1, "Shipped": 2, "Delivered": 3}
 
 
+def collected_from(order, warehouse: str | None):
+	"""The location the customer collects the parcel from this warehouse at, if they chose to."""
+	from shop.fulfillment.service import chosen_option, is_pickup
+	from shop.storefront.stock import location
+
+	if not is_pickup(chosen_option(order, warehouse)):
+		return None
+	return location(warehouse) or frappe._dict(label=_("the store"), pickup_instructions="")
+
+
+def collect_line(parcel) -> str:
+	place = parcel.collect
+	stage = STAGES.get(parcel.status, 0)
+	if stage >= 3:
+		return _("Collected from {0}.").format(place.label)
+	if stage == 2:
+		ready = _("Ready to collect from {0}.").format(place.label)
+		return f"{ready} {place.pickup_instructions}".strip()
+	return _("We're getting your order ready to collect from {0}.").format(place.label)
+
+
 def unsent_warehouses(order_name: str, sent) -> list[str]:
 	"""Warehouses the order's goods are sent from that have no fulfillment yet."""
 	from shop.storefront.totals import is_charge_item
@@ -391,8 +416,13 @@ def shipment_summary(order_name: str) -> dict | None:
 		for warehouse in unsent_warehouses(order_name, latest):
 			latest[warehouse] = frappe._dict(status="Pending", warehouse=warehouse)
 	parcels = list(latest.values())
+	order = frappe.get_doc("Sales Order", order_name)
 	for parcel in parcels:
 		parcel.shipped_on = str(parcel.shipped_on) if parcel.shipped_on else None
+		parcel.collect = collected_from(order, parcel.warehouse)
+		if parcel.collect:
+			parcel.line = collect_line(parcel)
+			continue
 		parcel.line = " · ".join(part for part in (parcel.carrier, parcel.tracking_number) if part) or (
 			_("We're getting your parcel ready to send.") if STAGES.get(parcel.status, 0) < 2 else None
 		)
@@ -402,6 +432,7 @@ def shipment_summary(order_name: str) -> dict | None:
 	lines = [parcel.line for parcel in parcels if parcel.line]
 	return frappe._dict(
 		status=least.status,
+		collect=all(parcel.collect for parcel in parcels),
 		partly_shipped=partly,
 		carrier=least.carrier,
 		tracking_number=least.tracking_number,

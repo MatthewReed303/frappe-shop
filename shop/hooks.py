@@ -59,6 +59,7 @@ on_session_creation = "shop.storefront.cart.merge_guest_cart"
 shop_fulfillment_providers = {
 	"manual": "shop.fulfillment.providers.manual.ManualProvider",
 	"amazon_mcf": "shop.fulfillment.providers.amazon.AmazonProvider",
+	"pickup": "shop.fulfillment.providers.pickup.PickupProvider",
 }
 
 shop_carrier_tracking_urls = {

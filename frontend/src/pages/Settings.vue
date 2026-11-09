@@ -334,6 +334,19 @@
 							label="Send paid orders automatically"
 							class="col-span-2 self-end"
 						/>
+						<Switch
+							v-model="row.allow_pickup"
+							label="Customers can collect here"
+							class="col-span-3"
+						/>
+						<FormControl
+							v-if="row.allow_pickup"
+							v-model="row.pickup_instructions"
+							type="textarea"
+							label="Pickup instructions"
+							placeholder="Where to go, opening hours, what to bring"
+							class="col-span-6"
+						/>
 						<p v-if="row.warning" class="col-span-6 text-p-sm text-ink-amber-8">{{ row.warning }}</p>
 						<div class="col-span-1 flex items-end justify-end gap-1">
 							<Button
@@ -637,6 +650,8 @@ type LocationRow = {
 	warehouse: string
 	display_name: string
 	show_stock: boolean
+	allow_pickup: boolean
+	pickup_instructions: string
 	fulfillment_provider: string
 	ship_from_address: string
 	auto_send: boolean
@@ -652,6 +667,8 @@ function addLocation() {
 		warehouse: next?.value || '',
 		display_name: '',
 		show_stock: false,
+		allow_pickup: false,
+		pickup_instructions: '',
 		fulfillment_provider: 'manual',
 		ship_from_address: '',
 		auto_send: false,
@@ -734,6 +751,8 @@ function hydrate(doc: Record<string, any>) {
 			ship_from_address: row.ship_from_address || '',
 			display_name: row.display_name || '',
 			show_stock: !!row.show_stock,
+			allow_pickup: !!row.allow_pickup,
+			pickup_instructions: row.pickup_instructions || '',
 			auto_send: !!row.auto_send,
 		})),
 	})

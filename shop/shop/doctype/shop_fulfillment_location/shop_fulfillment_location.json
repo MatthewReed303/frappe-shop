@@ -10,7 +10,9 @@
   "show_stock",
   "fulfillment_provider",
   "ship_from_address",
-  "auto_send"
+  "auto_send",
+  "allow_pickup",
+  "pickup_instructions"
  ],
  "fields": [
   {
@@ -56,11 +58,25 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Send Automatically"
+  },
+  {
+   "default": "0",
+   "description": "Customers can choose to collect their order here at checkout, for free.",
+   "fieldname": "allow_pickup",
+   "fieldtype": "Check",
+   "label": "Customers Can Collect Here"
+  },
+  {
+   "depends_on": "allow_pickup",
+   "description": "What customers are told when their order is ready: where to go, opening hours, what to bring.",
+   "fieldname": "pickup_instructions",
+   "fieldtype": "Small Text",
+   "label": "Pickup Instructions"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-09 16:00:00.000000",
+ "modified": "2026-11-09 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Fulfillment Location",

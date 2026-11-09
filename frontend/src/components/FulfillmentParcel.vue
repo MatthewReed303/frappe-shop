@@ -57,6 +57,12 @@
 				<Button v-if="canMarkShipped" variant="solid" @click="showShipDialog = true">
 					Mark shipped
 				</Button>
+				<Button v-if="canMarkReady" variant="solid" :loading="busy === 'ready'" @click="markReady">
+					Ready to collect
+				</Button>
+				<Button v-if="canMarkDelivered" variant="solid" :loading="busy === 'delivered'" @click="markDelivered">
+					{{ shipment?.provider === 'pickup' ? 'Collected' : 'Mark delivered' }}
+				</Button>
 				<Button v-if="canResend" variant="solid" :loading="busy === 'send'" @click="send">
 					Send to fulfillment
 				</Button>
@@ -222,6 +228,42 @@ const canMarkShipped = computed(
 		shipment.value.provider === 'manual' &&
 		['Pending', 'Accepted'].includes(shipment.value.status),
 )
+
+const canMarkReady = computed(
+	() =>
+		!!shipment.value &&
+		shipment.value.provider === 'pickup' &&
+		['Pending', 'Accepted'].includes(shipment.value.status),
+)
+
+const canMarkDelivered = computed(
+	() =>
+		!!shipment.value &&
+		['manual', 'pickup'].includes(shipment.value.provider) &&
+		shipment.value.status === 'Shipped',
+)
+
+function markReady() {
+	if (!shipment.value) return
+	run(
+		'ready',
+		'shop.api.fulfillment.mark_shipped',
+		{ fulfillment: shipment.value.name },
+		'The customer has been told it is ready to collect',
+		'Could not mark it ready to collect',
+	)
+}
+
+function markDelivered() {
+	if (!shipment.value) return
+	run(
+		'delivered',
+		'shop.api.fulfillment.mark_delivered',
+		{ fulfillment: shipment.value.name },
+		shipment.value.provider === 'pickup' ? 'Marked collected' : 'Marked delivered',
+		'Could not update the parcel',
+	)
+}
 
 const canResend = computed(
 	() =>
