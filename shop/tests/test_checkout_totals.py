@@ -1208,7 +1208,7 @@ class TestCheckoutTotals(IntegrationTestCase):
 		frappe.clear_cache(doctype="Shop Settings")
 		self.assertEqual(pricing.display_amount(100), fmt_money(100, currency=self.company_currency))
 
-	def test_carrier_price_with_tax_goes_on_the_order_without_it(self):
+	def test_carrier_price_with_tax_is_the_stores_cost_wherever_the_parcel_goes(self):
 		self.without_tax()
 		with patch(
 			"frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.rates_with_tax"])
@@ -1219,9 +1219,24 @@ class TestCheckoutTotals(IntegrationTestCase):
 			export = totals.compute(
 				cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency
 			)
-		self.assertEqual(line(export, "shipping"), [12.0])
+		# a carrier charges no tax on a parcel sent abroad: all of its price is what the store pays,
+		# and the export order charges it in full, with no tax
+		self.assertEqual(line(export, "shipping"), [13.8])
 		self.assertEqual(export.order.items[0].rate, flt(self.price, 2))
 		self.assertEqual(line(export, "tax"), [])
+		self.assertEqual(grand(export), flt(self.price + 13.8, 2))
+
+	def test_a_store_with_tax_in_its_prices_charges_a_carriers_export_price_in_full(self):
+		# setUp's store includes its 15% tax in its prices
+		with patch(
+			"frappe.get_hooks", side_effect=hooks_with(["shop.tests.test_checkout_totals.rates_with_tax"])
+		):
+			home = totals.compute(self.basket(1), self.home_address, None, "bank")
+			export = totals.compute(
+				cart.resolve_cart(), self.abroad_address, None, "bank", self.company_currency
+			)
+		self.assertEqual(line(home, "shipping"), [13.8])
+		self.assertEqual(line(export, "shipping"), [13.8])
 
 	def test_no_rates_means_no_order_and_says_why(self):
 		with patch("frappe.get_hooks", side_effect=hooks_with([TEST_PROVIDER])):

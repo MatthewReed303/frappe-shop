@@ -375,6 +375,8 @@ def compute(
 
 	cart_module.refresh_rates(cart)
 	order = new_order(cart, pricing.session_customer(), currency, template)
+	# a parcel sent abroad carries no tax from its carrier
+	order.flags.shop_export = is_export(address) and not collected
 	coupon = apply_coupon(order)
 	calculate(order)
 
@@ -619,8 +621,12 @@ def order_total(order) -> float:
 
 
 def shipping_line_amount(order, option: dict) -> float:
-	"""A shipping option's price as an order line, in the order currency. A price that includes the
-	store's own tax has it taken off when the order's lines don't include tax."""
+	"""A shipping option's price as an order line, in the order currency.
+
+	A price that includes tax includes what the carrier charges for that parcel: the store's own tax
+	for a parcel sent within its country, none for one sent abroad (carriers zero-rate international
+	transport). So the store's cost is the price without its own tax at home, the whole price for an
+	export; the order then charges its own tax on that cost."""
 	s = settings()
 	amount = flt(option["amount"])
 	home = (
@@ -628,11 +634,10 @@ def shipping_line_amount(order, option: dict) -> float:
 		if s.prices_include_tax
 		else 1 + added_rate(s.tax_template) / 100
 	)
-	if option.get("tax_included") and not s.prices_include_tax:
+	if option.get("tax_included") and not order.flags.get("shop_export"):
 		amount /= home
-	elif s.prices_include_tax:
-		order_factor = 1 + included_rate(order.taxes_and_charges) / 100
-		amount = amount / (home if option.get("tax_included") else 1) * order_factor
+	if s.prices_include_tax:
+		amount *= 1 + included_rate(order.taxes_and_charges) / 100
 	return flt(amount / flt(order.conversion_rate), order.precision("grand_total"))
 
 
