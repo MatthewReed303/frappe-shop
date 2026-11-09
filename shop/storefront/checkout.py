@@ -636,6 +636,7 @@ def create_sales_order(
 		)
 		sales_order.contact_email = email
 	set_shop_details(sales_order, order_quote, terms_accepted, business_buyer)
+	totals.keep_prices(sales_order)
 	sales_order.flags.ignore_permissions = True
 	sales_order.insert(ignore_permissions=True)
 	check_total(sales_order, order_quote)

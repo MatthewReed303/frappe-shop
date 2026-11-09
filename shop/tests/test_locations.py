@@ -462,3 +462,73 @@ class TestLocations(IntegrationTestCase):
 		quote = totals.compute(self.basket(), ADDRESS, None, "bank")
 		self.assertEqual(len(quote.shipping_groups), 2)
 		self.assertEqual([option.amount for option in quote.shippings], [9, 0])
+
+	def quantity_breaks(self, qty):
+		"""Tiered quantity breaks on SMALL: 5% off from 2, 10% off from qty."""
+		company = frappe.get_cached_doc("Shop Settings").company
+		for min_qty, max_qty, percent in ((2, qty - 1, 5), (qty, 0, 10)):
+			rule = frappe.get_doc(
+				{
+					"doctype": "Pricing Rule",
+					"title": f"Test break {min_qty}",
+					"apply_on": "Item Code",
+					"items": [{"item_code": SMALL}],
+					"selling": 1,
+					"min_qty": min_qty,
+					"max_qty": max_qty,
+					"rate_or_discount": "Discount Percentage",
+					"discount_percentage": percent,
+					"company": company,
+					"currency": frappe.get_cached_value("Company", company, "default_currency"),
+				}
+			).insert(ignore_permissions=True)
+			self.addCleanup(frappe.delete_doc, "Pricing Rule", rule.name, force=True)
+
+	def test_a_split_line_is_ordered_and_invoiced_at_its_quantity_break(self):
+		from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note, make_sales_invoice
+
+		qty = self.split_line()
+		self.quantity_breaks(qty)
+		cart.add_item(SMALL, qty=qty)
+		cart.apply_coupon("WELCOME10")
+		quote = totals.compute(cart.resolve_cart(), ADDRESS, None, "bank")
+		used = frappe.db.get_value("Coupon Code", {"coupon_code": "WELCOME10"}, "used")
+		name = checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
+		order = frappe.get_doc("Sales Order", name)
+		self.assertEqual(order.docstatus, 1)
+		self.assertAlmostEqual(totals.order_total(order), quote.total, places=2)
+		self.assertEqual(order.coupon_code, quote.order.coupon_code)
+		self.assertEqual(frappe.db.get_value("Coupon Code", {"coupon_code": "WELCOME10"}, "used"), used + 1)
+		documents = [order]
+		for make in (make_delivery_note, make_sales_invoice):
+			# saved again once made, as staff do after a change
+			documents.append(make(name).insert().save())
+		for doc in documents:
+			rows = [row for row in doc.items if row.item_code == SMALL]
+			self.assertEqual([row.warehouse for row in rows], [self.first, self.second], doc.doctype)
+			self.assertEqual([flt(row.discount_percentage) for row in rows], [10, 10], doc.doctype)
+		self.assertAlmostEqual(flt(doc.grand_total), flt(order.grand_total), places=2)
+
+	def test_an_order_without_a_split_line_keeps_its_pricing_rules(self):
+		self.quantity_breaks(3)
+		cart.add_item(SMALL, qty=3)
+		name = checkout.place_order(customer=BUYER, address=ADDRESS)["sales_order"]
+		order = frappe.get_doc("Sales Order", name)
+		self.assertFalse(order.ignore_pricing_rule)
+		self.assertTrue(order.items[0].pricing_rules)
+
+	def test_a_quote_has_a_split_line_once(self):
+		from shop.storefront import quotes
+
+		allowed = frappe.db.get_single_value("Shop Settings", "allow_quote_requests")
+		self.addCleanup(frappe.clear_cache, doctype="Shop Settings")
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "allow_quote_requests", allowed)
+		frappe.db.set_single_value("Shop Settings", "allow_quote_requests", 1)
+		frappe.clear_cache(doctype="Shop Settings")
+		qty = self.split_line()
+		self.quantity_breaks(qty)
+		cart.add_item(SMALL, qty=qty)
+		with patch("frappe.sendmail"):
+			name = quotes.request_quote(customer=BUYER, address=ADDRESS)["quote"]
+		rows = [row for row in frappe.get_doc("Quotation", name).items if row.item_code == SMALL]
+		self.assertEqual([(row.qty, flt(row.discount_percentage)) for row in rows], [(qty, 10)])

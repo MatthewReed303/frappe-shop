@@ -587,40 +587,44 @@ def new_order(cart, customer: str | None, currency: str, template: str | None):
 		apply_pricing_rule_on_transaction(order)
 	for row, parts in splits:
 		split_row(order, row, parts)
+	order.flags.shop_split_lines = bool(splits)
 	remove_included_tax(order, template)
 	return order
 
 
 def split_row(order, row, parts) -> None:
-	"""One priced line sent from several warehouses, as one row per warehouse at the line's rate.
-	The rows keep the price the whole line was given; they don't name its Pricing Rules, which
-	ERPNext would otherwise check against each row's own quantity when the order is saved."""
+	"""One priced line sent from several warehouses, as one row per warehouse at the line's rate."""
 	keep = {
 		key: value
 		for key, value in row.as_dict().items()
-		if key not in ("name", "idx", "qty", "stock_qty", "warehouse", "pricing_rules")
+		if key not in ("name", "idx", "qty", "stock_qty", "warehouse")
 		and key not in frappe.model.default_fields
 	}
 	factor = flt(row.conversion_factor) or 1
-	row.update(
-		{
-			"qty": parts[0].qty,
-			"stock_qty": parts[0].qty * factor,
-			"warehouse": parts[0].warehouse,
-			"pricing_rules": "",
-		}
-	)
+	row.update({"qty": parts[0].qty, "stock_qty": parts[0].qty * factor, "warehouse": parts[0].warehouse})
 	position = order.items.index(row)
 	for offset, part in enumerate(parts[1:], 1):
 		extra = order.append(
-			"items",
-			dict(keep, qty=part.qty, stock_qty=part.qty * factor, warehouse=part.warehouse, pricing_rules=""),
+			"items", dict(keep, qty=part.qty, stock_qty=part.qty * factor, warehouse=part.warehouse)
 		)
 		order.items.remove(extra)
 		order.items.insert(position + offset, extra)
 	for idx, item in enumerate(order.items, 1):
 		item.idx = idx
 	calculate(order)
+
+
+def keep_prices(order) -> None:
+	"""An order with a line split across warehouses is saved at the prices it was given. ERPNext
+	prices each row at its own quantity when the order, or a Delivery Note or invoice made from it,
+	is saved, which would lose a quantity break given to the whole line. With Ignore Pricing Rule the
+	rows keep their rates; they don't name the rules, which ERPNext would then take off them."""
+	if not order.flags.get("shop_split_lines"):
+		return
+	order.ignore_pricing_rule = 1
+	order.set("pricing_rules", [])
+	for row in order.items:
+		row.pricing_rules = ""
 
 
 def remove_included_tax(order, template: str | None) -> None:

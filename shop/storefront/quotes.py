@@ -121,11 +121,27 @@ def quotation_from(order, party: str, address: str, email: str):
 			"coupon_code": order.get("coupon_code"),
 		}
 	)
+	source = None
 	for item in order.items:
+		if source and is_split_row(source, item):
+			# a line the order sends from several warehouses is one line on the quote
+			quotation.items[-1].qty = flt(quotation.items[-1].qty) + flt(item.qty)
+			continue
 		quotation.append("items", {field: item.get(field) for field in ITEM_FIELDS})
+		source = item
 	for tax in order.taxes:
 		quotation.append("taxes", {field: tax.get(field) for field in TAX_FIELDS})
 	return quotation
+
+
+def is_split_row(row, item) -> bool:
+	"""Whether item is more of row's line, sent from another warehouse."""
+	return (
+		item.item_code == row.item_code
+		and not item.get("is_free_item")
+		and not row.get("is_free_item")
+		and flt(item.rate) == flt(row.rate)
+	)
 
 
 def quote_url(name: str, token: str) -> str:
