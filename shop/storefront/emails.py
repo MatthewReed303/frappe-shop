@@ -231,7 +231,7 @@ TEMPLATES = {
 		_lt("Trade account application: {{ doc.company_name }}"),
 		_lt(
 			"<p>{{ doc.company_name | e }} ({{ (doc.country or '') | e }}) applied for a trade account.</p>"
-			'<p><a href="{{ desk_url }}">Review the application</a></p>'
+			'<p><a href="{{ review_url }}">Review the application</a></p>'
 		),
 	),
 	"trade_account_approved": (

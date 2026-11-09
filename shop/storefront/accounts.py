@@ -11,7 +11,6 @@ from frappe.utils import cint, cstr, flt, now_datetime, nowdate, validate_email_
 from shop.routes import signin_url, store_url
 from shop.storefront import pricing
 
-
 ACCOUNT_PATH = "account/orders"
 
 
@@ -216,6 +215,7 @@ def apply_trade(application: dict, accept_terms: int = 0) -> dict:
 			staff_emails(),
 			lead,
 			desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"),
+			review_url=review_url(lead.name),
 		)
 		emails.send("trade_application_received", values["email"], lead)
 	return {"message": _("Thanks. We'll review your application and email you.")}
@@ -237,7 +237,13 @@ def note_application(lead, values: dict) -> None:
 		staff_emails(),
 		lead,
 		desk_url=frappe.utils.get_url(f"/desk/lead/{lead.name}"),
+		review_url=review_url(lead.name),
 	)
+
+
+def review_url(lead: str) -> str:
+	"""Where staff review an application in the Shop admin."""
+	return frappe.utils.get_url(f"/shop/trade-applications/{lead}")
 
 
 def application_lead(email: str):
@@ -266,11 +272,16 @@ def staff_emails() -> list[str]:
 	]
 
 
-def trade_lead(lead: str):
+def trade_application(lead: str):
 	doc = frappe.get_doc("Lead", lead)
-	doc.check_permission("write")
 	if doc.utm_source != trade_source():
 		frappe.throw(_("This Lead is not a trade account application"))
+	return doc
+
+
+def trade_lead(lead: str):
+	doc = trade_application(lead)
+	doc.check_permission("write")
 	return doc
 
 
@@ -343,10 +354,29 @@ def approve_trade(
 	allow_on_account: int = 0,
 	price_list: str | None = None,
 ) -> dict:
-	"""Approve a trade application: ERPNext makes the Customer from the Lead (moving its contact and
-	address over and marking it Converted), or an existing customer with that email is converted.
-	The trade terms are set on the Customer and the applicant gets a store login."""
+	"""Approve a trade application from the Lead form, for a user who may change the Lead and the
+	Customer it makes or updates."""
 	doc = trade_lead(lead)
+	existing = applicant_customer(doc)
+	if existing:
+		frappe.has_permission("Customer", "write", existing, throw=True)
+	else:
+		frappe.has_permission("Customer", "create", throw=True)
+	return approve(doc, customer_group, payment_terms, credit_limit, allow_on_account, price_list)
+
+
+def approve(
+	doc,
+	customer_group: str | None = None,
+	payment_terms: str | None = None,
+	credit_limit: float | None = None,
+	allow_on_account: int = 0,
+	price_list: str | None = None,
+	approved_by: str | None = None,
+) -> dict:
+	"""Approve a trade application: ERPNext makes the Customer from the Lead (moving its contact and
+	address over and marking it Converted), or the applicant's own customer is converted. The trade
+	terms are set on the Customer and the applicant gets a store login."""
 	if doc.status == "Converted":
 		frappe.throw(_("This application has already been approved"))
 	if cint(allow_on_account) and not payment_terms:
@@ -355,7 +385,6 @@ def approve_trade(
 
 	existing = applicant_customer(doc)
 	if existing:
-		frappe.has_permission("Customer", "write", existing, throw=True)
 		customer = frappe.get_doc("Customer", existing)
 		# the applicant's own account becomes the business they applied as
 		customer.customer_name = doc.company_name or customer.customer_name
@@ -363,7 +392,6 @@ def approve_trade(
 		customer.lead_name = doc.name
 		customer.tax_id = customer.tax_id or doc.shop_tax_id
 	else:
-		frappe.has_permission("Customer", "create", throw=True)
 		customer = _make_customer(doc.name, ignore_permissions=True)
 		customer.tax_id = doc.shop_tax_id
 	set_trade_terms(customer, customer_group, payment_terms, credit_limit, allow_on_account, price_list)
@@ -398,7 +426,7 @@ def approve_trade(
 			"status": "Converted",
 			"customer": customer.name,
 			"qualification_status": "Qualified",
-			"qualified_by": frappe.session.user,
+			"qualified_by": approved_by or frappe.session.user,
 			"qualified_on": nowdate(),
 		}
 	)
@@ -446,8 +474,12 @@ def add_address(link_doctype: str, link_name: str, values: dict) -> None:
 
 @frappe.whitelist(methods=["POST"])
 def decline_trade(lead: str, reason: str | None = None) -> None:
+	"""Turn down a trade application from the Lead form."""
+	decline(trade_lead(lead), reason)
+
+
+def decline(doc, reason: str | None = None) -> None:
 	"""Turn down a trade application: the Lead is marked Unqualified, with the reason as a note."""
-	doc = trade_lead(lead)
 	if doc.status == "Converted" or doc.qualification_status == "Unqualified":
 		frappe.throw(_("This application has already been dealt with"))
 	if reason:

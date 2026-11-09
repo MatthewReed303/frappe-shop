@@ -328,6 +328,86 @@ class TestTradeAccounts(IntegrationTestCase):
 		)["sales_order"]
 		self.assertNotEqual(frappe.db.get_value("Sales Order", order, "customer"), desk.name)
 
+	def test_staff_answer_applications_in_the_shop_admin(self):
+		from shop.api import trade
+
+		group = frappe.db.get_single_value("Shop Settings", "trade_customer_group")
+		self.addCleanup(frappe.clear_cache, doctype="Shop Settings")
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "trade_customer_group", group)
+		frappe.db.set_single_value("Shop Settings", "trade_customer_group", "_Test Trade Group")
+		frappe.clear_cache(doctype="Shop Settings")
+		for email, company in (
+			("admin.approve@example.com", "Approve Co"),
+			("admin.decline@example.com", "Decline Co"),
+		):
+			frappe.set_user("Guest")
+			try:
+				accounts.apply_trade(
+					{
+						"company_name": company,
+						"contact_name": "Applicant",
+						"email": email,
+						"country": self.address["country"],
+						"address_line1": "8 Yard Street",
+						"city": "Town",
+						"message": "We fit out <b>workshops</b>",
+					},
+					accept_terms=1,
+				)
+			finally:
+				frappe.set_user("Administrator")
+		approve, decline = lead_for("admin.approve@example.com"), lead_for("admin.decline@example.com")
+		manager = "trade.manager@example.com"
+		if not frappe.db.exists("User", manager):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": manager,
+					"first_name": "Manager",
+					"roles": [{"role": "Shop Manager"}],
+				}
+			).insert(ignore_permissions=True)
+		# a Shop Manager answers applications without permissions on Leads or Customers in Desk
+		frappe.set_user(manager)
+		self.assertIn(approve, [row.name for row in trade.get_applications("Waiting")["applications"]])
+		application = trade.get_application(approve)
+		self.assertEqual(
+			(application["state"], application["company_name"], application["customer_group"]),
+			("Waiting", "Approve Co", "_Test Trade Group"),
+		)
+		self.assertTrue(application["addresses"])
+		self.assertIn("We fit out workshops", [note["note"] for note in application["notes"]])
+		approved = trade.approve_application(
+			approve, payment_terms="_Test 20th", allow_on_account=1, credit_limit=500
+		)
+		customer = frappe.get_doc("Customer", approved["customer"])
+		self.assertEqual(
+			(customer.customer_group, customer.payment_terms, customer.shop_allow_on_account),
+			("_Test Trade Group", "_Test 20th", 1),
+		)
+		self.assertEqual(frappe.db.get_value("Lead", approve, "qualified_by"), manager)
+		self.assertIn(approve, [row.name for row in trade.get_applications("Approved")["applications"]])
+		self.assertRaises(frappe.ValidationError, trade.approve_application, approve)
+		trade.decline_application(decline, "Not a business")
+		self.assertEqual(trade.get_application(decline)["state"], "Declined")
+		self.assertRaises(frappe.ValidationError, trade.decline_application, decline)
+		# staff can change their mind about a declined application
+		trade.approve_application(decline)
+		self.assertEqual(trade.get_application(decline)["state"], "Approved")
+		frappe.set_user("Administrator")
+		other = frappe.get_doc({"doctype": "Lead", "lead_name": "Not From The Store"}).insert(
+			ignore_permissions=True
+		)
+		self.assertRaises(frappe.ValidationError, trade.get_application, other.name)
+		frappe.set_user("admin.approve@example.com")
+		for call in (
+			lambda: trade.get_applications(),
+			lambda: trade.get_application(approve),
+			lambda: trade.approve_application(decline),
+			lambda: trade.decline_application(decline),
+		):
+			self.assertRaises(frappe.PermissionError, call)
+
 	def test_approving_from_the_lead_form_is_allowed(self):
 		self.assertIn(accounts.approve_trade, frappe.whitelisted)
 		self.assertNotIn(accounts.set_trade_terms, frappe.whitelisted)

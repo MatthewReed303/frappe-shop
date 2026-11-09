@@ -58,6 +58,17 @@ const routes = [
 				component: () => import('@/pages/CustomerDetail.vue'),
 				props: true,
 			},
+			{
+				path: 'trade-applications',
+				name: 'TradeApplications',
+				component: () => import('@/pages/TradeApplications.vue'),
+			},
+			{
+				path: 'trade-applications/:name',
+				name: 'TradeApplication',
+				component: () => import('@/pages/TradeApplication.vue'),
+				props: true,
+			},
 			{ path: 'reviews', name: 'Reviews', component: () => import('@/pages/Reviews.vue') },
 			{ path: 'discounts', name: 'Discounts', component: () => import('@/pages/Discounts.vue') },
 			{ path: 'carts', name: 'Carts', component: () => import('@/pages/Carts.vue') },

@@ -2,7 +2,7 @@ import frappe
 from frappe.utils import add_days, nowdate
 
 from shop.api import only_managers
-from shop.api.trade import waiting_applications, waiting_applications_url
+from shop.api.trade import waiting_applications
 from shop.storefront import pricing
 
 
@@ -103,7 +103,6 @@ def get_dashboard() -> dict:
 		"low_stock": low_stock_count(),
 		# shown only when the store has trade accounts
 		"trade_applications": waiting_applications(),
-		"trade_applications_url": waiting_applications_url(),
 	}
 
 

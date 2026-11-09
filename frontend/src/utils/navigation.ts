@@ -17,6 +17,7 @@ export const navGroups = [
 			{ label: 'Fulfillments', route: '/fulfillments', icon: 'lucide-truck' },
 			{ label: 'Returns', route: '/returns', icon: 'lucide-undo-2' },
 			{ label: 'Customers', route: '/customers', icon: 'lucide-users' },
+			{ label: 'Trade applications', route: '/trade-applications', icon: 'lucide-briefcase' },
 			{ label: 'Carts', route: '/carts', icon: 'lucide-shopping-basket' },
 		],
 	},
