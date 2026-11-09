@@ -877,7 +877,10 @@
 					label="Trade applications"
 					description="Businesses can apply for a trade account from the storefront."
 				/>
-				<TradeDiscounts v-if="data.trade_customer_group" :key="data.trade_customer_group" />
+				<p v-if="data.trade_customer_group" class="text-p-sm text-ink-gray-5">
+					Trade rates, accounts and applications are in
+					<router-link to="/trade-accounts" class="underline">Trade accounts</router-link>.
+				</p>
 				<Switch
 					v-model="accounts.allow_quote_requests"
 					label="Quote requests"
@@ -949,7 +952,6 @@ import CatalogImageInput from '@/components/CatalogImageInput.vue'
 import CatalogListState from '@/components/CatalogListState.vue'
 import CatalogSection from '@/components/CatalogSection.vue'
 import NewServiceItem from '@/components/NewServiceItem.vue'
-import TradeDiscounts from '@/components/TradeDiscounts.vue'
 import StorefrontThemes from '@/components/StorefrontThemes.vue'
 
 const saving = ref('')

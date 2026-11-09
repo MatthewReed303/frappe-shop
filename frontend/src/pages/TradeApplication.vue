@@ -3,8 +3,8 @@
 		<div v-if="doc">
 			<UiPageHeader
 				:title="doc.company_name || doc.contact_name"
-				back-to="/trade-applications"
-				back-label="Trade applications"
+				back-to="/trade-accounts?tab=applications"
+				back-label="Trade accounts"
 			>
 				<template #badges>
 					<UiStatusBadge :label="doc.state" />

@@ -256,7 +256,7 @@ def note_application(lead, values: dict) -> None:
 
 def review_url(lead: str) -> str:
 	"""Where staff review an application in the Shop admin."""
-	return frappe.utils.get_url(f"/shop/trade-applications/{lead}")
+	return frappe.utils.get_url(f"/shop/trade-accounts/applications/{lead}")
 
 
 def application_lead(email: str):

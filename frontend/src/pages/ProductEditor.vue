@@ -99,6 +99,14 @@
 					</template>
 				</CatalogSection>
 
+				<CatalogSection
+					v-if="isEdit && detail?.item"
+					title="Quantity breaks"
+					description="Lower prices for buying more, for every customer. Trade accounts get their trade rates instead."
+				>
+					<PricingRates scope="everyone" :item="detail.item" :item-label="form.product_name" />
+				</CatalogSection>
+
 				<CatalogSection title="Highlights" description="One per line, shown next to the product.">
 					<FormControl
 						v-model="form.highlights"
@@ -223,6 +231,7 @@ import CatalogProductSkeleton from '@/components/CatalogProductSkeleton.vue'
 import CatalogSection from '@/components/CatalogSection.vue'
 import CatalogStockControl from '@/components/CatalogStockControl.vue'
 import CatalogVariantsPanel from '@/components/CatalogVariantsPanel.vue'
+import PricingRates from '@/components/PricingRates.vue'
 import { storefrontPath } from '@/utils/storefront'
 
 interface Option {

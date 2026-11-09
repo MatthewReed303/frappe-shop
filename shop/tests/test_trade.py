@@ -18,31 +18,6 @@ class TestTrade(IntegrationTestCase):
 		frappe.db.set_single_value("Shop Settings", "trade_customer_group", group)
 		frappe.clear_cache(doctype="Shop Settings")
 
-	def test_trade_discounts_are_pricing_rules_for_the_group(self):
-		item_group = frappe.db.get_value("Item Group", {"is_group": 0})
-		rules = trade.set_discount(item_group, 12)
-		rule = next(row for row in rules if row.item_group == item_group)
-		self.assertEqual(rule.discount_percentage, 12)
-		self.assertEqual(frappe.db.get_value("Pricing Rule", rule.name, "customer_group"), self.group)
-		self.assertEqual(
-			[
-				row.discount_percentage
-				for row in trade.set_discount(item_group, 15)
-				if row.item_group == item_group
-			],
-			[15],
-		)
-		self.assertNotIn(rule.name, [row.name for row in trade.remove_discount(rule.name)])
-
-	def test_a_discount_on_an_inner_item_group_wins(self):
-		inner = frappe.db.get_value("Item Group", {"is_group": 0, "parent_item_group": "All Item Groups"})
-		rules = trade.set_discount("All Item Groups", 5)
-		rules = trade.set_discount(inner, 20)
-		priority = {
-			row.item_group: int(frappe.db.get_value("Pricing Rule", row.name, "priority")) for row in rules
-		}
-		self.assertGreater(priority[inner], priority["All Item Groups"])
-
 	def test_staff_make_and_end_a_trade_customer(self):
 		terms = (
 			frappe.db.get_value("Payment Terms Template", {})

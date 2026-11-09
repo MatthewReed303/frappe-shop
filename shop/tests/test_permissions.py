@@ -3,7 +3,7 @@
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from shop.api import customers, orders, settings, trade
+from shop.api import customers, orders, pricing, settings, trade
 from shop.storefront import accounts
 from shop.tests.utils import fresh_request
 
@@ -30,8 +30,10 @@ class TestPermissions(IntegrationTestCase):
 
 	def staff_only(self):
 		return [
-			lambda: trade.set_discount(item_group="_Test", percent=5),
-			lambda: trade.remove_discount(rule="_Test"),
+			lambda: pricing.save_rates("trade", "Item Group", "_Test", []),
+			lambda: pricing.remove_rates("trade", "Item Group", "_Test"),
+			lambda: pricing.get_rates("trade"),
+			lambda: trade.get_trade_accounts(),
 			lambda: trade.make_trade_customer(customer="_Test"),
 			lambda: trade.end_trade(customer="_Test"),
 			lambda: trade.get_trade(),

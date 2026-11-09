@@ -208,7 +208,7 @@ const attention = computed(() => {
 					{
 						label: 'trade applications waiting',
 						count: data.trade_applications,
-						route: '/trade-applications',
+						route: '/trade-accounts?tab=applications',
 						icon: LucideBriefcase,
 					},
 				]

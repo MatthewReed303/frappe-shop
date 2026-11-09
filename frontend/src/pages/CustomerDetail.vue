@@ -27,6 +27,15 @@
 							<UiEmptyState :icon="LucideShoppingCart" title="No orders yet" />
 						</template>
 					</UiDataTable>
+
+					<div class="mt-6 rounded-lg border border-outline-gray-1 p-4">
+						<PricingRates
+							scope="customer"
+							:customer="doc.name"
+							title="Their own rates"
+							description="Percent off or a set price for an Item Group or a product, with quantity breaks, for this customer only."
+						/>
+					</div>
 				</div>
 
 				<div class="space-y-6">
@@ -113,6 +122,7 @@ import LucideShoppingCart from '~icons/lucide/shopping-cart'
 import LucideStar from '~icons/lucide/star'
 
 import CustomerPeople from '@/components/CustomerPeople.vue'
+import PricingRates from '@/components/PricingRates.vue'
 import TradeAccountCard from '@/components/TradeAccountCard.vue'
 import UiDataTable from '@/components/UiDataTable.vue'
 import UiEmptyState from '@/components/UiEmptyState.vue'

@@ -416,3 +416,81 @@ def delete_collection(name: str) -> None:
 	for child in frappe.get_all("Shop Collection", filters={"parent_collection": name}, pluck="name"):
 		frappe.db.set_value("Shop Collection", child, "parent_collection", parent)
 	frappe.delete_doc("Shop Collection", name, ignore_permissions=True)
+
+
+@frappe.whitelist()
+def get_item_group_tree() -> list[dict]:
+	"""Every Item Group in tree order, with its depth and how many products are in it."""
+	only_managers()
+	from shop.api.pricing import item_group_depths
+
+	depths = item_group_depths()
+	counts = dict(
+		frappe.get_all(
+			"Item",
+			filters={"variant_of": ["is", "not set"], "disabled": 0},
+			fields=["item_group", {"COUNT": "*", "as": "count"}],
+			group_by="item_group",
+			as_list=True,
+		)
+	)
+	return [
+		{
+			"name": group.name,
+			"parent": group.parent_item_group,
+			"depth": depths.get(group.name, 1),
+			"products": counts.get(group.name, 0),
+			"children": cint(group.rgt) - cint(group.lft) > 1,
+		}
+		for group in frappe.get_all(
+			"Item Group", fields=["name", "parent_item_group", "lft", "rgt"], order_by="lft"
+		)
+	]
+
+
+@frappe.whitelist(methods=["POST"])
+def save_item_group(item_group_name: str, parent: str, name: str | None = None) -> list[dict]:
+	"""Make an Item Group, or rename and move one."""
+	from shop.api.pricing import arrange
+
+	only_managers()
+	item_group_name = (item_group_name or "").strip()
+	if not item_group_name:
+		frappe.throw(_("Name the Item Group"))
+	if not frappe.db.exists("Item Group", parent):
+		frappe.throw(_("Choose where the Item Group goes"))
+	if not cint(frappe.db.get_value("Item Group", parent, "is_group")):
+		frappe.db.set_value("Item Group", parent, "is_group", 1)
+	if not name:
+		frappe.get_doc(
+			{
+				"doctype": "Item Group",
+				"item_group_name": item_group_name,
+				"parent_item_group": parent,
+				"is_group": 1,
+			}
+		).insert(ignore_permissions=True)
+		return get_item_group_tree()
+	if item_group_name != name:
+		from frappe.model.rename_doc import rename_doc
+
+		name = rename_doc("Item Group", name, item_group_name, ignore_permissions=True)
+	doc = frappe.get_doc("Item Group", name)
+	if doc.parent_item_group != parent:
+		doc.parent_item_group = parent
+		doc.save(ignore_permissions=True)
+	arrange()
+	return get_item_group_tree()
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_item_group(name: str) -> list[dict]:
+	"""Remove an Item Group that has no products and no Item Groups inside it."""
+	only_managers()
+	lft, rgt = frappe.db.get_value("Item Group", name, ["lft", "rgt"]) or (0, 0)
+	if cint(rgt) - cint(lft) > 1:
+		frappe.throw(_("Move or remove the Item Groups inside {0} first").format(frappe.bold(name)))
+	if frappe.db.exists("Item", {"item_group": name}):
+		frappe.throw(_("Move the products in {0} to another Item Group first").format(frappe.bold(name)))
+	frappe.delete_doc("Item Group", name, ignore_permissions=True)
+	return get_item_group_tree()

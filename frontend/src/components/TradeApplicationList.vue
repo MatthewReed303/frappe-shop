@@ -1,11 +1,6 @@
 <template>
-	<div class="mx-auto max-w-5xl px-6 py-8">
-		<UiPageHeader
-			title="Trade applications"
-			subtitle="Businesses that applied for a trade account in the store."
-		/>
-
-		<div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+	<div>
+		<div class="flex flex-wrap items-center justify-between gap-3">
 			<TabButtons v-model="state" :options="stateTabs" />
 			<span class="text-sm text-ink-gray-5">{{ totalLabel }}</span>
 		</div>
@@ -26,7 +21,7 @@
 			row-key="name"
 			:loading="!applications.fetched"
 			clickable
-			@row-click="(row) => router.push(`/trade-applications/${row.name}`)"
+			@row-click="(row) => router.push(`/trade-accounts/applications/${row.name}`)"
 		>
 			<template #cell-company_name="{ row }">
 				<div class="font-medium text-ink-gray-8">{{ row.company_name || row.lead_name }}</div>
@@ -61,7 +56,6 @@ import LucideBriefcase from '~icons/lucide/briefcase'
 
 import UiDataTable from '@/components/UiDataTable.vue'
 import UiEmptyState from '@/components/UiEmptyState.vue'
-import UiPageHeader from '@/components/UiPageHeader.vue'
 import UiPagination from '@/components/UiPagination.vue'
 import { formatDate } from '@/utils/format'
 

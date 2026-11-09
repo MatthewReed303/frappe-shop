@@ -1,10 +1,10 @@
-"""Trade (B2B) basics for the Shop admin, kept as ERPNext records: the store's trade Customer Group,
-customers' trade terms, and Pricing Rules giving the group a discount on Item Groups. Anything
-finer, such as customer prices or quantity breaks, is set up in ERPNext."""
+"""Trade (B2B) accounts in the Shop admin, kept as ERPNext records: the store's trade Customer Group,
+its customers and their terms, and the applications to join it. Their rates are in
+shop.api.pricing."""
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, fmt_money
 
 from shop.api import only_managers
 from shop.install import TRADE_SOURCE as APPLICATION_SOURCE
@@ -21,75 +21,62 @@ def get_trade() -> dict:
 	return {
 		"customer_group": group,
 		"payment_terms": frappe.db.get_value("Customer Group", group, "payment_terms") if group else None,
-		"discounts": discounts(group) if group else [],
-		"item_groups": frappe.get_all("Item Group", order_by="lft", pluck="name"),
 		"payment_terms_templates": frappe.get_all("Payment Terms Template", pluck="name"),
 	}
 
 
-def discounts(group: str) -> list[dict]:
-	"""The group's Pricing Rules taking a percentage off an Item Group."""
-	rules = frappe.get_all(
-		"Pricing Rule",
-		filters={
-			"applicable_for": "Customer Group",
-			"customer_group": group,
-			"apply_on": "Item Group",
-			"rate_or_discount": "Discount Percentage",
-			"selling": 1,
-			"disable": 0,
-		},
-		fields=["name", "discount_percentage"],
-		order_by="creation",
-	)
-	for rule in rules:
-		rule["item_group"] = frappe.db.get_value(
-			"Pricing Rule Item Group", {"parent": rule.name, "parenttype": "Pricing Rule"}, "item_group"
-		)
-	return rules
+@frappe.whitelist()
+def get_trade_accounts(search: str | None = None, start: int = 0, limit: int = 20) -> dict:
+	"""The store's trade customers with their terms, what they owe and how many rates of their own
+	they have."""
+	from erpnext.selling.doctype.customer.customer import get_customer_outstanding
 
-
-@frappe.whitelist(methods=["POST"])
-def set_discount(item_group: str, percent: float) -> list[dict]:
-	"""Percent off an Item Group for the trade group: its Pricing Rule, made or updated."""
 	only_managers()
 	group = trade_group()
 	if not group:
-		frappe.throw(_("Choose the trade customer group first"))
-	if not 0 < flt(percent) <= 100:
-		frappe.throw(_("The discount is a percentage between 0 and 100"))
-	existing = next((rule for rule in discounts(group) if rule.item_group == item_group), None)
-	if existing:
-		rule = frappe.get_doc("Pricing Rule", existing.name)
-		rule.discount_percentage = flt(percent)
-		rule.save(ignore_permissions=True)
-	else:
-		from shop.setup_store import group_discount
-
-		group_discount(group, item_group, flt(percent))
-	prioritise(group)
-	return discounts(group)
-
-
-def prioritise(group: str) -> None:
-	"""A discount on an Item Group inside another (Products in All Item Groups) wins over the outer
-	one: ERPNext picks the Pricing Rule with the higher priority instead of refusing both."""
-	for rule in discounts(group):
-		lft, rgt = frappe.db.get_value("Item Group", rule.item_group, ["lft", "rgt"]) or (0, 0)
-		depth = frappe.db.count("Item Group", {"lft": ["<", lft], "rgt": [">", rgt]})
-		priority = str(min(depth + 1, 20))
-		if frappe.db.get_value("Pricing Rule", rule.name, "priority") != priority:
-			frappe.db.set_value("Pricing Rule", rule.name, {"has_priority": 1, "priority": priority})
-
-
-@frappe.whitelist(methods=["POST"])
-def remove_discount(rule: str) -> list[dict]:
-	only_managers()
-	group = trade_group()
-	if not group or rule not in {row["name"] for row in discounts(group)}:
-		frappe.throw(_("This isn't one of the trade discounts"))
-	frappe.delete_doc("Pricing Rule", rule, ignore_permissions=True)
-	return discounts(group)
+		return {"enabled": False, "accounts": [], "total": 0}
+	filters = {"customer_group": group, "disabled": 0}
+	or_filters = None
+	if search:
+		term = f"%{search.strip()}%"
+		or_filters = [["customer_name", "like", term], ["name", "like", term]]
+	on_account = frappe.get_meta("Customer").has_field("shop_allow_on_account")
+	accounts = frappe.get_all(
+		"Customer",
+		filters=filters,
+		or_filters=or_filters,
+		fields=["name", "customer_name", "payment_terms", *(["shop_allow_on_account"] if on_account else [])],
+		order_by="customer_name",
+		start=cint(start),
+		page_length=min(cint(limit) or 20, 100),
+	)
+	company = frappe.get_cached_doc("Shop Settings").company
+	currency = frappe.get_cached_value("Company", company, "default_currency")
+	for account in accounts:
+		limit_amount = frappe.db.get_value(
+			"Customer Credit Limit", {"parent": account.name, "company": company}, "credit_limit"
+		)
+		owing = get_customer_outstanding(account.name, company)
+		account.update(
+			{
+				"allow_on_account": account.pop("shop_allow_on_account", 0),
+				"formatted_credit_limit": fmt_money(limit_amount, currency=currency)
+				if limit_amount
+				else None,
+				"formatted_outstanding": fmt_money(owing, currency=currency),
+				"own_rates": frappe.db.count(
+					"Pricing Rule",
+					{"applicable_for": "Customer", "customer": account.name, "selling": 1, "disable": 0},
+				),
+				"people": frappe.db.count("Portal User", {"parent": account.name, "parenttype": "Customer"}),
+			}
+		)
+	total = (
+		frappe.db.count("Customer", filters)
+		if not search
+		else len(frappe.get_all("Customer", filters=filters, or_filters=or_filters, pluck="name"))
+	)
+	return {"enabled": True, "customer_group": group, "accounts": accounts, "total": total}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -120,7 +107,9 @@ def end_trade(customer: str) -> dict:
 	only_managers()
 	group = frappe.db.get_single_value("Selling Settings", "customer_group")
 	if not group:
-		frappe.throw(_("Set the default Customer Group in Selling Settings first, for the customer to move to"))
+		frappe.throw(
+			_("Set the default Customer Group in Selling Settings first, for the customer to move to")
+		)
 	doc = frappe.get_doc("Customer", customer)
 	doc.customer_group = group
 	doc.payment_terms = None
