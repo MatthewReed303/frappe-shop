@@ -6,7 +6,6 @@ from frappe.utils import flt
 from shop.storefront import pricing, stock
 
 
-@frappe.whitelist(allow_guest=True)
 def specifications(doc) -> list[dict]:
 	"""The product's specifications as the page lists them, each value with its unit."""
 	units = dict(
@@ -26,6 +25,7 @@ def specifications(doc) -> list[dict]:
 	]
 
 
+@frappe.whitelist(allow_guest=True)
 def get_product(slug: str) -> dict:
 	name = frappe.db.get_value("Shop Product", {"slug": slug, "published": 1})
 	if not name:

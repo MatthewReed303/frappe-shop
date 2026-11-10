@@ -184,9 +184,10 @@ def label(fulfillment: str, index: int = 0) -> None:
 	if not name:
 		raise frappe.DoesNotExistError(_("This parcel has no such label"))
 	file = frappe.get_doc("File", name[0])
-	with open(file.get_full_path(), "rb") as handle:
-		content = handle.read()
-	frappe.local.response.update(filename=file.file_name, filecontent=content, type="pdf")
+	# the label's bytes as they are (no encodings: get_content decodes text it can)
+	frappe.local.response.update(
+		filename=file.file_name, filecontent=file.get_content(encodings=[]), type="pdf"
+	)
 
 
 @frappe.whitelist()
