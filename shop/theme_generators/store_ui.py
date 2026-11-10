@@ -115,6 +115,7 @@ small.checkout-option-price {{ font-weight:400; color:{muted}; font-size:12px; }
 .account-table {{ display:flex; flex-direction:column; width:100%; }}
 .account-row {{ display:grid; grid-template-columns:1.4fr 1fr 1fr 1.6fr auto; gap:12px; padding:12px 0; border-bottom:1px solid {line}; font-size:13px; color:{ink}; text-decoration:none; align-items:center; }}
 .account-row a {{ color:{ink}; text-decoration:underline; }}
+.account-row a.account-pay {{ font-weight:600; text-decoration:none; padding:3px 10px; border:1px solid {ink}; border-radius:min({radius}, 6px); }}
 .terms-text h2 {{ font-size:20px; margin:28px 0 10px; }}
 .terms-text ol {{ padding-left:22px; }}
 @media (max-width: 640px) {{

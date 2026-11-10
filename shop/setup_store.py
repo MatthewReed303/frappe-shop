@@ -332,6 +332,15 @@ def statement_letter_head(store_name: str) -> str:
 	return name
 
 
+# a link to pay what is owing, where an app gives customers one (the payments app's invoice links);
+# without one it says nothing
+STATEMENT_PAY_LINK = (
+	'{% if customer.payment_link %}<p><a href="{{ customer.payment_link }}">'
+	+ _("Pay your invoices online")
+	+ "</a></p>{% endif %}"
+)
+
+
 def statement_run(company: str, group: str, store_name: str) -> str | None:
 	"""ERPNext's Process Statement Of Accounts emailing the group a statement each month, once the
 	group has a customer. The store keeps its customer list in step with the group
@@ -375,7 +384,8 @@ def statement_run(company: str, group: str, store_name: str) -> str | None:
 				_(
 					"Your {0} statement from {1} to {2} is attached. It lists your invoices and payments, and anything still owing."
 				).format(store, "{{ doc.from_date }}", "{{ doc.to_date }}"),
-			),
+			)
+			+ STATEMENT_PAY_LINK,
 			"pdf_name": _("{0} statement {1}").format(store, "{{ doc.to_date }}"),
 		}
 	)

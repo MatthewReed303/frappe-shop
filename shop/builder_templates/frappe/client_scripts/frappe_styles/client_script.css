@@ -332,6 +332,7 @@ small.checkout-option-price { font-weight:400; color:var(--756af8f6-3bcf-4030-b0
 .account-table { display:flex; flex-direction:column; width:100%; }
 .account-row { display:grid; grid-template-columns:1.4fr 1fr 1fr 1.6fr auto; gap:12px; padding:12px 0; border-bottom:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); font-size:13px; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); text-decoration:none; align-items:center; }
 .account-row a { color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); text-decoration:underline; }
+.account-row a.account-pay { font-weight:600; text-decoration:none; padding:3px 10px; border:1px solid var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); border-radius:min(2px, 6px); }
 .terms-text h2 { font-size:20px; margin:28px 0 10px; }
 .terms-text ol { padding-left:22px; }
 @media (max-width: 640px) {

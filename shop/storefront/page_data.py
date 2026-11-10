@@ -521,7 +521,13 @@ def account_html(customers: list[str]) -> str:
 			html += (
 				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.posting_date))}</span>'
 				f"<span>{esc(row.formatted_total)}</span><span>{owing}</span>"
-				f'<a href="{esc(row.pdf_url)}">{esc(_("PDF"))}</a></div>'
+				f'<a href="{esc(row.pdf_url)}">{esc(_("PDF"))}</a>'
+				+ (
+					f' <a class="account-pay" href="{esc(row.pay_url)}">{esc(_("Pay"))}</a>'
+					if row.pay_url
+					else ""
+				)
+				+ "</div>"
 			)
 		html += "</div>"
 	quotes = (

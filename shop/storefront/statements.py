@@ -92,7 +92,7 @@ def sync_customer(doc, method=None) -> None:
 	trade_groups = {group, *frappe.db.get_descendants("Customer Group", group)}
 	if not {doc.customer_group, before.customer_group if before else None} & trade_groups:
 		return
-	from shop.setup_store import statement_run
+	from shop.setup_store import STATEMENT_PAY_LINK, statement_run
 
 	statement_run(
 		settings.company,
@@ -105,6 +105,9 @@ def sync_customer(doc, method=None) -> None:
 		pluck="name",
 	):
 		run = frappe.get_doc("Process Statement Of Accounts", name)
+		if "payment_link" not in (run.body or ""):
+			# runs made before statements linked to payment
+			run.body = (run.body or "") + STATEMENT_PAY_LINK
 		customers = run_customers(group, run.primary_mandatory)
 		if customers:
 			run.set("customers", customers)

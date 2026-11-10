@@ -238,7 +238,9 @@ def note_application(lead, values: dict) -> None:
 	"""Add an application for an existing Lead as a note, without changing the Lead, and tell staff."""
 	from shop.storefront import emails
 
-	details = ", ".join(f"{field}: {value}" for field, value in values.items() if value and field != "message")
+	details = ", ".join(
+		f"{field}: {value}" for field, value in values.items() if value and field != "message"
+	)
 	note = _("Applied for a trade account again ({0}). Check these details before approving.").format(details)
 	if values.get("message"):
 		note += " " + values["message"]
@@ -576,6 +578,12 @@ def invoices(customers: list[str]) -> list[dict]:
 		row.formatted_total = frappe.utils.fmt_money(row.grand_total, currency=row.currency)
 		row.formatted_outstanding = frappe.utils.fmt_money(row.outstanding_amount, currency=row.currency)
 		row.pdf_url = "/api/method/shop.storefront.accounts.invoice_pdf?" + urlencode({"name": row.name})
+		# the payment link an app gives unpaid invoices (the payments app's invoice links)
+		row.pay_url = (
+			getattr(frappe.get_doc("Sales Invoice", row.name), "payment_link", None)
+			if frappe.utils.flt(row.outstanding_amount) > 0
+			else None
+		)
 	return rows
 
 
