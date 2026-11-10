@@ -1136,12 +1136,109 @@
         },
         {
          "attributes": {
+          "data-shop": "stock-alert",
+          "hidden": "",
+          "novalidate": ""
+         },
+         "baseStyles": {},
+         "blockId": "a9c2feab17",
+         "blockName": "Stock Alert",
+         "children": [
+          {
+           "attributes": {},
+           "baseStyles": {},
+           "blockId": "adaf135921",
+           "children": [],
+           "classes": [
+            "stock-alert-intro"
+           ],
+           "customAttributes": {},
+           "element": "p",
+           "innerHTML": "Out of stock for now. We can email you when it's back.",
+           "mobileStyles": {},
+           "tabletStyles": {}
+          },
+          {
+           "attributes": {},
+           "baseStyles": {},
+           "blockId": "9c5419a9e9",
+           "children": [
+            {
+             "attributes": {
+              "aria-label": "Your email",
+              "autocomplete": "email",
+              "name": "email",
+              "placeholder": "Your email",
+              "required": "",
+              "type": "email"
+             },
+             "baseStyles": {},
+             "blockId": "f8568ef3e0",
+             "children": [],
+             "classes": [],
+             "customAttributes": {},
+             "element": "input",
+             "mobileStyles": {},
+             "tabletStyles": {}
+            },
+            {
+             "attributes": {
+              "type": "submit"
+             },
+             "baseStyles": {},
+             "blockId": "756bc7cd4a",
+             "children": [],
+             "classes": [],
+             "customAttributes": {},
+             "element": "button",
+             "innerHTML": "Email me",
+             "mobileStyles": {},
+             "tabletStyles": {}
+            }
+           ],
+           "classes": [
+            "stock-alert-row"
+           ],
+           "customAttributes": {},
+           "element": "div",
+           "mobileStyles": {},
+           "tabletStyles": {}
+          },
+          {
+           "attributes": {
+            "data-shop": "stock-alert-done",
+            "hidden": "",
+            "role": "status"
+           },
+           "baseStyles": {},
+           "blockId": "fec1c3f907",
+           "children": [],
+           "classes": [
+            "stock-alert-done"
+           ],
+           "customAttributes": {},
+           "element": "p",
+           "innerHTML": "",
+           "mobileStyles": {},
+           "tabletStyles": {}
+          }
+         ],
+         "classes": [
+          "stock-alert"
+         ],
+         "customAttributes": {},
+         "element": "form",
+         "mobileStyles": {},
+         "tabletStyles": {}
+        },
+        {
+         "attributes": {
           "data-shop": "stock-locations"
          },
          "baseStyles": {
           "width": "100%"
          },
-         "blockId": "a9c2feab17",
+         "blockId": "1b8eed0c5b",
          "blockName": "Stock by Location",
          "children": [],
          "classes": [],
@@ -1169,7 +1266,7 @@
          "baseStyles": {
           "width": "100%"
          },
-         "blockId": "1b8eed0c5b",
+         "blockId": "ab1fd6eb25",
          "blockName": "Shipping Note",
          "children": [],
          "classes": [
@@ -1201,7 +1298,7 @@
           "gap": "8px",
           "width": "100%"
          },
-         "blockId": "ab1fd6eb25",
+         "blockId": "9fca34b17b",
          "blockName": "Highlights",
          "children": [
           {
@@ -1218,7 +1315,7 @@
             "padding": "5px 11px",
             "width": "fit-content"
            },
-           "blockId": "52991b2703",
+           "blockId": "78a9cf7c52",
            "blockName": "Highlight",
            "children": [],
            "classes": [],
@@ -1257,7 +1354,7 @@
           "marginTop": "4px",
           "width": "100%"
          },
-         "blockId": "9fca34b17b",
+         "blockId": "b7c5abb30c",
          "blockName": "Actions",
          "children": [
           {
@@ -1285,7 +1382,7 @@
             "textAlign": "center",
             "width": "84px"
            },
-           "blockId": "78a9cf7c52",
+           "blockId": "14c147a061",
            "blockName": "Quantity",
            "children": [],
            "classes": [],
@@ -1320,7 +1417,7 @@
             "textTransform": "uppercase",
             "width": "100%"
            },
-           "blockId": "bebd48b8d7",
+           "blockId": "66f44dd7c5",
            "blockName": "Add to cart",
            "children": [],
            "classes": [],
@@ -1361,7 +1458,7 @@
             "textTransform": "uppercase",
             "width": "100%"
            },
-           "blockId": "db1dff7029",
+           "blockId": "1cec5475bc",
            "blockName": "Buy now",
            "children": [],
            "classes": [],
@@ -1403,7 +1500,7 @@
           "padding": "12px 16px",
           "width": "100%"
          },
-         "blockId": "b7c5abb30c",
+         "blockId": "cfaa5b0d2b",
          "blockName": "Error",
          "children": [],
          "classes": [],
@@ -1414,22 +1511,22 @@
          "tabletStyles": {}
         },
         {
-         "blockId": "cfaa5b0d2b",
+         "blockId": "519127a2ae",
          "children": [
           {
-           "blockId": "3ddc3f68ea",
+           "blockId": "7fb8c14f85",
            "children": [],
            "isChildOfComponent": "shop-delivery-card",
            "referenceBlockId": "8e0f78ad72"
           },
           {
-           "blockId": "d3bde913a4",
+           "blockId": "a29f34ae84",
            "children": [],
            "isChildOfComponent": "shop-delivery-card",
            "referenceBlockId": "8603bd3012"
           },
           {
-           "blockId": "69e75b5eef",
+           "blockId": "7d741dae5c",
            "children": [],
            "isChildOfComponent": "shop-delivery-card",
            "referenceBlockId": "243ad8c2e4"
@@ -1438,19 +1535,19 @@
          "extendedFromComponent": "shop-delivery-card"
         },
         {
-         "blockId": "519127a2ae",
+         "blockId": "8f2bddacf4",
          "children": [
           {
-           "blockId": "7fb8c14f85",
+           "blockId": "9babde2786",
            "children": [
             {
-             "blockId": "4a99bb56ac",
+             "blockId": "34044fd397",
              "children": [],
              "isChildOfComponent": "shop-trust-row",
              "referenceBlockId": "a93242f5cf"
             },
             {
-             "blockId": "57cb83edeb",
+             "blockId": "eade0f5fa6",
              "children": [],
              "isChildOfComponent": "shop-trust-row",
              "referenceBlockId": "be2bb2811f"
@@ -1460,16 +1557,16 @@
            "referenceBlockId": "39732a2ca0"
           },
           {
-           "blockId": "a29f34ae84",
+           "blockId": "44158dbf90",
            "children": [
             {
-             "blockId": "0811b5813c",
+             "blockId": "d21ba995bc",
              "children": [],
              "isChildOfComponent": "shop-trust-row",
              "referenceBlockId": "c3b41462ac"
             },
             {
-             "blockId": "9cde23c8e5",
+             "blockId": "553eff0d27",
              "children": [],
              "isChildOfComponent": "shop-trust-row",
              "referenceBlockId": "381f2e7a91"
@@ -1479,16 +1576,16 @@
            "referenceBlockId": "9266ba0644"
           },
           {
-           "blockId": "7d741dae5c",
+           "blockId": "8968f3b127",
            "children": [
             {
-             "blockId": "ef99832565",
+             "blockId": "539f28d918",
              "children": [],
              "isChildOfComponent": "shop-trust-row",
              "referenceBlockId": "9f7e16e5d7"
             },
             {
-             "blockId": "99fef2006e",
+             "blockId": "cf8de91e41",
              "children": [],
              "isChildOfComponent": "shop-trust-row",
              "referenceBlockId": "88ddbca7cc"
@@ -1509,7 +1606,7 @@
           "lineHeight": "1.7",
           "width": "100%"
          },
-         "blockId": "8f2bddacf4",
+         "blockId": "5724d70e1b",
          "blockName": "Product Description",
          "children": [],
          "classes": [
@@ -3481,7 +3578,7 @@
  "idx": 0,
  "is_standard": 0,
  "is_template": 1,
- "modified": "2026-11-10 08:05:26.117844",
+ "modified": "2026-11-10 08:18:38.519805",
  "modified_by": "Administrator",
  "name": "page-1ea2abd1",
  "owner": "Administrator",

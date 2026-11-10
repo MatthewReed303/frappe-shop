@@ -254,6 +254,11 @@ input::placeholder { color: var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A)
 .shop-select-search { display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); background:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); border:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:min(2px, 6px); outline:none; }
 .shop-select-search:focus { border-color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); }
 .shop-select-empty { margin:0; padding:8px 10px; color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); }
+.stock-alert { display:flex; flex-direction:column; gap:8px; width:100%; padding:12px 14px; border:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:min(2px, 10px); }
+.stock-alert-intro, .stock-alert-done { margin:0; font-size:13px; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); }
+.stock-alert-row { display:flex; gap:8px; }
+.stock-alert-row input { flex:1; min-width:0; font:inherit; font-size:14px; padding:8px 10px; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); background:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); border:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:min(2px, 6px); }
+.stock-alert-row button { font:inherit; font-size:14px; font-weight:600; padding:8px 14px; color:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); background:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); border:0; border-radius:min(2px, 6px); cursor:pointer; white-space:nowrap; }
 .shop-address-list [role="option"] { flex-direction:column; align-items:flex-start; gap:2px; white-space:normal; }
 .shop-address-list [role="option"][aria-selected="true"] { font-weight:inherit; }
 .shop-address-list [role="option"][aria-selected="true"]::after { content:none; }

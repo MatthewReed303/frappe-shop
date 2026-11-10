@@ -37,6 +37,11 @@ def store_css(refs, radius: str = "2px"):
 .shop-select-search {{ display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:min({radius}, 6px); outline:none; }}
 .shop-select-search:focus {{ border-color:{ink}; }}
 .shop-select-empty {{ margin:0; padding:8px 10px; color:{muted}; }}
+.stock-alert {{ display:flex; flex-direction:column; gap:8px; width:100%; padding:12px 14px; border:1px solid {line}; border-radius:min({radius}, 10px); }}
+.stock-alert-intro, .stock-alert-done {{ margin:0; font-size:13px; color:{ink}; }}
+.stock-alert-row {{ display:flex; gap:8px; }}
+.stock-alert-row input {{ flex:1; min-width:0; font:inherit; font-size:14px; padding:8px 10px; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:min({radius}, 6px); }}
+.stock-alert-row button {{ font:inherit; font-size:14px; font-weight:600; padding:8px 14px; color:{paper}; background:{ink}; border:0; border-radius:min({radius}, 6px); cursor:pointer; white-space:nowrap; }}
 .shop-address-list [role="option"] {{ flex-direction:column; align-items:flex-start; gap:2px; white-space:normal; }}
 .shop-address-list [role="option"][aria-selected="true"] {{ font-weight:inherit; }}
 .shop-address-list [role="option"][aria-selected="true"]::after {{ content:none; }}
@@ -337,6 +342,39 @@ def catalog_menu_button(refs, size="13px"):
 		classes=["catalog-menu-toggle"],
 		styles={"color": refs["ink"], "fontSize": size, "fontWeight": "500"},
 		dynamicValues=[dv("store.menu_label", "innerHTML")],
+	)
+
+
+def stock_alert_form():
+	"""Shown while what the shopper chose is out of stock: they leave an email to be told when it's
+	back (storefront.js, shop.storefront.product.alert_when_in_stock)."""
+	return block(
+		"form",
+		name="Stock Alert",
+		attrs={"data-shop": "stock-alert", "hidden": "", "novalidate": ""},
+		classes=["stock-alert"],
+		children=[
+			block("p", text="Out of stock for now. We can email you when it's back.", classes=["stock-alert-intro"]),
+			block(
+				"div",
+				classes=["stock-alert-row"],
+				children=[
+					block(
+						"input",
+						attrs={
+							"type": "email",
+							"name": "email",
+							"required": "",
+							"autocomplete": "email",
+							"placeholder": "Your email",
+							"aria-label": "Your email",
+						},
+					),
+					block("button", text="Email me", attrs={"type": "submit"}),
+				],
+			),
+			block("p", text="", attrs={"data-shop": "stock-alert-done", "hidden": "", "role": "status"}, classes=["stock-alert-done"]),
+		],
 	)
 
 

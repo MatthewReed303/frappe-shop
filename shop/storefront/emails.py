@@ -253,6 +253,16 @@ TEMPLATES = {
 			"{% if reason %}<p>{{ reason | e }}</p>{% endif %}<p>You can still buy at retail prices in the store.</p>"
 		),
 	),
+	"back_in_stock": (
+		"Shop: Back in Stock",
+		"Shop Stock Alert",
+		_lt("{{ item_name }} is back in stock at {{ store_name }}"),
+		_lt(
+			"<p>Good news: {{ item_name | e }} is back in stock at {{ store_name }}.</p>"
+			'<p><a href="{{ product_url }}">See it in the store</a></p>'
+			"<p>You asked us to tell you, so this is the only email about it.</p>"
+		),
+	),
 	"cart_reminder": (
 		"Shop: Cart Reminder",
 		"Shop Cart",

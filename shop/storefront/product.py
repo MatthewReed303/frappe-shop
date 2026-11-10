@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.rate_limiter import rate_limit
 from frappe.utils import flt
 
 from shop.storefront import pricing, stock
@@ -205,3 +206,59 @@ def ordered_values(attribute: str) -> list[str]:
 		order_by="idx",
 		pluck="attribute_value",
 	)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=10, seconds=60 * 60)
+def alert_when_in_stock(item_code: str, email: str) -> dict:
+	"""Email the shopper once when this item (a product's, or one of its variants) can be bought."""
+	from frappe.utils import validate_email_address
+
+	email = (email or "").strip().lower()
+	if not validate_email_address(email):
+		frappe.throw(_("Please enter a valid email address"))
+	product = for_sale(item_code)
+	if not product:
+		frappe.throw(_("Product not found"), frappe.DoesNotExistError)
+	if not frappe.db.exists(
+		"Shop Stock Alert", {"email": email, "item_code": item_code, "sent_on": ["is", "not set"]}
+	):
+		frappe.get_doc(
+			{"doctype": "Shop Stock Alert", "email": email, "item_code": item_code, "product": product}
+		).insert(ignore_permissions=True)
+	return {"message": _("We'll email {0} when it's back in stock.").format(email)}
+
+
+def for_sale(item_code: str) -> str | None:
+	"""The published product an item is sold as: its own, or its template's."""
+	template = frappe.db.get_value("Item", item_code, "variant_of")
+	return frappe.db.get_value("Shop Product", {"item": template or item_code, "published": 1})
+
+
+def send_stock_alerts() -> None:
+	"""Tell the shoppers waiting for items that can be bought again (Shop: Back in Stock)."""
+	from frappe.utils import get_url, now_datetime
+
+	from shop.routes import store_url
+	from shop.storefront import emails
+
+	waiting = frappe.get_all(
+		"Shop Stock Alert", filters={"sent_on": ["is", "not set"]}, fields=["name", "item_code", "product"]
+	)
+	for item_code in {row.item_code for row in waiting}:
+		if not stock.availability(item_code, priced=pricing.get_price(item_code) is not None).get(
+			"purchasable"
+		):
+			continue
+		for row in (row for row in waiting if row.item_code == item_code):
+			alert = frappe.get_doc("Shop Stock Alert", row.name)
+			slug = frappe.db.get_value("Shop Product", {"name": row.product, "published": 1}, "slug")
+			if slug:
+				emails.send(
+					"back_in_stock",
+					alert.email,
+					alert,
+					item_name=frappe.get_cached_value("Item", item_code, "item_name"),
+					product_url=get_url(store_url(f"product/{slug}")),
+				)
+			alert.db_set("sent_on", now_datetime())

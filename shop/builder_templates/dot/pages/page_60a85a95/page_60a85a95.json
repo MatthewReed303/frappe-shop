@@ -1233,12 +1233,109 @@
             },
             {
              "attributes": {
+              "data-shop": "stock-alert",
+              "hidden": "",
+              "novalidate": ""
+             },
+             "baseStyles": {},
+             "blockId": "e15ccad6eb",
+             "blockName": "Stock Alert",
+             "children": [
+              {
+               "attributes": {},
+               "baseStyles": {},
+               "blockId": "2aa12fb36d",
+               "children": [],
+               "classes": [
+                "stock-alert-intro"
+               ],
+               "customAttributes": {},
+               "element": "p",
+               "innerHTML": "Out of stock for now. We can email you when it's back.",
+               "mobileStyles": {},
+               "tabletStyles": {}
+              },
+              {
+               "attributes": {},
+               "baseStyles": {},
+               "blockId": "a7a356aa97",
+               "children": [
+                {
+                 "attributes": {
+                  "aria-label": "Your email",
+                  "autocomplete": "email",
+                  "name": "email",
+                  "placeholder": "Your email",
+                  "required": "",
+                  "type": "email"
+                 },
+                 "baseStyles": {},
+                 "blockId": "cca7968d49",
+                 "children": [],
+                 "classes": [],
+                 "customAttributes": {},
+                 "element": "input",
+                 "mobileStyles": {},
+                 "tabletStyles": {}
+                },
+                {
+                 "attributes": {
+                  "type": "submit"
+                 },
+                 "baseStyles": {},
+                 "blockId": "089365ff7c",
+                 "children": [],
+                 "classes": [],
+                 "customAttributes": {},
+                 "element": "button",
+                 "innerHTML": "Email me",
+                 "mobileStyles": {},
+                 "tabletStyles": {}
+                }
+               ],
+               "classes": [
+                "stock-alert-row"
+               ],
+               "customAttributes": {},
+               "element": "div",
+               "mobileStyles": {},
+               "tabletStyles": {}
+              },
+              {
+               "attributes": {
+                "data-shop": "stock-alert-done",
+                "hidden": "",
+                "role": "status"
+               },
+               "baseStyles": {},
+               "blockId": "fe8d87719f",
+               "children": [],
+               "classes": [
+                "stock-alert-done"
+               ],
+               "customAttributes": {},
+               "element": "p",
+               "innerHTML": "",
+               "mobileStyles": {},
+               "tabletStyles": {}
+              }
+             ],
+             "classes": [
+              "stock-alert"
+             ],
+             "customAttributes": {},
+             "element": "form",
+             "mobileStyles": {},
+             "tabletStyles": {}
+            },
+            {
+             "attributes": {
               "data-shop": "stock-locations"
              },
              "baseStyles": {
               "width": "100%"
              },
-             "blockId": "e15ccad6eb",
+             "blockId": "1b0f1fb902",
              "blockName": "Stock by Location",
              "children": [],
              "classes": [],
@@ -1266,7 +1363,7 @@
              "baseStyles": {
               "width": "100%"
              },
-             "blockId": "1b0f1fb902",
+             "blockId": "e118ac9be5",
              "blockName": "Shipping Note",
              "children": [],
              "classes": [
@@ -1298,7 +1395,7 @@
               "gap": "8px",
               "width": "100%"
              },
-             "blockId": "e118ac9be5",
+             "blockId": "43013bb2b8",
              "blockName": "Highlights",
              "children": [
               {
@@ -1316,7 +1413,7 @@
                 "padding": "6px 13px",
                 "width": "fit-content"
                },
-               "blockId": "e65baa3cab",
+               "blockId": "7c718dc79f",
                "blockName": "Highlight",
                "children": [],
                "classes": [],
@@ -1354,7 +1451,7 @@
               "gap": "10px",
               "width": "100%"
              },
-             "blockId": "43013bb2b8",
+             "blockId": "6a14f2cc61",
              "blockName": "Actions",
              "children": [
               {
@@ -1383,7 +1480,7 @@
                 "textAlign": "center",
                 "width": "84px"
                },
-               "blockId": "7c718dc79f",
+               "blockId": "b3968a7e89",
                "blockName": "Quantity",
                "children": [],
                "classes": [],
@@ -1420,7 +1517,7 @@
                 "textTransform": "uppercase",
                 "width": "100%"
                },
-               "blockId": "6b43cd7326",
+               "blockId": "45000a50ac",
                "blockName": "Add to cart",
                "children": [],
                "classes": [],
@@ -1464,7 +1561,7 @@
                 "textTransform": "uppercase",
                 "width": "100%"
                },
-               "blockId": "4dd4c92472",
+               "blockId": "c5e4aba2c9",
                "blockName": "Buy now",
                "children": [],
                "classes": [],
@@ -1508,7 +1605,7 @@
               "padding": "12px 16px",
               "width": "100%"
              },
-             "blockId": "6a14f2cc61",
+             "blockId": "7675c845c1",
              "blockName": "Error",
              "children": [],
              "classes": [],
@@ -1519,22 +1616,22 @@
              "tabletStyles": {}
             },
             {
-             "blockId": "7675c845c1",
+             "blockId": "78bb760964",
              "children": [
               {
-               "blockId": "63c8e8fbec",
+               "blockId": "160d9c4301",
                "children": [],
                "isChildOfComponent": "dot-delivery-card",
                "referenceBlockId": "d47adcad41"
               },
               {
-               "blockId": "8538631681",
+               "blockId": "e204ed2353",
                "children": [],
                "isChildOfComponent": "dot-delivery-card",
                "referenceBlockId": "1d5c88e4a4"
               },
               {
-               "blockId": "49f75909d5",
+               "blockId": "c6c9ada5ba",
                "children": [],
                "isChildOfComponent": "dot-delivery-card",
                "referenceBlockId": "1d3cf968bd"
@@ -1551,7 +1648,7 @@
               "lineHeight": "1.7",
               "width": "100%"
              },
-             "blockId": "78bb760964",
+             "blockId": "b23a3728dd",
              "blockName": "Product Description",
              "children": [],
              "classes": [
@@ -1576,22 +1673,22 @@
              }
             },
             {
-             "blockId": "b23a3728dd",
+             "blockId": "265412eb18",
              "children": [
               {
-               "blockId": "43209cc3f3",
+               "blockId": "693340b8e1",
                "children": [],
                "isChildOfComponent": "dot-trust-row",
                "referenceBlockId": "3ea665065a"
               },
               {
-               "blockId": "e6e3b1ebb9",
+               "blockId": "2f71f89ecb",
                "children": [],
                "isChildOfComponent": "dot-trust-row",
                "referenceBlockId": "5ade587605"
               },
               {
-               "blockId": "451a339f6a",
+               "blockId": "a70c337d82",
                "children": [],
                "isChildOfComponent": "dot-trust-row",
                "referenceBlockId": "390b57a4b3"
@@ -3466,7 +3563,7 @@
  "idx": 0,
  "is_standard": 0,
  "is_template": 1,
- "modified": "2026-11-10 08:05:29.684640",
+ "modified": "2026-11-10 08:18:41.895599",
  "modified_by": "Administrator",
  "name": "page-60a85a95",
  "owner": "Administrator",

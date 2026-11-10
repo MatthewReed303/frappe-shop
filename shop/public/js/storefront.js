@@ -255,7 +255,49 @@
 		if (first) first.dataset.selected = "true";
 	}
 
+	// out of stock: the shopper can ask to be told when it's back (not when it isn't sold online)
+	function syncStockAlert(item) {
+		// a variant names its item; the product page's own data names the one it sells
+		const code = item.item_code || item.buy_item_code;
+		document.querySelectorAll('[data-shop="stock-alert"]').forEach((form) => {
+			form.hidden = item.purchasable !== false || item.stock_state !== "out" || !code;
+			if (code && form.dataset.itemCode !== code) {
+				form.dataset.itemCode = code;
+				const done = form.querySelector('[data-shop="stock-alert-done"]');
+				if (done) done.hidden = true;
+				form.querySelector(".stock-alert-row").hidden = false;
+			}
+		});
+	}
+
+	function initStockAlert() {
+		document.querySelectorAll('[data-shop="stock-alert"]').forEach((form) => {
+			form.addEventListener("submit", async (event) => {
+				event.preventDefault();
+				const input = form.querySelector('input[name="email"]');
+				const button = form.querySelector('button[type="submit"]');
+				const done = form.querySelector('[data-shop="stock-alert-done"]');
+				if (!input.value.trim()) return input.focus();
+				button.disabled = true;
+				try {
+					const result = await call("shop.storefront.product.alert_when_in_stock", {
+						item_code: form.dataset.itemCode,
+						email: input.value.trim(),
+					});
+					form.querySelector(".stock-alert-row").hidden = true;
+					done.textContent = result.message;
+					done.hidden = false;
+				} catch (error) {
+					showError(error.message);
+				} finally {
+					button.disabled = false;
+				}
+			});
+		});
+	}
+
 	function syncAvailability(item) {
+		syncStockAlert(item);
 		// the product's own buttons, not those on the product cards listed below it
 		const buttons = [...document.querySelectorAll('[data-shop="add-to-cart"], [data-shop="buy-now"]')].filter(
 			(button) => !button.closest(".product-card")
@@ -1563,6 +1605,7 @@
 		initSelectLists();
 		initAddressLookup();
 		initCartEmail();
+		initStockAlert();
 		document
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));
