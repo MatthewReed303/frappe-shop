@@ -1576,6 +1576,87 @@
 		});
 	}
 
+	// products listed under a search box as the shopper types; Enter on none searches as before
+	function initSearchSuggestions() {
+		let current = null;
+		const close = () => {
+			if (!current) return;
+			current.list.remove();
+			current.input.setAttribute("aria-expanded", "false");
+			current.input.removeAttribute("aria-activedescendant");
+			current = null;
+		};
+		const activate = (index) => {
+			const rows = [...current.list.querySelectorAll('[role="option"]')];
+			current.active = (index + rows.length) % rows.length;
+			rows.forEach((row, at) => (row.dataset.active = at === current.active ? "true" : "false"));
+			current.input.setAttribute("aria-activedescendant", rows[current.active].id);
+		};
+		const show = (input, result) => {
+			close();
+			if (!result.products.length || document.activeElement !== input) return;
+			const id = `shop-search-list-${Date.now()}`;
+			const all = `${base}/products?search=${encodeURIComponent(input.value.trim())}`;
+			const list = document.createElement("div");
+			list.className = "shop-select-list shop-search-list";
+			list.innerHTML = `
+				<div role="listbox" id="${id}" aria-label="${esc(__("Suggested products"))}">
+					${result.products
+						.map(
+							(row, index) =>
+								`<a role="option" id="${id}-${index}" href="${esc(row.route)}"><img src="${esc(row.image)}" alt="" loading="lazy"><span>${esc(row.title)}</span>${row.price ? `<small>${esc(row.price)}</small>` : ""}</a>`
+						)
+						.join("")}
+					<a role="option" id="${id}-all" class="shop-search-all" href="${esc(all)}">${esc(
+						result.total === 1 ? __("See the result") : __("See all {0} results", [result.total])
+					)}</a>
+				</div>`;
+			document.body.appendChild(list);
+			const box = input.getBoundingClientRect();
+			list.style.width = `${Math.max(box.width, 300)}px`;
+			list.style.top = `${box.bottom + 4 + window.scrollY}px`;
+			list.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - list.offsetWidth - 8)) + window.scrollX}px`;
+			list.addEventListener("mousedown", (event) => event.preventDefault());
+			input.setAttribute("aria-expanded", "true");
+			input.setAttribute("aria-controls", id);
+			current = { input, list, active: -1 };
+		};
+		document.querySelectorAll('[data-shop="search-form"] input[name="search"]').forEach((input) => {
+			input.setAttribute("role", "combobox");
+			input.setAttribute("aria-autocomplete", "list");
+			input.setAttribute("aria-expanded", "false");
+			let timer = null;
+			let seq = 0;
+			input.addEventListener("input", () => {
+				clearTimeout(timer);
+				const text = input.value.trim();
+				const mine = ++seq;
+				if (text.length < 2) return close();
+				timer = setTimeout(async () => {
+					try {
+						const result = await call("shop.storefront.catalog.search_suggestions", { text });
+						if (mine === seq) show(input, result);
+					} catch (e) {
+						close();
+					}
+				}, 200);
+			});
+			input.addEventListener("keydown", (event) => {
+				if (!current || current.input !== input) return;
+				if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+					event.preventDefault();
+					activate(current.active + (event.key === "ArrowDown" ? 1 : -1));
+				} else if (event.key === "Enter" && current.active >= 0) {
+					event.preventDefault();
+					window.location.href = current.list.querySelectorAll('[role="option"]')[current.active].href;
+				} else if (event.key === "Escape") {
+					close();
+				}
+			});
+			input.addEventListener("blur", close);
+		});
+	}
+
 	// the email typed at checkout is kept with the cart, for a reminder if it's left (Shop Settings)
 	function initCartEmail() {
 		const input = document.querySelector('[data-shop="checkout-form"] input[name="email"]');
@@ -1606,6 +1687,7 @@
 		initAddressLookup();
 		initCartEmail();
 		initStockAlert();
+		initSearchSuggestions();
 		document
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));

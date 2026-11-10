@@ -49,6 +49,15 @@ def collection_page() -> dict:
 	}
 
 
+def search_label(search: str | None, searched_as: str | None) -> str | None:
+	if not search:
+		return None
+	if searched_as:
+		# nothing matched what was typed, so the nearest words were searched for
+		return escape_html(_('Results for "{0}" (no results for "{1}")').format(searched_as, search))
+	return escape_html(_('Results for "{0}"').format(search))
+
+
 def narrowing_params() -> dict[str, str]:
 	"""The URL parameter for each way products can be narrowed: brand, spec_<name>, option_<name>."""
 	params = {"brand": catalog.BRAND}
@@ -171,9 +180,7 @@ def browse(title: str, description: str | None = None, collection=None) -> dict:
 		"description": description,
 		# page data is put into the page as HTML, so what the shopper typed is escaped
 		"search": escape_html(form.get("search") or ""),
-		"search_label": escape_html(_('Results for "{0}"').format(form.get("search")))
-		if form.get("search")
-		else None,
+		"search_label": search_label(form.get("search"), result.get("searched_as")),
 		"filter_groups": groups,
 		"applied": applied or None,
 		"clear_url": url({key: None for key in (*params, "price", "stock")}) if applied else None,

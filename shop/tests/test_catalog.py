@@ -22,6 +22,23 @@ class TestCatalog(IntegrationTestCase):
 		self.assertIn("crew-neck-t-shirt", slugs)
 		self.assertNotIn("ceramic-mug", slugs)
 
+	def test_search_needs_every_word_and_forgives_a_typo(self):
+		frappe.cache.delete_value("shop:search_words")
+		names = lambda result: [p.product_name for p in result["products"]]  # noqa: E731
+		self.assertIn("Ceramic Mug", names(catalog.get_products(search="ceramic mug")))
+		self.assertNotIn("Ceramic Mug", names(catalog.get_products(search="ceramic zebraquartz")))
+		typo = catalog.get_products(search="ceramik mugg")
+		self.assertIn("Ceramic Mug", names(typo))
+		self.assertEqual(typo["searched_as"], "ceramic mug")
+		self.assertIsNone(catalog.get_products(search="mug")["searched_as"])
+
+	def test_search_suggestions_list_a_few_products(self):
+		self.assertEqual(catalog.search_suggestions("m")["products"], [])
+		found = catalog.search_suggestions("mug")
+		self.assertIn("Ceramic Mug", [row["title"] for row in found["products"]])
+		self.assertLessEqual(len(found["products"]), 6)
+		self.assertTrue(all(row["route"] for row in found["products"]))
+
 	def test_search(self):
 		result = catalog.get_products(search="mug")
 		self.assertEqual(result["total"], 1)

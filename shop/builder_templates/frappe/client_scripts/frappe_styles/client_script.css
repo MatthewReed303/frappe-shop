@@ -254,6 +254,11 @@ input::placeholder { color: var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A)
 .shop-select-search { display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); background:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); border:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:min(2px, 6px); outline:none; }
 .shop-select-search:focus { border-color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); }
 .shop-select-empty { margin:0; padding:8px 10px; color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); }
+.shop-search-list [role="option"] { text-decoration:none; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); white-space:normal; }
+.shop-search-list img { width:36px; height:36px; object-fit:contain; background:var(--6d034cc9-b213-4a44-a78c-db7be21e983a, #F4F4F5); border-radius:min(2px, 6px); flex-shrink:0; }
+.shop-search-list [role="option"] span { flex:1; }
+.shop-search-list small { color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); font-size:12px; white-space:nowrap; }
+.shop-search-list .shop-search-all { justify-content:center; font-weight:600; border-top:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:0; margin-top:4px; }
 .stock-alert { display:flex; flex-direction:column; gap:8px; width:100%; padding:12px 14px; border:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:min(2px, 10px); }
 .stock-alert-intro, .stock-alert-done { margin:0; font-size:13px; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); }
 .stock-alert-row { display:flex; gap:8px; }

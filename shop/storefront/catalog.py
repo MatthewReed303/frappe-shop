@@ -2,6 +2,7 @@ import re
 
 import frappe
 from frappe import _
+from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, flt
 
 from shop.routes import store_url
@@ -50,12 +51,20 @@ def get_products(
 	"option:<Item Attribute>"): a product has one of a narrowing's values, for every narrowing.
 	Each narrowing lists its values with how many products have them given the others."""
 	filters = {"published": 1}
-	if collection:
-		filters["name"] = ["in", collection_members(collection) or [""]]
+	names = set(collection_members(collection)) if collection else None
+	searched_as = None
+	if search and search.strip():
+		found = search_matches(search)
+		if not found:
+			# nothing for what was typed: the words as the store's products spell them
+			searched_as = corrected(search)
+			found = search_matches(searched_as) if searched_as else set()
+		names = found if names is None else names & found
+	if names is not None:
+		filters["name"] = ["in", list(names) or [""]]
 	candidates = frappe.get_all(
 		"Shop Product",
 		filters=filters,
-		or_filters=search_filters(search),
 		fields=PRODUCT_FIELDS,
 		order_by=SORT_ORDERS.get(sort) or SORT_ORDERS["ranking"],
 		limit=MAX_CATALOG_SIZE,
@@ -80,7 +89,7 @@ def get_products(
 	page = products[start : start + limit]
 	if not decorated:
 		decorate(page)
-	return {"products": page, "total": len(products), "narrowings": facets}
+	return {"products": page, "total": len(products), "narrowings": facets, "searched_as": searched_as}
 
 
 def product_traits(products: list) -> dict:
@@ -158,7 +167,9 @@ def narrowings(products: list, traits: dict, chosen: dict) -> list[dict]:
 			{
 				"key": key,
 				# labels are put into the page as HTML, and a value can come from the URL
-				"label": frappe._("Brand") if key == BRAND else frappe.utils.escape_html(key.split(":", 1)[1]),
+				"label": frappe._("Brand")
+				if key == BRAND
+				else frappe.utils.escape_html(key.split(":", 1)[1]),
 				"values": [
 					{
 						"value": value,
@@ -336,15 +347,105 @@ def collection_counts(collections: list[str]) -> dict:
 	}
 
 
-def search_filters(search: str | None) -> list | None:
-	if not search:
-		return None
-	term = f"%{search.strip()}%"
-	return [
-		["product_name", "like", term],
-		["short_description", "like", term],
-		["item", "like", term],
+def search_words(text: str) -> list[str]:
+	return re.findall(r"[\w][\w.-]*", (text or "").lower())[:8]
+
+
+def search_matches(text: str) -> set[str]:
+	"""Published products with every word somewhere: their name, item code, descriptions, brand,
+	specifications or variants' names."""
+	matches = None
+	for word in search_words(text):
+		term = f"%{word}%"
+		found = set(
+			frappe.get_all(
+				"Shop Product",
+				filters={"published": 1},
+				or_filters=[
+					["product_name", "like", term],
+					["short_description", "like", term],
+					["description", "like", term],
+					["item", "like", term],
+				],
+				pluck="name",
+			)
+		)
+		items = frappe.get_all(
+			"Item",
+			or_filters=[["item_name", "like", term], ["brand", "like", term], ["name", "like", term]],
+			fields=["name", "variant_of"],
+		)
+		codes = {row.variant_of or row.name for row in items}
+		if codes:
+			found |= set(frappe.get_all("Shop Product", filters={"item": ["in", list(codes)]}, pluck="name"))
+		found |= set(
+			frappe.get_all(
+				"Shop Product Specification",
+				filters={"parenttype": "Shop Product", "value": ["like", term]},
+				pluck="parent",
+			)
+		)
+		matches = found if matches is None else matches & found
+		if not matches:
+			return set()
+	return matches or set()
+
+
+def corrected(text: str) -> str | None:
+	"""What was typed, with words the store's products don't use swapped for the nearest ones they
+	do; None when there's nothing to swap."""
+	from difflib import get_close_matches
+
+	known = store_words()
+	words = search_words(text)
+	fixed = [
+		word if word in known else (get_close_matches(word, known, n=1, cutoff=0.75) or [word])[0]
+		for word in words
 	]
+	return " ".join(fixed) if fixed != words else None
+
+
+def store_words() -> list[str]:
+	"""The words in the names, short descriptions, brands and specifications of the store's
+	products and its collections' names, kept a while."""
+	key = "shop:search_words"
+	words = frappe.cache.get_value(key)
+	if words is None:
+		texts = [
+			text
+			for row in frappe.get_all(
+				"Shop Product", filters={"published": 1}, fields=["product_name", "short_description"]
+			)
+			for text in (row.product_name, frappe.utils.strip_html(row.short_description or ""))
+		]
+		texts += frappe.get_all("Shop Collection", filters={"published": 1}, pluck="title")
+		texts += frappe.get_all("Item", filters={"brand": ["is", "set"]}, pluck="brand", distinct=True)
+		texts += frappe.get_all("Shop Product Specification", pluck="value", distinct=True)
+		words = sorted({word for text in texts for word in search_words(text) if len(word) > 2})
+		frappe.cache.set_value(key, words, expires_in_sec=10 * 60)
+	return words
+
+
+@frappe.whitelist(allow_guest=True)
+@rate_limit(limit=120, seconds=60)
+def search_suggestions(text: str) -> dict:
+	"""Products for what has been typed so far, for the list under a search box."""
+	if len((text or "").strip()) < 2:
+		return {"products": []}
+	result = get_products(search=text[:100], limit=6)
+	return {
+		"products": [
+			{
+				"title": product.product_name,
+				"route": product.route,
+				"image": product.image,
+				"price": product.formatted_price,
+			}
+			for product in result["products"]
+		],
+		"total": result["total"],
+		"searched_as": result["searched_as"],
+	}
 
 
 def decorate(products: list) -> None:

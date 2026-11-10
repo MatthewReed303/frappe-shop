@@ -37,6 +37,11 @@ def store_css(refs, radius: str = "2px"):
 .shop-select-search {{ display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:min({radius}, 6px); outline:none; }}
 .shop-select-search:focus {{ border-color:{ink}; }}
 .shop-select-empty {{ margin:0; padding:8px 10px; color:{muted}; }}
+.shop-search-list [role="option"] {{ text-decoration:none; color:{ink}; white-space:normal; }}
+.shop-search-list img {{ width:36px; height:36px; object-fit:contain; background:{card}; border-radius:min({radius}, 6px); flex-shrink:0; }}
+.shop-search-list [role="option"] span {{ flex:1; }}
+.shop-search-list small {{ color:{muted}; font-size:12px; white-space:nowrap; }}
+.shop-search-list .shop-search-all {{ justify-content:center; font-weight:600; border-top:1px solid {line}; border-radius:0; margin-top:4px; }}
 .stock-alert {{ display:flex; flex-direction:column; gap:8px; width:100%; padding:12px 14px; border:1px solid {line}; border-radius:min({radius}, 10px); }}
 .stock-alert-intro, .stock-alert-done {{ margin:0; font-size:13px; color:{ink}; }}
 .stock-alert-row {{ display:flex; gap:8px; }}
