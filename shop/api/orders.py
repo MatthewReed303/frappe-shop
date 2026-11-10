@@ -161,6 +161,8 @@ def get_order(name: str) -> dict:
 		"refunds_due": payment.refunds_due(order.name),
 		"fulfillment_status": fulfillment_label(order),
 		"address": address_display(order.shipping_address_name),
+		"po_no": order.po_no,
+		"order_note": order.get("shop_order_note"),
 		"formatted_total": pricing.document_amount(order.total, order.currency),
 		"formatted_discount": pricing.document_amount(order.discount_amount, order.currency)
 		if order.discount_amount

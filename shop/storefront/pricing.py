@@ -107,7 +107,10 @@ def display_currencies() -> list[str]:
 	"""The store currency, then the other currencies the store can be paid in."""
 	from shop.storefront import totals
 
-	return list(dict.fromkeys([store_currency(), *totals.bank_currencies()]))
+	cache = request_cache("shop_display_currencies")
+	if "all" not in cache:
+		cache["all"] = list(dict.fromkeys([store_currency(), *totals.bank_currencies()]))
+	return cache["all"]
 
 
 def chosen_currency() -> str | None:
@@ -179,35 +182,34 @@ def domestic_tax_rate() -> float:
 def item_tax_rate(item_code: str | None) -> float:
 	"""Percent of the store's own tax on an item: the Item Tax Template ERPNext picks for it (from the
 	item or its Item Group) changes the rate of the taxes it names."""
-	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, get_item_tax_map, get_item_tax_template
-
 	if not item_code:
 		return domestic_tax_rate()
 	settings = frappe.get_cached_doc("Shop Settings")
-	cache = request_cache("shop_item_tax_rates")
-	key = (settings.tax_template, item_code)
-	if key not in cache:
-		taxes = domestic_taxes()
-		ctx = {
-			"company": settings.company,
-			"transaction_date": nowdate(),
-			"tax_category": settings.tax_template
-			and frappe.get_cached_value(
-				"Sales Taxes and Charges Template", settings.tax_template, "tax_category"
-			),
-		}
-		template = get_item_tax_template(ctx, frappe.get_cached_doc("Item", item_code))
-		rates = get_item_tax_map(
-			doc={"company": settings.company, "taxes": [dict(row) for row in taxes]},
-			tax_template=template,
-			as_json=False,
-		)
-		cache[key] = sum(
-			flt(rates.get(row.account_head))
-			for row in taxes
-			if rates.get(row.account_head) != NOT_APPLICABLE_TAX
-		)
-	return cache[key]
+	return shared("item_tax_rates", (settings.tax_template, item_code), lambda: work_out_tax_rate(item_code))
+
+
+def work_out_tax_rate(item_code: str) -> float:
+	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, get_item_tax_map, get_item_tax_template
+
+	settings = frappe.get_cached_doc("Shop Settings")
+	taxes = domestic_taxes()
+	ctx = {
+		"company": settings.company,
+		"transaction_date": nowdate(),
+		"tax_category": settings.tax_template
+		and frappe.get_cached_value(
+			"Sales Taxes and Charges Template", settings.tax_template, "tax_category"
+		),
+	}
+	template = get_item_tax_template(ctx, frappe.get_cached_doc("Item", item_code))
+	rates = get_item_tax_map(
+		doc={"company": settings.company, "taxes": [dict(row) for row in taxes]},
+		tax_template=template,
+		as_json=False,
+	)
+	return sum(
+		flt(rates.get(row.account_head)) for row in taxes if rates.get(row.account_head) != NOT_APPLICABLE_TAX
+	)
 
 
 def tax_name() -> str:
@@ -418,10 +420,16 @@ def customer_rate(
 ) -> float | None:
 	"""The customer's (or, without one, the Customer Group's) net price for one unit at this
 	quantity, after pricing rules."""
-	cache = request_cache("shop_customer_rates")
-	key = (item_code, customer, customer_group, price_list, qty)
-	if key in cache:
-		return cache[key]
+	return shared(
+		"customer_rates",
+		(item_code, customer, customer_group, price_list, flt(qty)),
+		lambda: work_out_rate(item_code, customer, price_list, qty, customer_group),
+	)
+
+
+def work_out_rate(
+	item_code: str, customer: str | None, price_list: str, qty: float, customer_group: str | None
+) -> float | None:
 	from erpnext.stock.get_item_details import get_item_details
 
 	from shop.storefront.checkout import elevated
@@ -450,23 +458,58 @@ def customer_rate(
 	except Exception:
 		frappe.clear_messages()
 		frappe.log_error(title=f"Customer price failed for {item_code}")
-		cache[key] = None
-		return None
+		raise NotKept(None) from None
 	list_rate = flt(details.get("price_list_rate"))
 	if not list_rate:
-		cache[key] = None
 		return None
 	if flt(details.get("discount_percentage")):
 		rate = list_rate * (1 - flt(details.discount_percentage) / 100)
 	else:
 		rate = list_rate - flt(details.get("discount_amount"))
-	cache[key] = flt(rate, 2)
-	return cache[key]
+	return flt(rate, 2)
 
 
 def forget_rates(doc=None, method=None) -> None:
-	"""Item Price and Pricing Rule changes: rates worked out earlier in this request are stale."""
-	frappe.local.shop_customer_rates = {}
+	"""A change to what prices are worked out from (Item Price, Pricing Rule, the item, its group,
+	tax, the customer): rates worked out before, in this request or any, are stale."""
+	for name in ("shop_customer_rates", "shop_item_tax_rates", "shop_display_currencies"):
+		if hasattr(frappe.local, name):
+			delattr(frappe.local, name)
+	frappe.cache.set_value(PRICE_VERSION, frappe.generate_hash(length=8))
+
+
+PRICE_VERSION = "shop:price_version"
+# prices are kept a few minutes, also for Pricing Rules that start or end at a date
+SHARED_SECONDS = 10 * 60
+
+
+class NotKept(Exception):
+	"""A value worked out this time that isn't kept for others (a lookup that failed)."""
+
+	def __init__(self, value):
+		self.value = value
+
+
+def shared(name: str, key: tuple, work_out):
+	"""A value worked out once for every request (in Redis), until prices change."""
+	import hashlib
+
+	cache = request_cache(f"shop_{name}")
+	if key in cache:
+		return cache[key]
+	version = frappe.cache.get_value(PRICE_VERSION) or "0"
+	digest = hashlib.sha1(frappe.as_json(key, indent=None).encode()).hexdigest()
+	redis_key = f"shop:{name}:{version}:{nowdate()}:{digest}"
+	kept = frappe.cache.get_value(redis_key)
+	if kept is None:
+		try:
+			kept = {"value": work_out()}
+		except NotKept as unkept:
+			cache[key] = unkept.value
+			return unkept.value
+		frappe.cache.set_value(redis_key, kept, expires_in_sec=SHARED_SECONDS)
+	cache[key] = kept["value"]
+	return cache[key]
 
 
 def request_cache(name: str) -> dict:

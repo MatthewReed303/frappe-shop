@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import add_days, cint, flt, nowdate
+from frappe.utils import add_days, add_to_date, cint, flt, now_datetime, nowdate, validate_email_address
 
 from shop.storefront import pricing, stock
 
@@ -329,6 +329,10 @@ def set_cart_cookie(cart):
 
 
 def request_token() -> str | None:
+	# a cart brought back in this request (restore_cart) before its cookie reaches the browser
+	restored = getattr(frappe.local, "shop_cart_token", None)
+	if restored:
+		return restored
 	if not hasattr(frappe.local, "request") or not frappe.local.request:
 		return None
 	return frappe.local.request.cookies.get(CART_COOKIE)
@@ -384,6 +388,67 @@ def forget_cart(login_manager=None):
 	"""Signing out leaves the cart with the account, not with the browser."""
 	if request_token() and frappe.local.get("cookie_manager"):
 		frappe.local.cookie_manager.delete_cookie(CART_COOKIE)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=20, seconds=10 * 60)
+def remember_email(email: str) -> None:
+	"""The email typed at checkout, so a cart left there can be reminded of (Shop Settings)."""
+	email = (email or "").strip().lower()
+	cart = find_cart()
+	if cart and cart.items and validate_email_address(email):
+		frappe.db.set_value("Shop Cart", cart.name, "email", email, update_modified=False)
+
+
+def remind_left_carts():
+	"""Email once about a cart left with items in it, the store's set number of hours after it was
+	last changed (Shop Settings); carts older than a week are left alone."""
+	from frappe.utils import get_url
+
+	from shop.routes import store_url
+	from shop.storefront import emails
+
+	hours = cint(frappe.get_cached_doc("Shop Settings").get("cart_reminder_hours"))
+	if not hours:
+		return
+	now = now_datetime()
+	for row in frappe.get_all(
+		"Shop Cart",
+		filters={
+			"status": "Active",
+			"reminded": 0,
+			"last_active": ["between", [add_to_date(now, days=-7), add_to_date(now, hours=-hours)]],
+		},
+		fields=["name", "email", "user", "token"],
+	):
+		email = row.email or (row.user if row.user and "@" in row.user else None)
+		cart = frappe.get_doc("Shop Cart", row.name)
+		if email and cart.items:
+			emails.send(
+				"cart_reminder",
+				email,
+				cart,
+				lines_html=cart_lines_html(cart),
+				cart_url=get_url(store_url(f"cart?restore={row.token}")),
+			)
+		frappe.db.set_value("Shop Cart", row.name, "reminded", 1, update_modified=False)
+
+
+def cart_lines_html(cart) -> str:
+	esc = frappe.utils.escape_html
+	return "".join(
+		f'<div class="order-item"><span>{esc(frappe.get_cached_value("Item", row.item_code, "item_name") or row.item_code)}</span>'
+		f'<span class="order-qty">{display_qty(row.qty)}</span></div>'
+		for row in cart.items
+	)
+
+
+def restore_cart(token: str) -> None:
+	"""A reminder's link brings its cart back to the browser that follows it."""
+	name = token and token_cart(token, "Active")
+	if name:
+		set_cart_cookie(frappe.get_doc("Shop Cart", name))
+		frappe.local.shop_cart_token = token
 
 
 def cleanup_carts():

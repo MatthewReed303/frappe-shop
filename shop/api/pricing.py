@@ -175,6 +175,9 @@ def arrange() -> None:
 					rule.name,
 					{"has_priority": wanted[0], "priority": wanted[1], "max_qty": wanted[2]},
 				)
+	from shop.storefront.pricing import forget_rates
+
+	forget_rates()
 
 
 def describe(rule) -> dict:
@@ -350,3 +353,6 @@ def retire(name: str) -> None:
 		frappe.db.rollback(save_point="retire_rule")
 		frappe.clear_messages()
 		frappe.db.set_value("Pricing Rule", name, "disable", 1)
+		from shop.storefront.pricing import forget_rates
+
+		forget_rates()

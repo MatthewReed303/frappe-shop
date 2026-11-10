@@ -196,6 +196,8 @@ REQUEST_CACHES = (
 	"shop_display_rates",
 	"shop_domestic_taxes",
 	"shop_shopper",
+	"shop_display_currencies",
+	"shop_cart_token",
 )
 
 
@@ -206,3 +208,7 @@ def fresh_request() -> None:
 	for name in REQUEST_CACHES:
 		if hasattr(frappe.local, name):
 			delattr(frappe.local, name)
+	# nor prices kept from earlier tests, which change prices without saving documents
+	from shop.storefront.pricing import forget_rates
+
+	forget_rates()

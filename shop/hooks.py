@@ -34,7 +34,9 @@ doc_events = {
 	# a bank transfer arriving in a company bank account pays the order it names
 	"Bank Transaction": {"on_submit": "shop.storefront.payment.on_bank_transaction"},
 	# statement runs follow the Customer Group
-	"Customer": {"on_update": "shop.storefront.statements.sync_customer"},
+	"Customer": {
+		"on_update": ["shop.storefront.statements.sync_customer", "shop.storefront.pricing.forget_rates"],
+	},
 	"Sales Order": {"before_insert": "shop.storefront.payment.forget_checkout_on_amend"},
 	# prices worked out earlier in the request are worked out again
 	"Item Price": {
@@ -44,6 +46,21 @@ doc_events = {
 	"Pricing Rule": {
 		"on_update": "shop.storefront.pricing.forget_rates",
 		"on_trash": "shop.storefront.pricing.forget_rates",
+	},
+	# and what the prices and their tax are worked out from
+	**{
+		doctype: {
+			"on_update": "shop.storefront.pricing.forget_rates",
+			"on_trash": "shop.storefront.pricing.forget_rates",
+		}
+		for doctype in (
+			"Item",
+			"Item Group",
+			"Item Tax Template",
+			"Price List",
+			"Sales Taxes and Charges Template",
+			"Shop Settings",
+		)
 	},
 }
 
@@ -78,6 +95,7 @@ scheduler_events = {
 	"hourly": [
 		"shop.fulfillment.service.sync_open_shipments",
 		"shop.storefront.payment.remind_unpaid_online_orders",
+		"shop.storefront.cart.remind_left_carts",
 	],
 }
 

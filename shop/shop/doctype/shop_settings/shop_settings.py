@@ -32,6 +32,7 @@ class ShopSettings(Document):
 		bank_transfer_days: DF.Int
 		business_buyer_label: DF.SmallText | None
 		cancel_unpaid_orders: DF.Check
+		cart_reminder_hours: DF.Int
 		card_fee_item: DF.Link | None
 		company: DF.Link | None
 		conversion_fee_item: DF.Link | None

@@ -15,7 +15,9 @@ class ShopCart(Document):
 
 		coupon_code: DF.Link | None
 		items: DF.Table[ShopCartItem]
+		email: DF.Data | None
 		last_active: DF.Datetime | None
+		reminded: DF.Check
 		sales_order: DF.Link | None
 		shipping_quotes: DF.Code | None
 		shipping_rate: DF.Data | None

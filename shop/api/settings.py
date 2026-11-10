@@ -33,6 +33,7 @@ EDITABLE = (
 	"online_payment_days",
 	"order_naming_series",
 	"payment_reminder_hours",
+	"cart_reminder_hours",
 	"return_window_days",
 	"quote_valid_days",
 	"send_shipping_emails",
@@ -73,6 +74,7 @@ AMOUNTS = {
 	"free_shipping_above",
 }
 COUNTS = {
+	"cart_reminder_hours",
 	"low_stock_threshold",
 	"bank_transfer_days",
 	"online_payment_days",

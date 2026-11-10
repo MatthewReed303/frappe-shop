@@ -24,6 +24,51 @@ class TestCart(IntegrationTestCase):
 		self.assertEqual(payload["items"][0]["slug"], "ceramic-mug")
 		self.assertTrue(payload["formatted_total"])
 
+	def test_a_left_cart_is_reminded_of_once_and_its_link_brings_it_back(self):
+		frappe.db.set_single_value("Shop Settings", "cart_reminder_hours", 2)
+		self.addCleanup(frappe.db.set_single_value, "Shop Settings", "cart_reminder_hours", 0)
+		frappe.clear_document_cache("Shop Settings", "Shop Settings")
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+		cart.add_item("SHOP-DEMO-003")
+		token = frappe.db.get_value("Shop Cart", {"status": "Active"}, "token")
+		set_request_cookie(token)
+		frappe.local.request_ip = "203.0.113.10"
+		self.addCleanup(setattr, frappe.local, "request_ip", None)
+		cart.remember_email(" Left.Cart@Example.com ")
+		frappe.set_user("Administrator")
+		# reminders go out from the scheduler, with no request
+		clear_request()
+		name = frappe.db.get_value("Shop Cart", {"token": token})
+		self.assertEqual(frappe.db.get_value("Shop Cart", name, "email"), "left.cart@example.com")
+
+		# changed an hour ago: not yet
+		hour_ago = frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-1)
+		frappe.db.set_value("Shop Cart", name, "last_active", hour_ago, update_modified=False)
+		with patch("frappe.sendmail") as sendmail:
+			cart.remind_left_carts()
+		sendmail.assert_not_called()
+
+		three_hours_ago = frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-3)
+		frappe.db.set_value("Shop Cart", name, "last_active", three_hours_ago, update_modified=False)
+		with patch("frappe.sendmail") as sendmail:
+			cart.remind_left_carts()
+			cart.remind_left_carts()
+		self.assertEqual(sendmail.call_count, 1)
+		mail = sendmail.call_args.kwargs
+		self.assertEqual(mail["recipients"], ["left.cart@example.com"])
+		self.assertIn(f"restore={token}", mail["message"])
+		self.assertIn("Ceramic Mug", mail["message"])
+
+		# a new browser following the link gets the cart
+		clear_request()
+		frappe.local.request = frappe._dict(cookies={})
+		frappe.set_user("Guest")
+		with patch.object(cart, "set_cart_cookie") as set_cookie:
+			cart.restore_cart(token)
+		set_cookie.assert_called_once()
+		self.assertEqual(cart.get_cart()["item_count"], 1)
+
 	def test_remove_via_zero_qty(self):
 		cart.add_item("SHOP-DEMO-003")
 		payload = cart.set_qty("SHOP-DEMO-003", qty=0)
@@ -156,3 +201,5 @@ def set_request_cookie(token):
 def clear_request():
 	if hasattr(frappe.local, "request"):
 		del frappe.local.request
+	if hasattr(frappe.local, "shop_cart_token"):
+		del frappe.local.shop_cart_token

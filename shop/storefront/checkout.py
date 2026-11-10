@@ -218,6 +218,8 @@ def place_order(
 	accept_terms: int = 0,
 	business_buyer: int = 0,
 	expected_total: float | None = None,
+	po_no: str | None = None,
+	order_note: str | None = None,
 ) -> dict:
 	customer, address = plain_text(customer), plain_text(address)
 	payment_method = totals.resolve_method(payment_method)
@@ -238,6 +240,8 @@ def place_order(
 			terms_accepted=frappe.utils.cint(accept_terms),
 			business_buyer=frappe.utils.cint(business_buyer),
 			email=customer["email"].strip().lower(),
+			po_no=po_no,
+			order_note=order_note,
 		)
 		convert_cart(cart, sales_order)
 		count_unpaid_order(payment_method)
@@ -679,6 +683,8 @@ def create_sales_order(
 	terms_accepted: int = 0,
 	business_buyer: int = 0,
 	email: str | None = None,
+	po_no: str | None = None,
+	order_note: str | None = None,
 ):
 	"""Place the order the shopper was quoted, for their customer."""
 	if order_quote is None:
@@ -707,6 +713,9 @@ def create_sales_order(
 			"parent",
 		)
 		sales_order.contact_email = email
+	# the buyer's own reference, which ERPNext carries onto the invoice, and what they asked of the order
+	sales_order.po_no = frappe.utils.strip_html(po_no or "").strip()[:140] or None
+	sales_order.shop_order_note = frappe.utils.strip_html(order_note or "").strip()[:1000] or None
 	set_shop_details(sales_order, order_quote, terms_accepted, business_buyer)
 	totals.keep_prices(sales_order)
 	sales_order.flags.ignore_permissions = True

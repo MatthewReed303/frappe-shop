@@ -782,6 +782,12 @@
 						description="0 sends no reminder."
 					/>
 					<FormControl
+						v-model.number="orders.cart_reminder_hours"
+						type="number"
+						label="Remind left carts after (hours)"
+						description="Emails a shopper who left items in their cart, once. 0 sends none; check your country's marketing email rules first."
+					/>
+					<FormControl
 						v-model.number="orders.return_window_days"
 						type="number"
 						label="Return window (days)"
@@ -1034,6 +1040,7 @@ const orders = reactive({
 	online_payment_days: 2,
 	order_naming_series: '',
 	payment_reminder_hours: 1,
+	cart_reminder_hours: 0,
 	return_window_days: 14,
 	delivery_days: 3,
 	send_shipping_emails: false,
@@ -1323,6 +1330,7 @@ function hydrate(doc: Record<string, any>, only = '') {
 		order_naming_series: doc.order_naming_series || '',
 		round_order_totals: !!doc.round_order_totals,
 		payment_reminder_hours: doc.payment_reminder_hours ?? 1,
+		cart_reminder_hours: doc.cart_reminder_hours ?? 0,
 		return_window_days: doc.return_window_days ?? 14,
 		delivery_days: doc.delivery_days ?? 3,
 		send_shipping_emails: !!doc.send_shipping_emails,

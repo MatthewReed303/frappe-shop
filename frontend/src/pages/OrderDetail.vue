@@ -86,6 +86,12 @@
 							{{ doc.contact_email }}
 						</div>
 						<div v-if="doc.address" class="mt-2 text-p-sm text-ink-gray-6" v-html="doc.address" />
+						<div v-if="doc.po_no" class="mt-2 text-p-sm text-ink-gray-6">
+							Purchase order: <span class="text-ink-gray-8">{{ doc.po_no }}</span>
+						</div>
+						<div v-if="doc.order_note" class="mt-2 whitespace-pre-line text-p-sm text-ink-gray-8">
+							<span class="text-ink-gray-6">Customer's note:</span> {{ doc.order_note }}
+						</div>
 					</div>
 
 					<ReturnsPanel :order="doc.name" />

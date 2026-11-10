@@ -441,6 +441,8 @@ def basic() -> dict:
 
 @frappe.whitelist(allow_guest=True)
 def cart_page() -> dict:
+	if frappe.form_dict.get("restore"):
+		cart.restore_cart(frappe.form_dict.restore)
 	return {"store": store_details(), "cart": cart.get_cart()}
 
 

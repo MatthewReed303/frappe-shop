@@ -66,7 +66,7 @@ def warehouse_stock(item_codes: list[str], sellable: bool = False) -> dict[str, 
 	names = warehouses()
 	if not item_codes or not names:
 		return {code: {} for code in item_codes}
-	parts = {code: bundle_parts(code) for code in item_codes}
+	parts = bundles_parts(item_codes)
 	codes = list(dict.fromkeys([*item_codes, *(part for rows in parts.values() for part, _qty in rows)]))
 	bins = frappe.get_all(
 		"Bin",
@@ -150,6 +150,27 @@ def allocate(lines: list[tuple[str, float]]) -> list[frappe._dict]:
 		if qty > 0:
 			allocated.append(frappe._dict(item_code=code, qty=qty, warehouse=first))
 	return allocated
+
+
+def bundles_parts(item_codes: list[str]) -> dict[str, list[tuple[str, float]]]:
+	"""bundle_parts for many items, in two queries."""
+	bundles = dict(
+		frappe.get_all(
+			"Product Bundle",
+			filters={"new_item_code": ["in", item_codes], "disabled": 0},
+			fields=["name", "new_item_code"],
+			as_list=True,
+		)
+	)
+	parts = {code: [] for code in item_codes}
+	for row in frappe.get_all(
+		"Product Bundle Item",
+		filters={"parent": ["in", list(bundles) or [""]]},
+		fields=["parent", "item_code", "qty"],
+		order_by="idx",
+	):
+		parts[bundles[row.parent]].append((row.item_code, flt(row.qty) or 1))
+	return parts
 
 
 def bundle_parts(item_code: str) -> list[tuple[str, float]]:

@@ -61,6 +61,7 @@
   "cancel_unpaid_orders",
   "online_payment_days",
   "payment_reminder_hours",
+  "cart_reminder_hours",
   "return_window_days",
   "terms_section",
   "require_terms",
@@ -517,6 +518,14 @@
    "fieldtype": "Int",
    "label": "Remind Unpaid Online Orders After (Hours)",
    "non_negative": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "cart_reminder_hours",
+   "fieldtype": "Int",
+   "label": "Remind Left Carts After (Hours)",
+   "non_negative": 1,
+   "description": "Email a shopper who left items in their cart this many hours later, once. 0 sends no reminder; check your country's rules on marketing email first."
   },
   {
    "default": "14",

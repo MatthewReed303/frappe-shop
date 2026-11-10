@@ -127,7 +127,15 @@ def custom_fields() -> dict:
 				"read_only": 1,
 				"insert_after": "shop_payment_due",
 			},
-			{"fieldname": "shop_column", "fieldtype": "Column Break", "insert_after": "shop_shipping_option"},
+			{
+				"fieldname": "shop_order_note",
+				"no_copy": 1,
+				"fieldtype": "Small Text",
+				"label": "Customer's Note",
+				"read_only": 1,
+				"insert_after": "shop_shipping_option",
+			},
+			{"fieldname": "shop_column", "fieldtype": "Column Break", "insert_after": "shop_order_note"},
 			{
 				"fieldname": "shop_terms_version",
 				"no_copy": 1,

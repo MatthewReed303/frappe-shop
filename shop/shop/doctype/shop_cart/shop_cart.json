@@ -10,6 +10,8 @@
   "column_break_main",
   "status",
   "last_active",
+  "email",
+  "reminded",
   "items_section",
   "items",
   "conversion_section",
@@ -51,6 +53,21 @@
    "fieldname": "last_active",
    "fieldtype": "Datetime",
    "label": "Last Active",
+   "read_only": 1
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email",
+   "read_only": 1,
+   "description": "Typed at checkout, for a reminder about a cart left behind."
+  },
+  {
+   "default": "0",
+   "fieldname": "reminded",
+   "fieldtype": "Check",
+   "label": "Reminded",
    "read_only": 1
   },
   {
@@ -98,7 +115,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-07 10:33:49.085496",
+ "modified": "2026-11-10 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shop",
  "name": "Shop Cart",

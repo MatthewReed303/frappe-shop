@@ -33,6 +33,19 @@ class TestCheckout(IntegrationTestCase):
 		customer = frappe.db.get_value("Customer", sales_order.customer, "customer_name")
 		self.assertEqual(customer, "Jane Doe")
 
+	def test_the_buyers_po_number_and_note_go_on_the_order(self):
+		cart.add_item("SHOP-DEMO-003")
+		result = checkout.place_order(
+			customer=BUYER,
+			address=ADDRESS,
+			payment_method="cod",
+			po_no=" PO-7781 ",
+			order_note="Leave at the <b>back</b> door",
+		)
+		order = frappe.get_doc("Sales Order", result["sales_order"])
+		self.assertEqual(order.po_no, "PO-7781")
+		self.assertEqual(order.shop_order_note, "Leave at the back door")
+
 	def test_tax_template_is_applied_to_the_order(self):
 		settings = frappe.get_doc("Shop Settings")
 		template = frappe.db.get_value("Sales Taxes and Charges Template", {"company": settings.company})

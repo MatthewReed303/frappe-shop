@@ -253,6 +253,15 @@ TEMPLATES = {
 			"{% if reason %}<p>{{ reason | e }}</p>{% endif %}<p>You can still buy at retail prices in the store.</p>"
 		),
 	),
+	"cart_reminder": (
+		"Shop: Cart Reminder",
+		"Shop Cart",
+		_lt("Your cart at {{ store_name }} is waiting"),
+		_lt(
+			"<p>You left these in your cart at {{ store_name }}. We've kept them for you.</p>{{ lines_html }}"
+			'<p><a href="{{ cart_url }}">Return to your cart</a></p>'
+		),
+	),
 }
 
 

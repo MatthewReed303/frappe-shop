@@ -615,6 +615,8 @@
 				...checkoutChoice(form),
 				accept_terms: terms && terms.checked ? 1 : 0,
 				business_buyer: data.get("business_buyer") ? 1 : 0,
+				po_no: data.get("po_no") || undefined,
+				order_note: data.get("order_note") || undefined,
 				expected_total: quote.total,
 			});
 			window.location.href = result.payment_url || result.confirmation_url;
@@ -1532,6 +1534,19 @@
 		});
 	}
 
+	// the email typed at checkout is kept with the cart, for a reminder if it's left (Shop Settings)
+	function initCartEmail() {
+		const input = document.querySelector('[data-shop="checkout-form"] input[name="email"]');
+		if (!input) return;
+		let sent = "";
+		input.addEventListener("change", () => {
+			const email = input.value.trim();
+			if (email === sent || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+			sent = email;
+			call("shop.storefront.cart.remember_email", { email }).catch(() => {});
+		});
+	}
+
 	function init() {
 		initCurrencyPicker();
 		initBuyingFor();
@@ -1547,6 +1562,7 @@
 		initCatalogMenu();
 		initSelectLists();
 		initAddressLookup();
+		initCartEmail();
 		document
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));
