@@ -5,6 +5,27 @@ see exactly what the storefront did. This page lists the store settings (Shop Se
 in the admin at `/shop/settings`) and the ERPNext records behind them. New behaviour is off
 until it is turned on.
 
+## The catalogue
+
+- Products are grouped in Shop Collections, which can sit inside each other and include an
+  ERPNext Item Group's products. The store's catalogue menu (its label is **Catalogue Menu
+  Label**) lists them, and a collection's page lists its products and those of the
+  collections inside it.
+- Listing pages filter by availability, price, Brand (the Item's), any Shop Specification set
+  *Use as Filter*, and variant options; sort; and show 24, 48 or 96 a page, as a grid or a list.
+  A product's specifications show as a table on its page.
+- Search matches every word somewhere in a product (its name, item code, descriptions, brand,
+  specifications or its variants' names). When nothing matches, words the store's products
+  don't use are swapped for the nearest ones they do, and the page says so. Search boxes
+  suggest products as the shopper types.
+- Search engines: product pages carry their own title, description, image and schema.org
+  Product data (price, stock, brand, rating); cart, checkout and account pages are marked
+  noindex. `/store_sitemap.xml` lists the products and collections the site's sitemap leaves
+  out, and robots.txt points to it.
+- Options can be added to a product that is already selling: its Item becomes a variant of a
+  new template, keeping its stock and sales (this needs ERPNext's support for stocked items
+  becoming variants).
+
 ## Prices and tax
 
 - Prices come from the store's Price List. A signed-in customer gets their own: the Price
@@ -52,6 +73,10 @@ until it is turned on.
   invoiced straight away, to their billing address. Their credit limit applies to orders on
   account (approving a trade account sets ERPNext's *Bypass Credit Limit Check at Sales
   Order*, so orders paid up front aren't held).
+- Checkout takes the buyer's purchase order number (into ERPNext's *Customer's Purchase
+  Order*, which goes onto the invoice) and a note for the order, which staff see on the order.
+- A customer can have two orders waiting for a bank transfer, and one visitor can place five
+  a day, so stock can't be held without paying.
 - **Order Naming Series**: a short Sales Order series for store orders (e.g. `SO-.#####`),
   so the order number fits a bank transfer reference. Deposits are matched to an order
   whatever spaces, dashes or case the payer used.
@@ -71,6 +96,10 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   courier has it.
 - **Unpaid online orders**: the customer can pay later from their order page, and is
   reminded once by email (**Remind Unpaid Online Orders After**, in hours; 0 for none).
+- **Remind Left Carts After** (hours; 0 for none): a cart left with items is emailed about
+  once, with a link that brings it back. Check your country's rules on marketing email first.
+- **Back in stock**: on an out-of-stock product or variant the shopper can leave their email,
+  and is emailed once when it can be bought again (Shop Stock Alert).
 - **Returns**: customers ask from their order page once it has shipped, within the **Return
   Window** (days; 0 turns it off). Approving emails them; completing makes ERPNext's return
   Delivery Note and credit note for the quantity returned.
@@ -83,7 +112,8 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   Either way it is an ERPNext Payment Entry against the credit note, and the customer is
   emailed.
 - **Shipping** is booked by staff: a paid order sent to a fulfilment provider gets a draft
-  Shipment, which staff book and print the label from.
+  Shipment, which staff book with a courier and print the label from, on the admin order
+  page.
 - Store emails are Frappe Email Templates named *Shop: ...*, made once and never
   overwritten, so they can be edited in the desk.
 
@@ -97,14 +127,18 @@ Transfer Fee Item), so they show on the order and invoice like any other line.
   Lead: approving makes the Customer (or updates the applicant's own) in the **Trade
   Customer Group**, with Payment Terms, credit limit and pay on account as chosen.
   Waiting applications show on the Shop dashboard. In the Shop admin, a customer's page can
-  make them a trade customer (or end it), and Settings lists the **Trade discounts**: percent
-  off an Item Group for the trade group, each an ERPNext Pricing Rule. Finer pricing (by item,
-  quantity or customer) is set up in ERPNext.
+  make them a trade customer (or end it). **Trade accounts** in the admin lists the accounts,
+  the applications and the trade rates: percent off or a fixed price for an Item Group or a
+  product, with quantity breaks, for everyone, for trade accounts or for one customer (whose
+  own rates replace the trade ones). Each rate is an ERPNext Pricing Rule.
 - **Quote Requests**: shoppers can ask for a quote at checkout. It arrives as a draft
   Quotation, valid for **Quotes Valid For** days; staff submit it and send it from the
   Quotation, and the customer accepts it online, which places the order.
 - **Email Monthly Statements**: the trade Customer Group gets an ERPNext Process Statement
   Of Accounts each month. Customers can also download their statement from their account.
+- The account page lists the customer's invoices, says what is owing and what is overdue, and
+  has a Pay button beside each unpaid invoice an app gives a payment link (the payments app's
+  invoice payment links); the statement email links to paying too.
 
 ## Currencies
 

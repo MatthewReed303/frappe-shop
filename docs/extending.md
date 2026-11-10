@@ -63,3 +63,31 @@ store links right when the store's route prefix changes:
 ```python
 shop_theme_components = ["acme-navbar", "acme-hero", "acme-product-card"]
 ```
+
+A site app that generates its own theme into the site (rather than shipping it in its
+`builder_templates`) registers it, so it can be chosen in the admin's storefront themes:
+
+```python
+shop_themes = [{"group": "acme", "title": "Acme", "description": "...", "order": -1}]
+```
+
+## Address lookup
+
+An app that looks addresses up (such as ERPNext Shipping's Address Lookup Settings) registers a
+module, and the storefront's address forms suggest addresses from it:
+
+```python
+shop_address_lookup = ["my_app.address_lookup"]
+```
+
+The module has `suggestions(text, country, session)`, returning
+`{"enabled", "suggestions": [{"id", "label", "detail", "address"?}], "attribution"}`,
+`details(id, session)` for a suggestion without its address, and `status()`. Shop calls them
+through its own guest endpoints, which limit each visitor.
+
+## Payment links
+
+Where an app gives a Sales Invoice or a Customer a `payment_link` property (the payments app
+does, for invoice payment links), the account page shows a Pay button beside each unpaid
+invoice, an order paid on account links to paying its invoice, and the statement email links
+to paying what is owing.
