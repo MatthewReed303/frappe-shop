@@ -1,169 +1,40 @@
-from unittest.mock import MagicMock, patch
-
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from shop.api import settings as settings_api
 from shop.storefront import address_lookup
 
-PHOTON = {
-	"features": [
-		{
-			"properties": {
-				"type": "house",
-				"housenumber": "12",
-				"street": "Queen Street",
-				"district": "Ōtāhuhu",
-				"city": "Auckland",
-				"state": "Auckland",
-				"postcode": "1062",
-				"countrycode": "NZ",
-			}
-		},
-		{
-			"properties": {
-				"type": "house",
-				"housenumber": "12",
-				"street": "Queen Street",
-				"city": "Auckland",
-				"countrycode": "AU",
-			}
-		},
-		{"properties": {"type": "city", "name": "Auckland", "countrycode": "NZ"}},
-	]
-}
-GOOGLE_SUGGESTIONS = {
-	"suggestions": [
-		{
-			"placePrediction": {
-				"placeId": "place-1",
-				"text": {"text": "3/45 Rata Road, Hataitai, Wellington"},
-				"structuredFormat": {
-					"mainText": {"text": "3/45 Rata Road"},
-					"secondaryText": {"text": "Hataitai, Wellington"},
-				},
-			}
-		}
-	]
-}
-GOOGLE_PLACE = {
-	"addressComponents": [
-		{"longText": "3", "types": ["subpremise"]},
-		{"longText": "45", "types": ["street_number"]},
-		{"longText": "Rata Road", "types": ["route"]},
-		{"longText": "Hataitai", "types": ["sublocality_level_1", "sublocality"]},
-		{"longText": "Wellington", "types": ["locality"]},
-		{"longText": "Wellington", "types": ["administrative_area_level_1"]},
-		{"longText": "6021", "types": ["postal_code"]},
-		{"longText": "New Zealand", "shortText": "NZ", "types": ["country"]},
-	]
-}
+# this module stands in for the app that looks addresses up
+asked = []
 
 
-def answer(body):
-	response = MagicMock()
-	response.json.return_value = body
-	return response
+def suggestions(text, country, session):
+	asked.append((text, country, session))
+	return {"enabled": True, "suggestions": [{"id": "1", "label": "12 Queen Street", "detail": "Auckland"}]}
+
+
+def details(id, session):
+	return {"address_line1": "12 Queen Street", "city": "Auckland", "country": "New Zealand"}
+
+
+def status():
+	return {"enabled": True, "service": "Photon", "settings_url": "/app/address-lookup-settings"}
 
 
 class TestAddressLookup(IntegrationTestCase):
-	def setUp(self):
-		frappe.set_user("Administrator")
-		settings = frappe.get_doc("Shop Settings")
-		self.addCleanup(self.restore, settings.address_lookup, settings.address_lookup_server)
-		frappe.cache.delete_keys("shop_address_lookup:")
+	def test_off_without_an_app_that_looks_addresses_up(self):
+		with self.patch_hooks({"shop_address_lookup": []}):
+			self.assertEqual(address_lookup.suggest("12 Queen Street"), {"enabled": False, "suggestions": []})
+			self.assertEqual(address_lookup.status(), {"installed": False, "enabled": False})
 
-	def restore(self, service, server):
-		frappe.db.set_single_value(
-			"Shop Settings", {"address_lookup": service, "address_lookup_server": server}
-		)
-		frappe.clear_document_cache("Shop Settings", "Shop Settings")
+	def test_the_storefront_asks_the_app_registered_for_it(self):
+		asked.clear()
+		with self.patch_hooks({"shop_address_lookup": [__name__]}):
+			result = address_lookup.suggest("12 Queen", country="New Zealand", session="s1")
+			found = address_lookup.address("1", session="s1")
+			state = address_lookup.status()
 
-	def use(self, service, **values):
-		settings = frappe.get_doc("Shop Settings")
-		settings.address_lookup = service
-		settings.update(values)
-		settings.save()
-
-	def test_off_until_a_service_is_chosen(self):
-		self.use("")
-		self.assertEqual(address_lookup.suggest("12 Queen Street"), {"enabled": False, "suggestions": []})
-
-	@patch("shop.storefront.address_lookup.requests.get")
-	def test_photon_suggests_addresses_in_the_form_country(self, get):
-		self.use("Photon", address_lookup_server="https://photon.example.com/")
-		get.return_value = answer(PHOTON)
-
-		result = address_lookup.suggest("12 Queen", country="New Zealand", session="s1")
-
-		self.assertTrue(result["enabled"])
-		self.assertEqual(result["attribution"], "Addresses © OpenStreetMap contributors")
-		self.assertEqual(len(result["suggestions"]), 1)
-		suggestion = result["suggestions"][0]
-		self.assertEqual(suggestion["label"], "12 Queen Street")
-		self.assertEqual(suggestion["detail"], "Ōtāhuhu, Auckland, 1062, New Zealand")
-		self.assertEqual(
-			suggestion["address"],
-			{
-				"address_line1": "12 Queen Street",
-				"address_line2": "Ōtāhuhu",
-				"city": "Auckland",
-				"state": "Auckland",
-				"pincode": "1062",
-				"country": "New Zealand",
-			},
-		)
-		url, params = get.call_args.args[0], get.call_args.kwargs["params"]
-		self.assertEqual(url, "https://photon.example.com/api/")
-		self.assertIn(("countrycode", "NZ"), params)
-
-		# the same text again is answered from the cache
-		address_lookup.suggest("12 queen", country="New Zealand")
-		self.assertEqual(get.call_count, 1)
-
-	@patch("shop.storefront.address_lookup.requests.get")
-	def test_short_text_asks_nothing(self, get):
-		self.use("Photon")
-		self.assertEqual(address_lookup.suggest("12")["suggestions"], [])
-		get.assert_not_called()
-
-	@patch("shop.storefront.address_lookup.requests.get")
-	@patch("shop.storefront.address_lookup.requests.post")
-	def test_google_places_suggests_then_gives_the_address(self, post, get):
-		self.use("Google Places", address_lookup_api_key="test-key")
-		post.return_value = answer(GOOGLE_SUGGESTIONS)
-		get.return_value = answer(GOOGLE_PLACE)
-
-		result = address_lookup.suggest("45 Rata", country="New Zealand", session="s2")
-
-		self.assertEqual(result["attribution"], "Powered by Google")
-		self.assertEqual(
-			result["suggestions"],
-			[{"id": "place-1", "label": "3/45 Rata Road", "detail": "Hataitai, Wellington"}],
-		)
-		body, headers = post.call_args.kwargs["json"], post.call_args.kwargs["headers"]
-		self.assertEqual(body["includedRegionCodes"], ["nz"])
-		self.assertEqual(body["sessionToken"], "s2")
-		self.assertEqual(headers["X-Goog-Api-Key"], "test-key")
-
-		found = address_lookup.address("place-1", session="s2")
-
-		self.assertEqual(
-			found,
-			{
-				"address_line1": "3/45 Rata Road",
-				"address_line2": "Hataitai",
-				"city": "Wellington",
-				"state": "Wellington",
-				"pincode": "6021",
-				"country": "New Zealand",
-			},
-		)
-		self.assertEqual(get.call_args.kwargs["params"], {"sessionToken": "s2"})
-		self.assertEqual(get.call_args.kwargs["headers"]["X-Goog-FieldMask"], "addressComponents")
-
-	def test_the_api_key_is_never_sent_back(self):
-		self.use("Google Places", address_lookup_api_key="secret-key")
-		payload = settings_api.get_settings()
-		self.assertNotIn("secret-key", frappe.as_json(payload))
-		self.assertTrue(payload["address_lookup_key_set"])
+		self.assertEqual(asked, [("12 Queen", "New Zealand", "s1")])
+		self.assertEqual(result["suggestions"][0]["label"], "12 Queen Street")
+		self.assertEqual(found["city"], "Auckland")
+		self.assertEqual(state["service"], "Photon")
+		self.assertTrue(state["installed"])

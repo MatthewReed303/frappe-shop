@@ -3,6 +3,7 @@ from frappe import _
 from frappe.utils import cint, flt
 
 from shop.api import only_managers
+from shop.storefront import address_lookup
 
 EDITABLE = (
 	"store_name",
@@ -48,8 +49,6 @@ EDITABLE = (
 	"route_prefix",
 	"customers_land_in_store",
 	"menu_label",
-	"address_lookup",
-	"address_lookup_server",
 	"business_buyer_label",
 	"terms_checkbox_note",
 )
@@ -317,7 +316,7 @@ def get_settings() -> dict:
 				if series
 			],
 			"site_pages": site_pages(),
-			"address_lookup_key_set": bool(settings.get("address_lookup_api_key")),
+			"address_lookup": address_lookup.status(),
 			"warehouses": [
 				{"value": row.name, "label": row.warehouse_name or row.name}
 				for row in frappe.get_all(
@@ -447,8 +446,6 @@ def save_settings(payload: dict) -> dict:
 		elif field in COUNTS:
 			value = cint(value)
 		settings.set(field, value)
-	if payload.get("address_lookup_api_key"):
-		settings.address_lookup_api_key = payload["address_lookup_api_key"]
 	if "fulfillment_locations" in payload:
 		settings.set(
 			"fulfillment_locations",

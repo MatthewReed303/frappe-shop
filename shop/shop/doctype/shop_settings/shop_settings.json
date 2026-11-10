@@ -76,10 +76,6 @@
   "allow_quote_requests",
   "quote_valid_days",
   "staff_notification_emails",
-  "address_lookup_section",
-  "address_lookup",
-  "address_lookup_server",
-  "address_lookup_api_key",
   "theme_pages_section",
   "theme_pages"
  ],
@@ -264,31 +260,6 @@
    "fieldtype": "Link",
    "label": "Tax Template",
    "options": "Sales Taxes and Charges Template"
-  },
-  {
-   "fieldname": "address_lookup_section",
-   "fieldtype": "Section Break",
-   "label": "Address Lookup"
-  },
-  {
-   "fieldname": "address_lookup",
-   "fieldtype": "Select",
-   "label": "Address Lookup",
-   "options": "\nPhoton\nGoogle Places",
-   "description": "Suggests addresses as customers and staff type one."
-  },
-  {
-   "fieldname": "address_lookup_server",
-   "fieldtype": "Data",
-   "label": "Photon Server",
-   "depends_on": "eval:doc.address_lookup=='Photon'",
-   "description": "Leave empty for komoot's public server (https://photon.komoot.io), or enter your own."
-  },
-  {
-   "fieldname": "address_lookup_api_key",
-   "fieldtype": "Password",
-   "label": "Google Places API Key",
-   "depends_on": "eval:doc.address_lookup=='Google Places'"
   },
   {
    "collapsible": 1,

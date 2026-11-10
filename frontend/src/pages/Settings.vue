@@ -950,46 +950,30 @@
 
 			<CatalogSection
 				title="Address lookup"
-				description="Suggests addresses as customers type one at checkout, in their account and on trade applications, and as staff type one in Desk."
+				description="Suggests addresses as customers type one at checkout, in their account and on trade applications."
 			>
-				<FormControl
-					v-model="lookup.address_lookup"
-					type="select"
-					label="Service"
-					:options="[
-						{ label: 'Off', value: '' },
-						{ label: 'Photon (OpenStreetMap, free)', value: 'Photon' },
-						{ label: 'Google Places', value: 'Google Places' },
-					]"
-					class="max-w-sm"
-				/>
-				<p v-if="lookup.address_lookup === 'Photon'" class="max-w-2xl text-p-sm text-ink-gray-6">
-					Free worldwide addresses from OpenStreetMap. komoot's public server asks for fair use and makes no
-					promise it stays up; a busy store can run its own Photon server and enter it below.
+				<template v-if="data.address_lookup?.installed" #header-action>
+					<Button @click="openLookupSettings">
+						<template #prefix><LucideExternalLink class="size-3.5" /></template>
+						Set up in Desk
+					</Button>
+				</template>
+				<p class="max-w-2xl text-p-sm text-ink-gray-6">
+					<template v-if="!data.address_lookup?.installed">
+						No app on this site looks addresses up. ERPNext Shipping does, with Photon (OpenStreetMap, free) or
+						Google Places.
+					</template>
+					<template v-else-if="data.address_lookup.enabled">
+						{{ data.address_lookup.service }} suggests addresses here and in Desk's Address forms. The service is
+						chosen in Address Lookup Settings.
+					</template>
+					<template v-else>
+						Off. Choose Photon (OpenStreetMap, free) or Google Places in Address Lookup Settings, and addresses are
+						suggested here and in Desk's Address forms.
+					</template>
 				</p>
-				<FormControl
-					v-if="lookup.address_lookup === 'Photon'"
-					v-model="lookup.address_lookup_server"
-					label="Photon server"
-					placeholder="https://photon.komoot.io"
-					description="Empty uses komoot's public server."
-					class="max-w-sm"
-				/>
-				<p v-if="lookup.address_lookup === 'Google Places'" class="max-w-2xl text-p-sm text-ink-gray-6">
-					Google's addresses, the most complete. Google gives 10,000 lookups a month free, then charges per
-					lookup; the key needs Places API (New) and a billing account in Google Cloud.
-				</p>
-				<FormControl
-					v-if="lookup.address_lookup === 'Google Places'"
-					v-model="lookup.address_lookup_api_key"
-					type="password"
-					label="API key"
-					:placeholder="data.address_lookup_key_set ? 'Saved. Enter a new key to replace it.' : 'Paste the key from Google Cloud'"
-					description="Kept on the server; shoppers never see it."
-					class="max-w-sm"
-				/>
 				<UiPicker
-					v-if="lookup.address_lookup && savedLookup === lookup.address_lookup"
+					v-if="data.address_lookup?.enabled"
 					v-model="lookupTry"
 					label="Try it"
 					description="Type the start of an address to see what customers will be offered."
@@ -997,9 +981,6 @@
 					placeholder="e.g. 12 Queen Street"
 					class="max-w-sm"
 				/>
-				<template #footer>
-					<Button variant="solid" :loading="saving === 'lookup'" @click="saveLookup">Save</Button>
-				</template>
 			</CatalogSection>
 		</div>
 	</div>
@@ -1072,8 +1053,6 @@ const accounts = reactive({
 	staff_notification_emails: '',
 })
 const storefront = reactive({ route_prefix: '', menu_label: '', customers_land_in_store: true })
-const lookup = reactive({ address_lookup: '', address_lookup_server: '', address_lookup_api_key: '' })
-const savedLookup = ref('')
 const lookupTry = ref('')
 type Option = { label: string; value: string }
 
@@ -1384,14 +1363,6 @@ function hydrate(doc: Record<string, any>, only = '') {
 		show_prices_with_tax: !!doc.show_prices_with_tax,
 		other_currencies_with_tax: !!doc.other_currencies_with_tax,
 	})
-	if (fill('lookup')) {
-		Object.assign(lookup, {
-			address_lookup: doc.address_lookup || '',
-			address_lookup_server: doc.address_lookup_server || '',
-			address_lookup_api_key: '',
-		})
-		savedLookup.value = doc.address_lookup || ''
-	}
 	if (fill('storefront'))
 		Object.assign(storefront, {
 			route_prefix: doc.route_prefix || '',
@@ -1559,10 +1530,8 @@ async function saveSection(section: string, payload: Record<string, any>) {
 	}
 }
 
-function saveLookup() {
-	const payload: Record<string, string> = { ...lookup }
-	if (!payload.address_lookup_api_key) delete payload.address_lookup_api_key
-	return saveSection('lookup', payload)
+function openLookupSettings() {
+	window.open(data.value.address_lookup.settings_url, '_blank')
 }
 
 async function tryLookup(text: string) {

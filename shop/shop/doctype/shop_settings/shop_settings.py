@@ -23,9 +23,6 @@ class ShopSettings(Document):
 		from shop.shop.doctype.shop_theme_page.shop_theme_page import ShopThemePage
 
 		active_theme: DF.Data | None
-		address_lookup: DF.Literal["", "Photon", "Google Places"]
-		address_lookup_api_key: DF.Password | None
-		address_lookup_server: DF.Data | None
 		allow_out_of_stock: DF.Check
 		allow_quote_requests: DF.Check
 		allow_trade_applications: DF.Check
