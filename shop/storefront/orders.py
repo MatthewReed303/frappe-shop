@@ -138,7 +138,10 @@ def order_summary(order, token: str | None = None) -> dict:
 		"shipment": shipment,
 		# paid, or to be paid on account or on delivery, and not sent yet
 		"awaiting_shipment": "true"
-		if not shipment and not cancelled and order.docstatus == 1 and (paid or method in (totals.ACCOUNT, totals.COD, None))
+		if not shipment
+		and not cancelled
+		and order.docstatus == 1
+		and (paid or method in (totals.ACCOUNT, totals.COD, None))
 		else None,
 		"transaction_date": str(order.transaction_date),
 		"currency": order.currency,
@@ -150,10 +153,15 @@ def order_summary(order, token: str | None = None) -> dict:
 		"grand_total": totals.order_total(order),
 		"formatted_grand_total": fmt(totals.order_total(order)),
 		"charges": [
-			{"label": row.description or row.item_name, "formatted_amount": fmt(row.amount)} for row in charges
+			{"label": row.description or row.item_name, "formatted_amount": fmt(row.amount)}
+			for row in charges
 		],
 		"taxes": [
-			{"description": tax.description, "amount": tax.tax_amount, "formatted_amount": fmt(tax.tax_amount)}
+			{
+				"description": tax.description,
+				"amount": tax.tax_amount,
+				"formatted_amount": fmt(tax.tax_amount),
+			}
 			for tax in order.taxes
 			if not tax.included_in_print_rate and tax.tax_amount
 		],
@@ -234,15 +242,28 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 			if invoice
 			else ""
 		)
-		return f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p>{button}</div>'
+		return (
+			f'<div class="order-payment paid"><p>{esc(_("Payment received. Thank you."))}</p>{button}</div>'
+		)
 	if method == totals.ACCOUNT:
 		invoice = payment.order_invoice(order.name)
 		if not invoice:
 			return ""
-		due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
+		due, owing = frappe.db.get_value("Sales Invoice", invoice, ["due_date", "outstanding_amount"])
+		note = (
+			_("On account: invoice {0}, due {1}.").format(invoice, frappe.utils.formatdate(due))
+			if frappe.utils.flt(owing) > 0
+			else _("Invoice {0} is paid. Thank you.").format(invoice)
+		)
+		link = payment.invoice_pay_url(invoice)
+		pay = (
+			f'<a class="order-pay-button" href="{esc(link)}">{esc(_("Pay invoice online"))}</a> '
+			if link
+			else ""
+		)
 		return (
-			f'<div class="order-payment account"><p>{esc(_("On account: invoice {0}, due {1}.").format(invoice, frappe.utils.formatdate(due)))}</p>'
-			f'<a class="order-pay-button" href="{esc(invoice_url(invoice, order.name, token))}">{esc(_("Download invoice"))}</a></div>'
+			f'<div class="order-payment account"><p>{esc(note)}</p>{pay}'
+			f'<a class="order-pay-button secondary" href="{esc(invoice_url(invoice, order.name, token))}">{esc(_("Download invoice"))}</a></div>'
 		)
 	if method in totals.BANK_METHODS:
 		info = payment.bank_instructions(order)
@@ -252,10 +273,10 @@ def payment_html(order, paid: bool, method: str | None, token: str | None) -> st
 		due = f"<p>{esc(info['due_note'])}</p>" if info["due_note"] else ""
 		return (
 			f'<div class="order-payment bank"><h3>{esc(_("Pay by bank transfer"))}</h3>'
-			f'<p>{esc(_("Amount"))}: <b>{esc(info["amount"])} {esc(info["currency"])}</b><br>'
-			f'{esc(_("Reference"))}: <b>{esc(info["reference"])}</b></p>'
+			f"<p>{esc(_('Amount'))}: <b>{esc(info['amount'])} {esc(info['currency'])}</b><br>"
+			f"{esc(_('Reference'))}: <b>{esc(info['reference'])}</b></p>"
 			f'<div class="bank-details">{details}</div>{due}'
-			f'<p>{esc(_("We send your order as soon as the payment arrives."))}</p></div>'
+			f"<p>{esc(_('We send your order as soon as the payment arrives.'))}</p></div>"
 		)
 	url = pay_url(order) if method == totals.GATEWAY else None
 	if url:
@@ -294,7 +315,12 @@ def pay_url(order) -> str | None:
 	whoever may see the order."""
 	return frappe.db.get_value(
 		"Payment Request",
-		{"reference_doctype": "Sales Order", "reference_name": order.name, "docstatus": 1, "status": ["!=", "Paid"]},
+		{
+			"reference_doctype": "Sales Order",
+			"reference_name": order.name,
+			"docstatus": 1,
+			"status": ["!=", "Paid"],
+		},
 		"payment_url",
 		order_by="creation desc",
 	)
@@ -309,7 +335,11 @@ def is_cancelled(order) -> bool:
 		and bool(
 			frappe.db.exists(
 				"Comment",
-				{"reference_doctype": "Sales Order", "reference_name": order.name, "content": ["like", f"{CANCELLED_BY_STORE}%"]},
+				{
+					"reference_doctype": "Sales Order",
+					"reference_name": order.name,
+					"content": ["like", f"{CANCELLED_BY_STORE}%"],
+				},
 			)
 		)
 	)
@@ -467,7 +497,9 @@ def session_customers(user: str | None = None) -> list[str]:
 	if user in ("Guest", None):
 		return []
 	# customers the user is a Portal User of come first: they were given the account explicitly
-	customers = frappe.get_all("Portal User", filters={"parenttype": "Customer", "user": user}, pluck="parent")
+	customers = frappe.get_all(
+		"Portal User", filters={"parenttype": "Customer", "user": user}, pluck="parent"
+	)
 	contacts = frappe.get_all("Contact Email", filters={"email_id": user}, pluck="parent")
 	if contacts:
 		customers += frappe.get_all(

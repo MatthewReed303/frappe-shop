@@ -419,6 +419,9 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 		if invoice:
 			due = frappe.db.get_value("Sales Invoice", invoice, "due_date")
 			pay = f"<p>{esc(_('Invoice {0} is attached, due {1}.').format(invoice, frappe.utils.formatdate(due)))}</p>"
+			link = payment.invoice_pay_url(invoice)
+			if link:
+				pay += f"<p><a href='{esc(link)}'>{esc(_('Pay invoice {0} online').format(invoice))}</a></p>"
 	elif payment.is_paid(sales_order) and payment.order_invoice(sales_order.name):
 		pay = f"<p>{esc(_('Paid. Your invoice {0} is attached.').format(payment.order_invoice(sales_order.name)))}</p>"
 	if sales_order.get("shop_payment_method") == totals.GATEWAY and not payment.is_paid(sales_order):

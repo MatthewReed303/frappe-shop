@@ -49,6 +49,35 @@ def collection_page() -> dict:
 	}
 
 
+def owing_summary(rows) -> str:
+	"""What the customer owes across their invoices (in each currency), the next due date and how
+	many are overdue."""
+	esc = frappe.utils.escape_html
+	unpaid = [row for row in rows if flt(row.outstanding_amount) > 0]
+	if not unpaid:
+		return f"<p class='account-owing'>{esc(_('Nothing owing. Thank you.'))}</p>"
+	by_currency: dict[str, float] = {}
+	for row in unpaid:
+		by_currency[row.currency] = by_currency.get(row.currency, 0) + flt(row.outstanding_amount)
+	owed = ", ".join(
+		frappe.utils.fmt_money(amount, currency=currency) for currency, amount in by_currency.items()
+	)
+	text = (
+		_("You owe {0} on {1} invoices.").format(owed, len(unpaid))
+		if len(unpaid) != 1
+		else _("You owe {0} on 1 invoice.").format(owed)
+	)
+	overdue = sum(1 for row in unpaid if row.overdue)
+	upcoming = [row.due_date for row in unpaid if row.due_date and not row.overdue]
+	if overdue:
+		note = f" <strong class='account-overdue'>{esc(_('{0} overdue.').format(overdue))}</strong>"
+	elif upcoming:
+		note = " " + esc(_("Next due {0}.").format(frappe.utils.formatdate(min(upcoming))))
+	else:
+		note = ""
+	return f"<p class='account-owing'>{esc(text)}{note}</p>"
+
+
 def search_label(search: str | None, searched_as: str | None) -> str | None:
 	if not search:
 		return None
@@ -511,23 +540,24 @@ def account_html(customers: list[str]) -> str:
 			f"<span>{esc(_('Your invoices and payments for the last 12 months.'))}</span></div>"
 		)
 	if rows:
-		html += f"<h2>{esc(_('Invoices'))}</h2><div class='account-table'>"
+		html += f"<h2>{esc(_('Invoices'))}</h2>" + owing_summary(rows) + "<div class='account-table'>"
 		for row in rows:
-			owing = (
-				f"{esc(_('Owing'))} {esc(row.formatted_outstanding)}, {esc(_('due'))} {esc(frappe.utils.formatdate(row.due_date))}"
-				if frappe.utils.flt(row.outstanding_amount) > 0
-				else esc(_("Paid"))
+			if frappe.utils.flt(row.outstanding_amount) <= 0:
+				owing = esc(_("Paid"))
+			elif row.overdue:
+				owing = (
+					f"<strong class='account-overdue'>{esc(_('Overdue'))}</strong> "
+					f"{esc(row.formatted_outstanding)}, {esc(_('was due'))} {esc(frappe.utils.formatdate(row.due_date))}"
+				)
+			else:
+				owing = f"{esc(_('Owing'))} {esc(row.formatted_outstanding)}, {esc(_('due'))} {esc(frappe.utils.formatdate(row.due_date))}"
+			pay = (
+				f'<a class="account-pay" href="{esc(row.pay_url)}">{esc(_("Pay"))}</a>' if row.pay_url else ""
 			)
 			html += (
 				f'<div class="account-row"><span>{esc(row.name)}</span><span>{esc(frappe.utils.formatdate(row.posting_date))}</span>'
 				f"<span>{esc(row.formatted_total)}</span><span>{owing}</span>"
-				f'<a href="{esc(row.pdf_url)}">{esc(_("PDF"))}</a>'
-				+ (
-					f' <a class="account-pay" href="{esc(row.pay_url)}">{esc(_("Pay"))}</a>'
-					if row.pay_url
-					else ""
-				)
-				+ "</div>"
+				f'<span class="account-links"><a href="{esc(row.pdf_url)}">{esc(_("PDF"))}</a>{pay}</span></div>'
 			)
 		html += "</div>"
 	quotes = (

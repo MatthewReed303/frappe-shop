@@ -163,3 +163,18 @@ class TestCustomerAccess(IntegrationTestCase):
 		frappe.set_user(PERSON)
 		frappe.db.set_single_value("Shop Settings", "customers_land_in_store", 0)
 		accounts.account_page_redirect(frappe._dict(path="me"))
+
+
+class TestOwingSummary(IntegrationTestCase):
+	def test_the_account_page_says_what_is_owed_and_what_is_overdue(self):
+		from shop.storefront.page_data import owing_summary
+
+		row = lambda owed, overdue=False, due="2026-12-20": frappe._dict(  # noqa: E731
+			outstanding_amount=owed, currency="NZD", overdue=overdue, due_date=frappe.utils.getdate(due)
+		)
+		self.assertIn("Nothing owing", owing_summary([row(0)]))
+		summary = owing_summary([row(100), row(50.5, due="2026-12-01"), row(0)])
+		self.assertIn("on 2 invoices", summary)
+		self.assertIn("150.50", summary)
+		self.assertIn("Next due 01-12-2026", summary)
+		self.assertIn("1 overdue", owing_summary([row(100, overdue=True), row(20)]))

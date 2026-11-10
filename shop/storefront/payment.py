@@ -59,7 +59,10 @@ def payment_status(order) -> str:
 def money_received(order) -> bool:
 	"""Whether any payment came in for the order or its invoices."""
 	invoices = frappe.get_all(
-		"Sales Invoice Item", filters={"sales_order": order.name, "docstatus": 1}, pluck="parent", distinct=True
+		"Sales Invoice Item",
+		filters={"sales_order": order.name, "docstatus": 1},
+		pluck="parent",
+		distinct=True,
 	)
 	names = [order.name, *invoices]
 	return bool(
@@ -162,7 +165,9 @@ def on_payment_entry(doc, method=None) -> None:
 			order.add_comment("Info", _("Bank transfer received ({0}).").format(doc.name))
 			notify_paid(order)
 		elif doc.reference_no not in frappe.get_all(
-			"Payment Request", {"reference_doctype": "Sales Order", "reference_name": order.name}, pluck="name"
+			"Payment Request",
+			{"reference_doctype": "Sales Order", "reference_name": order.name},
+			pluck="name",
 		):
 			# an online order paid another way (recorded by staff), not through its Payment Request
 			# (whose own confirmation goes out): the customer still hears
@@ -280,7 +285,9 @@ def note_deposit_for_closed_order(transaction) -> None:
 			state = _("in {0}").format(order.currency)
 		else:
 			continue
-		note = _("Bank deposit {0} of {1} names this order, which is {2}. Match, refund or record it.").format(
+		note = _(
+			"Bank deposit {0} of {1} names this order, which is {2}. Match, refund or record it."
+		).format(
 			transaction.name, money_text(flt(transaction.unallocated_amount), transaction.currency), state
 		)
 		note_once(order, note)
@@ -362,7 +369,9 @@ def payment_entry_for(order, account: str | None, received: float | None = None)
 			# paid in the order's currency: it pays that much of the order, at the order's rate;
 			# ERPNext books the change in rate since as exchange gain or loss
 			party_rate = (
-				1 if payment_entry.paid_from_account_currency == order.currency else flt(order.conversion_rate)
+				1
+				if payment_entry.paid_from_account_currency == order.currency
+				else flt(order.conversion_rate)
 			)
 		payment_entry = get_payment_entry(
 			"Sales Order",
@@ -470,6 +479,14 @@ def invoice_paid_order(order) -> str | None:
 		return None
 	order.add_comment("Info", _("Paid and invoiced: {0}.").format(invoice.name))
 	return invoice.name
+
+
+def invoice_pay_url(invoice: str | None) -> str | None:
+	"""The link an app gives an unpaid invoice to pay it online (the payments app's invoice
+	payment links), if any."""
+	if not invoice or flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount")) <= 0:
+		return None
+	return getattr(frappe.get_doc("Sales Invoice", invoice), "payment_link", None)
 
 
 def invoice_attachments(invoice: str | None) -> list:
@@ -940,7 +957,8 @@ def remind(order) -> None:
 		pay_url=url,
 		# said only when the store does cancel unpaid orders
 		due_date=frappe.utils.formatdate(order.shop_payment_due)
-		if order.get("shop_payment_due") and frappe.get_cached_doc("Shop Settings").get("cancel_unpaid_orders")
+		if order.get("shop_payment_due")
+		and frappe.get_cached_doc("Shop Settings").get("cancel_unpaid_orders")
 		else "",
 		**{key: parts[key] for key in ("lines_html", "order_url") if key in parts},
 	)

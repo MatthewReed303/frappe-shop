@@ -372,11 +372,16 @@ small.checkout-option-price { font-weight:400; color:var(--e1b35a3c-0189-43b5-9e
 .account-table { display:flex; flex-direction:column; width:100%; }
 .account-row { display:grid; grid-template-columns:1.4fr 1fr 1fr 1.6fr auto; gap:12px; padding:12px 0; border-bottom:1px solid var(--89b2d9a1-4c11-45a1-8a99-099334bf7d38, #E4E4E7); font-size:13px; color:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); text-decoration:none; align-items:center; }
 .account-row a { color:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); text-decoration:underline; }
-.account-row a.account-pay { font-weight:600; text-decoration:none; padding:3px 10px; border:1px solid var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); border-radius:min(12px, 6px); }
+.account-links { display:flex; gap:10px; align-items:center; justify-content:flex-end; white-space:nowrap; }
+.account-row a.account-pay { font-weight:600; text-decoration:none; padding:3px 12px; color:var(--14e519f0-b9a6-4acd-ae4a-f8e5664c13fa, #FFFFFF); background:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); border-radius:min(12px, 6px); }
+.account-owing { margin:0 0 6px; font-size:14px; color:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); }
+.account-overdue { color:var(--4808f680-614d-49ac-9dca-8f1e17130706, #E5322D); }
+.order-pay-button.secondary { background:transparent; color:var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); border:1px solid var(--6a70d365-ff72-446b-b3ce-e700d422c404, #0B0B0C); }
 .terms-text h2 { font-size:20px; margin:28px 0 10px; }
 .terms-text ol { padding-left:22px; }
 @media (max-width: 640px) {
 	.account-row { grid-template-columns:1fr 1fr; }
+	.account-links { grid-column:span 2; justify-content:flex-start; }
 	.account-form { grid-template-columns:minmax(0,1fr); }
 	.account-form > * { grid-column: span 1 !important; }
 }

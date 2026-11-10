@@ -557,6 +557,8 @@ def trade_status() -> dict | None:
 
 
 def invoices(customers: list[str]) -> list[dict]:
+	from shop.storefront import payment
+
 	if not customers:
 		return []
 	rows = frappe.get_all(
@@ -580,9 +582,12 @@ def invoices(customers: list[str]) -> list[dict]:
 		row.pdf_url = "/api/method/shop.storefront.accounts.invoice_pdf?" + urlencode({"name": row.name})
 		# the payment link an app gives unpaid invoices (the payments app's invoice links)
 		row.pay_url = (
-			getattr(frappe.get_doc("Sales Invoice", row.name), "payment_link", None)
-			if frappe.utils.flt(row.outstanding_amount) > 0
-			else None
+			payment.invoice_pay_url(row.name) if frappe.utils.flt(row.outstanding_amount) > 0 else None
+		)
+		row.overdue = (
+			frappe.utils.flt(row.outstanding_amount) > 0
+			and row.due_date
+			and row.due_date < frappe.utils.getdate()
 		)
 	return rows
 
