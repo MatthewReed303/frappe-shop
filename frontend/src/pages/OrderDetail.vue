@@ -296,7 +296,16 @@ const running = ref(false)
 
 const refundOptions = computed(() => ({
 	title: 'Refund',
-	actions: [{ label: 'Refund', variant: 'solid', theme: 'red', loading: running.value, onClick: runRefund }],
+	actions: [
+		{
+			label: 'Refund',
+			variant: 'solid',
+			theme: 'red',
+			loading: running.value,
+			disabled: refund.how === 'bank' && !refund.bank_account,
+			onClick: runRefund,
+		},
+	],
 }))
 
 async function runRefund() {
@@ -306,6 +315,7 @@ async function runRefund() {
 		await call('shop.api.orders.refund', {
 			name: props.name,
 			credit_note: refund.due.credit_note,
+			method: refund.how,
 			bank_account: refund.how === 'bank' ? refund.bank_account : undefined,
 		})
 		toast.success('Refund recorded')

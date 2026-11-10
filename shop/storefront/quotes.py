@@ -209,7 +209,8 @@ def quote_summary(name: str, token: str | None) -> dict:
 	html = lines_html(quotation)
 	return {
 		"name": quotation.name,
-		"token": token or "",
+		# only a token that opened the quote is put back into the page
+		"token": token if token_matches(quotation.get("shop_access_token"), token) else "",
 		"status": quote_status(quotation, order, expired, closed),
 		"valid_till": _("Valid until {0}").format(frappe.utils.formatdate(quotation.valid_till))
 		if quotation.valid_till

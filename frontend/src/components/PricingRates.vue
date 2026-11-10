@@ -214,6 +214,13 @@ const form = reactive({
 })
 
 function openEditor(row?: RateRow) {
+	// a product's breaks are one set: a new break is added to those it has
+	const own = !row && props.item ? rows.value.find((other) => other.target === props.item) : undefined
+	if (own) {
+		openEditor(own)
+		addTier()
+		return
+	}
 	Object.assign(form, {
 		existing: !!row,
 		target_type: row?.target_type || (props.item ? 'Product' : 'Item Group'),
@@ -231,6 +238,16 @@ function addTier() {
 	form.tiers.push({ kind: last?.kind || 'discount', value: 0, from_qty: Math.max((last?.from_qty || 1) * 2, 10) })
 }
 
+// a new rate for something that has rates already joins them rather than replacing them
+function withExisting(tiers: Tier[]) {
+	const row = rows.value.find((other) => other.target_type === form.target_type && other.target === form.target)
+	if (!row) return tiers
+	const kept = row.tiers
+		.map((tier) => ({ kind: tier.kind, value: tier.value, from_qty: Math.max(tier.from_qty, 1) }))
+		.filter((tier) => !tiers.some((added) => added.from_qty === tier.from_qty))
+	return [...kept, ...tiers].sort((a, b) => a.from_qty - b.from_qty)
+}
+
 async function save() {
 	if (!form.target) {
 		toast.error(form.target_type === 'Product' ? 'Choose a product' : 'Choose an Item Group')
@@ -243,7 +260,7 @@ async function save() {
 			customer: props.customer,
 			target_type: form.target_type,
 			target: form.target,
-			tiers: form.tiers,
+			tiers: form.existing ? form.tiers : withExisting(form.tiers),
 		})
 		// the answer lists every rate of the scope, not only this product's
 		if (props.item) rates.reload()
@@ -260,7 +277,7 @@ async function save() {
 function confirmRemove(row: RateRow) {
 	dialog.confirm({
 		title: 'Remove rates',
-		message: `Remove the rates for <b>${row.label}</b>?`,
+		message: `Remove the rates for ${row.label}?`,
 		theme: 'red',
 		confirmLabel: 'Remove',
 		onConfirm: async () => {

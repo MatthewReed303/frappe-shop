@@ -102,7 +102,8 @@ def rewrite_url(url: str, prefix: str, old_prefix: str = "") -> str:
 		return url
 	prefix, old_prefix = normalize_prefix(prefix), normalize_prefix(old_prefix)
 	path = url
-	for known in {old_prefix, prefix} - {""}:
+	# the longer prefix first: of "store/shop" and "store", "store" alone would match both
+	for known in sorted({old_prefix, prefix} - {""}, key=len, reverse=True):
 		if path == f"/{known}" or path.startswith((f"/{known}/", f"/{known}?", f"/{known}#")):
 			path = path[len(known) + 1 :] or "/"
 			if not path.startswith("/"):

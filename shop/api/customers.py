@@ -223,9 +223,12 @@ def send_password_reset(customer: str, user: str) -> dict:
 	"""Email the person a link to set a new password."""
 	only_managers()
 	person_of(customer, user)
-	if not frappe.db.get_value("User", user, "enabled"):
+	doc = frappe.get_doc("User", user)
+	if doc.user_type != "Website User":
+		frappe.throw(_("{0} is a staff login; manage it in Desk").format(user))
+	if not doc.enabled:
 		frappe.throw(_("Turn {0}'s sign-in on first").format(user))
-	frappe.get_doc("User", user)._reset_password(send_email=True)
+	doc._reset_password(send_email=True)
 	return {"message": _("Password reset link sent to {0}").format(user)}
 
 

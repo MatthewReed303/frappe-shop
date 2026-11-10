@@ -310,9 +310,9 @@ def order_shipment(order: str) -> list[dict]:
 def send_to_fulfillment(order: str, provider: str | None = None, warehouse: str | None = None) -> dict:
 	"""Hand an order's parcel (the one from this warehouse, else the first not sent) to a
 	fulfillment provider so they pick, pack and ship it."""
-	from shop.fulfillment import service
+	from shop.api.fulfillment import send_order
 
-	return service.summary(service.send(order, provider, warehouse))
+	return send_order(order, provider, warehouse)
 
 
 @tool(requires_confirmation=True)
@@ -334,5 +334,11 @@ def record_shipment(
 	existing = parcel and parcel["fulfillment"]
 	if existing and existing.get("status") not in service.OPEN_STATUSES:
 		existing = None
-	name = existing["name"] if existing else service.send(order, "manual", parcel and parcel["warehouse"])
+	if existing:
+		name = existing["name"]
+	else:
+		from shop.storefront.checkout import elevated
+
+		with elevated():
+			name = service.send(order, "manual", parcel and parcel["warehouse"])
 	return mark_shipped(name, carrier=carrier, tracking_number=tracking_number)

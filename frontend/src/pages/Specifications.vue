@@ -146,7 +146,7 @@ async function save() {
 function confirmDelete(row: Specification) {
 	dialog.confirm({
 		title: 'Remove specification',
-		message: `Remove <b>${row.name}</b>?`,
+		message: `Remove ${row.name}?`,
 		theme: 'red',
 		confirmLabel: 'Remove',
 		onConfirm: async () => {

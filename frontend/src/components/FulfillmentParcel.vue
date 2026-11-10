@@ -348,7 +348,7 @@ function confirmCancel() {
 	if (!doc) return
 	dialog.confirm({
 		title: 'Cancel shipment',
-		message: `Cancel this shipment with <b>${doc.provider_label}</b>? The order can be sent again.`,
+		message: `Cancel this shipment with ${doc.provider_label}? The order can be sent again.`,
 		theme: 'red',
 		confirmLabel: 'Cancel shipment',
 		onConfirm: () =>

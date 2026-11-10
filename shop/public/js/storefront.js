@@ -256,7 +256,10 @@
 	}
 
 	function syncAvailability(item) {
-		const buttons = document.querySelectorAll('[data-shop="add-to-cart"], [data-shop="buy-now"]');
+		// the product's own buttons, not those on the product cards listed below it
+		const buttons = [...document.querySelectorAll('[data-shop="add-to-cart"], [data-shop="buy-now"]')].filter(
+			(button) => !button.closest(".product-card")
+		);
 		buttons.forEach((button) => {
 			if (item.item_code) button.dataset.itemCode = item.item_code;
 			button.disabled = !item.purchasable;
@@ -342,6 +345,10 @@
 			return;
 		}
 		prices.forEach((price) => (price.hidden = false));
+		// the "was" price only beside a variant that sells below it
+		document.querySelectorAll('[data-shop="pdp-compare-at"]').forEach((price) => {
+			price.hidden = !variant.formatted_savings;
+		});
 		syncAvailability(variant);
 		if (variant.formatted_price) {
 			document.querySelectorAll('[data-shop="pdp-price"]').forEach((price) => {
@@ -460,6 +467,8 @@
 		if (!form || !document.querySelector('[data-shop="checkout-totals"]')) return;
 		// what changed may change the total: an order isn't placed at the old one
 		checkout.quote = null;
+		// a quote already on its way is for what was there before
+		checkout.seq++;
 		clearTimeout(checkout.timer);
 		checkout.timer = setTimeout(() => requestQuote(form), delay == null ? 450 : delay);
 	}
@@ -1029,17 +1038,23 @@
 		const panel = document.querySelector('[data-shop="filter-panel"]');
 		if (!toggle || !panel) return;
 		// applying a filter reloads the page, so the panel folds away on its own
+		const close = panel.querySelector('[data-shop="filter-close"]');
 		const setOpen = (open) => {
 			panel.dataset.open = open ? "true" : "false";
 			toggle.setAttribute("aria-expanded", open ? "true" : "false");
+			// on a phone the panel covers the page: the page behind it doesn't scroll
+			document.documentElement.style.overflow = open && getComputedStyle(panel).position === "fixed" ? "hidden" : "";
+			if (open && close) close.focus();
 		};
 		toggle.addEventListener("click", () => setOpen(panel.dataset.open !== "true"));
-		const close = panel.querySelector('[data-shop="filter-close"]');
-		if (close)
-			close.addEventListener("click", () => {
-				setOpen(false);
-				toggle.focus();
-			});
+		const shut = () => {
+			setOpen(false);
+			toggle.focus();
+		};
+		if (close) close.addEventListener("click", shut);
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Escape" && panel.dataset.open === "true") shut();
+		});
 	}
 
 	// ---- the catalogue menu: the store's collections, and those inside each ----
@@ -1096,17 +1111,29 @@
 			};
 			show(Number(buttons[0].dataset.index));
 			buttons.forEach((button) => {
-				const select = () => show(Number(button.dataset.index));
-				button.addEventListener("mouseenter", select);
-				button.addEventListener("focus", select);
-				button.addEventListener("click", select);
+				button.addEventListener("mouseenter", () => show(Number(button.dataset.index)));
+				// by keyboard a group is opened, then its collections are next in line
+				button.addEventListener("click", (event) => {
+					show(Number(button.dataset.index));
+					if (event.detail === 0) {
+						const first = detail.querySelector("a");
+						if (first) first.focus();
+					}
+				});
 			});
 		}
 		const setOpen = (open) => {
 			panel.hidden = !open;
 			toggle.setAttribute("aria-expanded", open ? "true" : "false");
 		};
-		toggle.addEventListener("click", () => setOpen(panel.hidden));
+		toggle.addEventListener("click", (event) => {
+			setOpen(panel.hidden);
+			// opened by keyboard: the menu is next, wherever the theme put it in the page
+			if (!panel.hidden && event.detail === 0) {
+				const first = panel.querySelector("button, a");
+				if (first) first.focus();
+			}
+		});
 		document.addEventListener("keydown", (event) => {
 			if (event.key === "Escape" && !panel.hidden) {
 				setOpen(false);
@@ -1192,6 +1219,7 @@
 			const { select, list } = open;
 			list.remove();
 			select.setAttribute("aria-expanded", "false");
+			select.removeAttribute("aria-controls");
 			open = null;
 			if (refocus) select.focus();
 		}
@@ -1229,7 +1257,7 @@
 			const searchable = options.length > 10;
 			list.innerHTML = `
 				${searchable ? `<input type="text" class="shop-select-search" autocomplete="off" placeholder="${esc(__("Search"))}" aria-label="${esc(__("Search"))}" aria-controls="${id}">` : ""}
-				<div role="listbox" id="${id}" tabindex="-1" aria-label="${esc(select.getAttribute("aria-label") || select.name || "")}">
+				<div role="listbox" id="${id}" tabindex="-1" aria-label="${esc(select.getAttribute("aria-label") || (select.labels && select.labels[0] ? select.labels[0].textContent.trim() : "") || select.name || "")}">
 					${options
 						.map(
 							(option, index) =>
@@ -1284,7 +1312,7 @@
 					event.preventDefault();
 					close(true);
 				} else if (event.key === "Tab") {
-					close(false);
+					close(true);
 				} else if (!search && event.key.length === 1) {
 					typed = Date.now() - typedAt > 700 ? event.key : typed + event.key;
 					typedAt = Date.now();
@@ -1371,6 +1399,8 @@
 
 		async function pick(state, suggestion) {
 			close();
+			clearTimeout(state.timer);
+			state.seq++;
 			let address = suggestion.address;
 			if (!address) {
 				try {
@@ -1454,7 +1484,10 @@
 			if (state.picking) return;
 			clearTimeout(state.timer);
 			const text = input.value.trim();
-			if (text.length < 3) return close();
+			if (text.length < 3) {
+				state.seq++;
+				return close();
+			}
 			state.timer = setTimeout(async () => {
 				const seq = ++state.seq;
 				const country = fieldsOf(input).field("country");
@@ -1480,9 +1513,10 @@
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 				event.preventDefault();
 				activate(current.active + (event.key === "ArrowDown" ? 1 : -1));
-			} else if (event.key === "Enter" && current.active >= 0) {
+			} else if (event.key === "Enter") {
+				// Enter picks an address rather than sending the form
 				event.preventDefault();
-				pick(current.state, current.suggestions[current.active]);
+				pick(current.state, current.suggestions[Math.max(current.active, 0)]);
 			} else if (event.key === "Escape") {
 				close();
 			}
@@ -1490,7 +1524,12 @@
 		document.addEventListener("focusout", (event) => {
 			if (current && event.target === current.input) close();
 		});
-		window.addEventListener("resize", close);
+		// a phone's toolbar hiding as the page scrolls resizes the window; only a new width moves the list
+		let width = window.innerWidth;
+		window.addEventListener("resize", () => {
+			if (window.innerWidth !== width) close();
+			width = window.innerWidth;
+		});
 	}
 
 	function init() {

@@ -222,7 +222,7 @@ function rowActions(row: ProductRow) {
 function confirmDelete(row: ProductRow) {
 	dialog.confirm({
 		title: 'Delete product',
-		message: `Remove <b>${row.product_name}</b> from the storefront? The underlying item is kept.`,
+		message: `Remove ${row.product_name} from the storefront? The underlying item is kept.`,
 		theme: 'red',
 		confirmLabel: 'Delete',
 		onConfirm: async () => {

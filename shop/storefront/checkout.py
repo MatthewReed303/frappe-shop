@@ -38,7 +38,8 @@ def waiting_order() -> dict | None:
 	from shop.storefront import orders
 
 	token = cart_module.request_token()
-	name = token and frappe.db.get_value("Shop Cart", {"token": token, "status": "Converted"}, "sales_order")
+	cart = token and cart_module.token_cart(token, "Converted")
+	name = cart and frappe.db.get_value("Shop Cart", cart, "sales_order")
 	if not name:
 		return None
 	order = frappe.get_doc("Sales Order", name)
@@ -305,7 +306,11 @@ def validate_quote(order_quote, expected_total: float | None) -> None:
 		# an item with no price, not one a discount makes free
 		unpriced = not flt(item.rate) and not flt(item.price_list_rate)
 		if unpriced and not item.get("is_free_item") and not totals.is_charge_item(item.item_code):
-			frappe.throw(_("{0} can't be ordered right now. Remove it to continue.").format(item.item_name or item.item_code))
+			frappe.throw(
+				_("{0} can't be ordered right now. Remove it to continue.").format(
+					item.item_name or item.item_code
+				)
+			)
 	if expected_total is not None and abs(flt(expected_total) - order_quote.total) > 0.009:
 		frappe.throw(
 			_("The total is {0}. Check your order and place it again.").format(
@@ -349,7 +354,10 @@ def order_email_parts(sales_order, confirmation_url: str) -> dict:
 
 	lines, notes, factor = totals.shown_lines(sales_order)
 	rows = "".join(
-		row(f"{line.item_name} \u00d7 {cart_module.display_qty(line.qty)}", fmt(flt(line.amount) * factor(line)))
+		row(
+			f"{line.item_name} \u00d7 {cart_module.display_qty(line.qty)}",
+			fmt(flt(line.amount) * factor(line)),
+		)
 		for line in sales_order.items
 		if not totals.is_charge_item(line.item_code)
 	)
@@ -466,9 +474,19 @@ def get_or_create_customer(customer: dict) -> str:
 	email = customer["email"].strip().lower()
 	existing = find_customer_by_email(email)
 	if existing:
-		# a guest can't place orders on someone's account, or see its prices and addresses
-		if pricing.shopper() == "Guest" and frappe.db.exists("User", {"name": email, "enabled": 1}):
-			frappe.throw(_("There is an account for {0}. Please sign in to order with it.").format(email), title=_("Sign in"))
+		# no one else can place orders on someone's account, or see its prices and addresses: not a
+		# guest, nor someone signed in without a customer of their own. Staff may, for a customer
+		# who phoned the order through
+		shopper = pricing.shopper()
+		if (
+			email != shopper
+			and not is_staff(shopper)
+			and frappe.db.exists("User", {"name": email, "enabled": 1})
+		):
+			frappe.throw(
+				_("There is an account for {0}. Please sign in to order with it.").format(email),
+				title=_("Sign in"),
+			)
 		# anyone can type an email: a guest's earlier orders are kept together, but an order is
 		# never put on a customer the store didn't make for a guest (made in Desk, or with terms)
 		if earlier_guest(existing):
@@ -482,6 +500,10 @@ def get_or_create_customer(customer: dict) -> str:
 	).insert(ignore_permissions=True)
 	create_contact(party.name, customer, email)
 	return party.name
+
+
+def is_staff(user: str) -> bool:
+	return bool({"Shop Manager", "System Manager", "Sales User", "Sales Manager"} & set(frappe.get_roles(user)))
 
 
 def earlier_guest(customer: str) -> bool:
@@ -630,7 +652,10 @@ def create_sales_order(
 				"parenttype": "Contact",
 				"link_doctype": "Customer",
 				"link_name": party,
-				"parent": ["in", frappe.get_all("Contact Email", {"email_id": email}, pluck="parent") or [""]],
+				"parent": [
+					"in",
+					frappe.get_all("Contact Email", {"email_id": email}, pluck="parent") or [""],
+				],
 			},
 			"parent",
 		)

@@ -227,8 +227,8 @@ input::placeholder { color: var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A)
 	.drawer-close { padding: 10px; margin: -10px; }
 	[data-shop="remove"], .drawer-remove { padding: 8px 6px; }
 }
-.pdp-buybar { transition: transform 0.25s ease; }
-.pdp-buybar[data-visible="false"] { transform: translateY(110%); }
+.pdp-buybar { transition: transform 0.25s ease, visibility 0.25s; }
+.pdp-buybar[data-visible="false"] { transform: translateY(110%); visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
 	.pdp-buybar { transition: none; }
 }
@@ -332,7 +332,7 @@ small.checkout-option-price { font-weight:400; color:var(--756af8f6-3bcf-4030-b0
 
 .catalog-menu-toggle { background:none; border:0; padding:0; cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
 .catalog-menu-toggle::before { content:"\2630"; font-size:15px; line-height:1; }
-.catalog-menu { position:absolute; left:0; right:0; top:100%; z-index:40; background:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); border-bottom:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); box-shadow:0 18px 40px rgba(0,0,0,.08); }
+.catalog-menu { position:absolute; left:0; right:0; top:100%; z-index:40; max-height:calc(100dvh - 120px); overflow-y:auto; overscroll-behavior:contain; background:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); border-bottom:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); box-shadow:0 18px 40px rgba(0,0,0,.08); }
 .catalog-menu-inner { display:grid; grid-template-columns:260px 1fr; max-width:1200px; margin:0 auto; min-height:320px; }
 .catalog-menu-list { list-style:none; margin:0; padding:12px 0; border-right:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); }
 .catalog-menu-list button, .catalog-menu-list a { display:flex; justify-content:space-between; width:100%; padding:10px 20px; background:none; border:0; font:inherit; font-size:14px; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); text-align:left; text-decoration:none; cursor:pointer; }

@@ -267,7 +267,7 @@ def note_deposit_for_closed_order(transaction) -> None:
 		},
 		pluck="name",
 	):
-		if not re.search(rf"{compact(name)}(?!\d)", text):
+		if not mentions(name, text):
 			continue
 		order = frappe.get_doc("Sales Order", name)
 		if order.docstatus == 2:
@@ -304,12 +304,19 @@ def order_paid_by(transaction):
 		},
 		pluck="name",
 	)
-	matched = [name for name in names if re.search(rf"{compact(name)}(?!\d)", text)]
+	matched = [name for name in names if mentions(name, text)]
 	return frappe.get_doc("Sales Order", matched[0]) if len(matched) == 1 else None
 
 
 def compact(text: str) -> str:
 	return re.sub(r"[^A-Z0-9]", "", text.upper())
+
+
+def mentions(name: str, text: str) -> bool:
+	"""Whether compacted text quotes the order: its number isn't part of a longer one."""
+	number = compact(name)
+	before = r"(?<!\d)" if number[:1].isdigit() else ""
+	return bool(re.search(rf"{before}{number}(?!\d)", text))
 
 
 def make_payment_entry(order, transaction):
@@ -864,7 +871,7 @@ def unmatched_deposits(order) -> list[str]:
 	return [
 		row.name
 		for row in deposits
-		if re.search(rf"{compact(order.name)}(?!\d)", compact(f"{row.reference_number or ''} {row.description or ''}"))
+		if mentions(order.name, compact(f"{row.reference_number or ''} {row.description or ''}"))
 	]
 
 

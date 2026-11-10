@@ -141,12 +141,16 @@ def save_product(payload: dict) -> dict:
 	if not payload.get("name"):
 		doc.item = payload["item"]
 	doc.product_name = payload.get("product_name") or doc.product_name
-	doc.short_description = payload.get("short_description")
-	doc.description = payload.get("description")
-	doc.compare_at_price = flt(payload.get("compare_at_price")) or None
-	doc.highlights = payload.get("highlights")
-	doc.ranking = cint(payload.get("ranking"))
-	doc.published = 1 if payload.get("published") else 0
+	# a field left out of the payload keeps what it has
+	for field in ("short_description", "description", "highlights"):
+		if field in payload:
+			doc.set(field, payload[field])
+	if "compare_at_price" in payload:
+		doc.compare_at_price = flt(payload["compare_at_price"]) or None
+	if "ranking" in payload:
+		doc.ranking = cint(payload["ranking"])
+	if "published" in payload:
+		doc.published = 1 if payload["published"] else 0
 	if payload.get("slug"):
 		doc.slug = cleanup_page_name(payload["slug"])
 	set_images(doc, payload.get("images"))
@@ -156,7 +160,8 @@ def save_product(payload: dict) -> dict:
 	doc.save(ignore_permissions=True) if doc.get("name") and not doc.is_new() else doc.insert(
 		ignore_permissions=True
 	)
-	if payload.get("price") is not None and not doc.has_variants:
+	# an emptied price field isn't a price of 0
+	if payload.get("price") not in (None, "") and not doc.has_variants:
 		set_price(doc.item, flt(payload["price"]))
 	set_item_details(doc.item, payload)
 	return get_product(doc.name)

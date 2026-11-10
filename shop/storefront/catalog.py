@@ -157,11 +157,12 @@ def narrowings(products: list, traits: dict, chosen: dict) -> list[dict]:
 		result.append(
 			{
 				"key": key,
-				"label": frappe._("Brand") if key == BRAND else key.split(":", 1)[1],
+				# labels are put into the page as HTML, and a value can come from the URL
+				"label": frappe._("Brand") if key == BRAND else frappe.utils.escape_html(key.split(":", 1)[1]),
 				"values": [
 					{
 						"value": value,
-						"label": f"{value} {unit}" if unit else value,
+						"label": frappe.utils.escape_html(f"{value} {unit}" if unit else value),
 						"count": counts.get(value, 0),
 						"chosen": value in picked,
 					}

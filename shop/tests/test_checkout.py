@@ -55,8 +55,7 @@ class TestCheckout(IntegrationTestCase):
 		cart.add_item("SHOP-DEMO-004")
 		second = checkout.place_order(customer=BUYER, address=ADDRESS)
 		customers = {
-			frappe.db.get_value("Sales Order", order["sales_order"], "customer")
-			for order in (first, second)
+			frappe.db.get_value("Sales Order", order["sales_order"], "customer") for order in (first, second)
 		}
 		self.assertEqual(len(customers), 1)
 
@@ -67,9 +66,7 @@ class TestCheckout(IntegrationTestCase):
 	def test_guest_order_summary_via_token(self):
 		cart.add_item("SHOP-DEMO-003")
 		result = checkout.place_order(customer=BUYER, address=ADDRESS)
-		token = frappe.db.get_value(
-			"Shop Cart", {"sales_order": result["sales_order"]}, "token"
-		)
+		token = frappe.db.get_value("Shop Cart", {"sales_order": result["sales_order"]}, "token")
 		summary = orders.get_order_summary(result["sales_order"], token)
 		self.assertEqual(summary["items"][0]["item_code"], "SHOP-DEMO-003")
 		with self.assertRaises(frappe.PermissionError):
@@ -147,6 +144,26 @@ class TestCheckout(IntegrationTestCase):
 			frappe.set_user("Administrator")
 		self.assertIn("3 Dedup Drive, Bengaluru, 560001", [row.get("line") for row in saved])
 		self.assertEqual(saved[-1]["name"], "")
+
+	def test_someone_signed_in_without_a_customer_cant_order_on_anothers_account(self):
+		from shop import personas
+
+		personas.ensure_shopper_account()
+		member = {"email": personas.SHOPPER["email"], "full_name": "Meera"}
+		# the member has a customer: staff took an order for them
+		cart.add_item("SHOP-DEMO-003")
+		checkout.place_order(customer=member, address=ADDRESS)
+		stranger = "no-customer.user@example.com"
+		if not frappe.db.exists("User", stranger):
+			frappe.get_doc(
+				{"doctype": "User", "email": stranger, "first_name": "Stranger", "user_type": "Website User"}
+			).insert(ignore_permissions=True)
+		frappe.set_user(stranger)
+		self.addCleanup(frappe.set_user, "Administrator")
+		fresh_request()
+		cart.add_item("SHOP-DEMO-003")
+		with self.assertRaisesRegex(frappe.ValidationError, "Please sign in"):
+			checkout.place_order(customer=member, address=ADDRESS)
 
 	def test_owner_views_order_without_token(self):
 		from shop import personas

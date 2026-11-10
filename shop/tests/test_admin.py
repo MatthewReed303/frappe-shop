@@ -7,7 +7,7 @@ from shop.api import analytics, carts, customers, discounts, inventory, orders, 
 from shop.storefront import cart as storefront_cart
 from shop.storefront import checkout
 from shop.storefront.orders import order_summary
-from shop.tests.utils import fresh_request
+from shop.tests.utils import fresh_request, sellable
 
 BUYER = {"email": "admin-test-buyer@example.com", "full_name": "Admin Test Buyer"}
 ADDRESS = {"address_line1": "11 Admin Way", "city": "Bengaluru", "country": "India"}
@@ -17,6 +17,8 @@ class TestAdminApi(IntegrationTestCase):
 	def setUp(self):
 		frappe.db.delete("Shop Cart")
 		fresh_request()
+		# every test sells from the same stock
+		sellable("SHOP-DEMO-003", 5)
 
 	def place_order(self):
 		storefront_cart.add_item("SHOP-DEMO-003")
@@ -91,6 +93,31 @@ class TestAdminApi(IntegrationTestCase):
 			frappe.db.get_value("Sales Invoice", credit_note, "grand_total"),
 			-frappe.db.get_value("Sales Invoice", invoice, "grand_total"),
 		)
+
+	def test_a_shop_manager_without_desk_roles_runs_an_order_through(self):
+		# Shop Manager has no permissions on Payment Entry, Delivery Note or Sales Invoice in Desk
+		manager = "orders.manager@example.com"
+		if not frappe.db.exists("User", manager):
+			frappe.get_doc(
+				{"doctype": "User", "email": manager, "first_name": "Orders", "roles": [{"role": "Shop Manager"}]}
+			).insert(ignore_permissions=True)
+		paid, shipped, cancelled = self.place_order(), self.place_order(), self.place_order()
+		frappe.set_user(manager)
+		self.addCleanup(frappe.set_user, "Administrator")
+
+		self.assertEqual(orders.mark_paid(paid)["payment_status"], "Paid")
+		with self.assertRaises(frappe.ValidationError):
+			orders.mark_paid(cancelled, amount=0)
+		orders.fulfill(shipped)
+		self.assertEqual(frappe.db.get_value("Sales Order", shipped, "per_delivered"), 100)
+		with patch("frappe.sendmail"):
+			self.assertEqual(orders.cancel_order(cancelled)["docstatus"], 2)
+
+	def test_a_bank_refund_needs_the_bank_account(self):
+		with self.assertRaises(frappe.ValidationError):
+			orders.refund(self.place_order(), "CN-0001", "bank", bank_account="")
+		with self.assertRaises(frappe.ValidationError):
+			orders.refund(self.place_order(), "CN-0001", "cheque")
 
 	def test_a_shipped_order_is_returned_not_cancelled(self):
 		name = self.place_order()

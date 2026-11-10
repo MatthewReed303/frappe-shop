@@ -298,7 +298,7 @@ class TestReturns(IntegrationTestCase):
 			patch("frappe.get_doc", side_effect=get_doc),
 			patch("frappe.sendmail") as sendmail,
 		):
-			orders_api.refund(order, credit_note.name)
+			orders_api.refund(order, credit_note.name, "card")
 		self.assertEqual(
 			gateway.refund.call_args.args[:3],
 			("Payment Request", "PR-TEST", owed),

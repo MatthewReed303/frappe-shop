@@ -1,4 +1,5 @@
 import math
+import re
 from itertools import pairwise
 
 import frappe
@@ -160,8 +161,8 @@ def browse(title: str, description: str | None = None, collection=None) -> dict:
 		groups.append({"label": narrowing["label"], "options": options, "multiple": "true"})
 	if form.get("stock") == "in":
 		applied.insert(0, {"label": _("In stock"), "url": url({"stock": None})})
-	if form.get("price"):
-		label = buckets.get(form.get("price"), form.get("price"))
+	if form.get("price") in buckets:
+		label = buckets[form.get("price")]
 		applied.insert(0, {"label": _("Price: {0}").format(label), "url": url({"price": None})})
 	return {
 		"store": store_details(),
@@ -511,16 +512,13 @@ def return_path(path: str | None) -> str:
 	"""Where to go after signing in: a page on this site, else the account page."""
 	from urllib.parse import urlsplit
 
-	if (
-		path
-		and path.startswith("/")
-		and path.isprintable()
-		and "\\" not in path
-		and not path.startswith("//")
-		and not urlsplit(path).netloc
-	):
+	if path and SAFE_PATH.fullmatch(path) and not path.startswith("//") and not urlsplit(path).netloc:
 		return path
 	return store_url("account/orders")
+
+
+# a path, its query and nothing that could end the HTML attribute it is put in
+SAFE_PATH = re.compile(r"/[A-Za-z0-9/_\-.~%?=&+:,]*")
 
 
 @frappe.whitelist(allow_guest=True)

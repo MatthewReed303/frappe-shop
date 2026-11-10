@@ -99,6 +99,8 @@ def selling_rules(filters: dict | None = None) -> list[frappe._dict]:
 			"apply_on": ["in", ["Item Code", "Item Group"]],
 			**(filters or {}),
 		},
+		# a rule past its end date no longer prices anything
+		or_filters=[["valid_upto", "is", "not set"], ["valid_upto", ">=", frappe.utils.nowdate()]],
 		fields=RULE_FIELDS,
 	)
 	names = [rule.name for rule in rules] or [""]
@@ -322,7 +324,7 @@ def save_rates(
 				doc.append("item_groups", {"item_group": target})
 		doc.save(ignore_permissions=True)
 	for rule in existing.values():
-		frappe.delete_doc("Pricing Rule", rule.name, ignore_permissions=True)
+		retire(rule.name)
 	arrange()
 	return get_rates(scope, customer)
 
@@ -334,6 +336,17 @@ def remove_rates(scope: str, target_type: str, target: str, customer: str | None
 	party(scope, customer)
 	for rule in scope_rules(scope, customer):
 		if is_simple(rule) and rule.target_type == target_type and rule.targets[0] == target:
-			frappe.delete_doc("Pricing Rule", rule.name, ignore_permissions=True)
+			retire(rule.name)
 	arrange()
 	return get_rates(scope, customer)
+
+
+def retire(name: str) -> None:
+	"""Remove a rule; one that carts or orders were priced with stays, turned off, as their record."""
+	frappe.db.savepoint("retire_rule")
+	try:
+		frappe.delete_doc("Pricing Rule", name, ignore_permissions=True)
+	except frappe.LinkExistsError:
+		frappe.db.rollback(save_point="retire_rule")
+		frappe.clear_messages()
+		frappe.db.set_value("Pricing Rule", name, "disable", 1)

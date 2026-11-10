@@ -104,7 +104,7 @@ def resolve_cart(create: bool = False):
 def find_cart():
 	token = request_token()
 	if token:
-		name = frappe.db.get_value("Shop Cart", {"token": token, "status": "Active"})
+		name = token_cart(token, "Active")
 		if name:
 			return frappe.get_doc("Shop Cart", name)
 	if not is_guest():
@@ -342,7 +342,7 @@ def merge_guest_cart(login_manager=None):
 	token = request_token()
 	if not token or is_guest():
 		return
-	name = frappe.db.get_value("Shop Cart", {"token": token, "status": "Active"})
+	name = token_cart(token, "Active")
 	if not name:
 		return
 	guest_cart = frappe.get_doc("Shop Cart", name)
@@ -365,6 +365,25 @@ def merge_guest_cart(login_manager=None):
 			)
 	save_cart(user_cart)
 	guest_cart.delete(ignore_permissions=True)
+
+
+def token_cart(token: str, status: str) -> str | None:
+	"""The browser's cart, unless it is someone else's: the cookie outlives a sign-out on a shared
+	computer."""
+	cart = frappe.db.get_value(
+		"Shop Cart", {"token": token, "status": status}, ["name", "user"], as_dict=True
+	)
+	from shop.storefront.pricing import shopper
+
+	if not cart or (cart.user and cart.user != shopper()):
+		return None
+	return cart.name
+
+
+def forget_cart(login_manager=None):
+	"""Signing out leaves the cart with the account, not with the browser."""
+	if request_token() and frappe.local.get("cookie_manager"):
+		frappe.local.cookie_manager.delete_cookie(CART_COOKIE)
 
 
 def cleanup_carts():

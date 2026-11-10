@@ -19,7 +19,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Combobox } from 'frappe-ui'
+import { Combobox, toast } from 'frappe-ui'
 
 export interface PickerOption {
 	label: string
@@ -87,13 +87,23 @@ function onQuery(query: string) {
 	timer = setTimeout(() => load(query), loaded ? 250 : 0)
 }
 
+let asked = 0
+
 async function load(query: string) {
+	const mine = ++asked
 	loading.value = !loaded
 	try {
-		found.value = await props.search!(query || '')
+		const result = await props.search!(query || '')
+		// an older search answering late doesn't replace a newer one
+		if (mine !== asked) return
+		found.value = result
 		loaded = true
+	} catch (error) {
+		if (mine === asked) found.value = []
+		const messages = (error as { messages?: string[] }).messages
+		toast.error(messages?.[0] || 'Could not search')
 	} finally {
-		loading.value = false
+		if (mine === asked) loading.value = false
 	}
 }
 

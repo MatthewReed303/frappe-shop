@@ -4,6 +4,7 @@ from frappe.utils import cint, flt
 
 from shop.api import only_managers
 from shop.storefront import payment, pricing
+from shop.storefront.checkout import elevated
 
 MAX_SCAN = 500
 
@@ -51,7 +52,11 @@ def get_orders(
 	or_filters = None
 	if search:
 		term = f"%{search.strip()}%"
-		or_filters = [["name", "like", term], ["customer_name", "like", term], ["contact_email", "like", term]]
+		or_filters = [
+			["name", "like", term],
+			["customer_name", "like", term],
+			["contact_email", "like", term],
+		]
 	matched = frappe.get_all(
 		"Sales Order",
 		filters=filters,
@@ -179,10 +184,15 @@ def timeline(order) -> list[dict]:
 	events = [{"label": "Order placed", "on": str(order.creation)[:16]}]
 	# a payment made before invoicing is moved onto the invoice by ERPNext; refunds pay credit notes
 	invoices = frappe.get_all(
-		"Sales Invoice Item", filters={"sales_order": order.name, "docstatus": 1}, pluck="parent", distinct=True
+		"Sales Invoice Item",
+		filters={"sales_order": order.name, "docstatus": 1},
+		pluck="parent",
+		distinct=True,
 	)
 	credit_notes = (
-		frappe.get_all("Sales Invoice", filters={"return_against": ["in", invoices], "docstatus": 1}, pluck="name")
+		frappe.get_all(
+			"Sales Invoice", filters={"return_against": ["in", invoices], "docstatus": 1}, pluck="name"
+		)
 		if invoices
 		else []
 	)
@@ -284,25 +294,44 @@ def bank_accounts(order) -> list[dict]:
 		{"name": row.name, "currency": frappe.get_cached_value("Account", row.account, "account_currency")}
 		for row in rows
 	]
-	accounts.sort(key=lambda row: (row["name"] != (told and told.bank_account), row["currency"] != order.currency))
+	accounts.sort(
+		key=lambda row: (row["name"] != (told and told.bank_account), row["currency"] != order.currency)
+	)
 	return accounts
 
 
 @frappe.whitelist(methods=["POST"])
-def refund(name: str, credit_note: str, bank_account: str | None = None) -> dict:
+def refund(name: str, credit_note: str, method: str, bank_account: str | None = None) -> dict:
 	"""Refund a credit note of the order, as staff approved it: to the card, or from a bank account."""
 	only_managers()
-	payment.refund(name, credit_note, bank_account)
+	if method not in ("card", "bank"):
+		frappe.throw(_("Choose how to refund: to the card or from a bank account"))
+	if method == "bank" and not bank_account:
+		frappe.throw(_("Choose the bank account the refund is paid from"))
+	with elevated():
+		payment.refund(name, credit_note, bank_account if method == "bank" else None)
 	return get_order(name)
 
 
 @frappe.whitelist(methods=["POST"])
 def mark_paid(
-	name: str, bank_account: str | None = None, amount: float | None = None, mode_of_payment: str | None = None
+	name: str,
+	bank_account: str | None = None,
+	amount: float | None = None,
+	mode_of_payment: str | None = None,
 ) -> dict:
 	"""Record a payment for the order with ERPNext's Payment Entry: what arrived, in the bank account
 	it arrived in."""
 	only_managers()
+	with elevated():
+		record_payment(name, bank_account, amount, mode_of_payment)
+	return get_order(name)
+
+
+def record_payment(name: str, bank_account: str | None, amount: float | None, mode_of_payment: str | None):
+	# no amount is the whole amount due; an amount given has to be one
+	if amount is not None and not flt(amount) > 0:
+		frappe.throw(_("Enter the amount that arrived"))
 	# a second request waits for the first, then sees the payment it recorded
 	frappe.db.get_value("Sales Order", name, "name", for_update=True)
 	order = frappe.get_doc("Sales Order", name)
@@ -324,7 +353,6 @@ def mark_paid(
 	entry.flags.ignore_permissions = True
 	entry.insert(ignore_permissions=True)
 	entry.submit()
-	return get_order(name)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -337,15 +365,17 @@ def fulfill(name: str) -> dict:
 		frappe.throw(_("Only submitted orders can be fulfilled"))
 	if flt(order.per_delivered) >= 100:
 		frappe.throw(_("This order is already fulfilled"))
-	note = make_delivery_note(name)
-	note.flags.ignore_permissions = True
-	note.insert(ignore_permissions=True)
-	note.submit()
+	with elevated():
+		note = make_delivery_note(name)
+		note.flags.ignore_permissions = True
+		note.insert(ignore_permissions=True)
+		note.submit()
 	return get_order(name)
 
 
 @frappe.whitelist(methods=["POST"])
 def cancel_order(name: str, note: str | None = None) -> dict:
 	only_managers()
-	payment.cancel_by_store(name, note)
+	with elevated():
+		payment.cancel_by_store(name, note)
 	return get_order(name)

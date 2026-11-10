@@ -103,7 +103,7 @@ async function add() {
 			email: form.email,
 		})
 		showAdd.value = false
-		toast.success(`${form.email} can now buy for this customer. We've emailed them a link to set their password.`)
+		toast.success(`${form.email} can now buy for this customer. If they had no store login, they've been emailed a link to set a password.`)
 	} catch (error) {
 		toast.error(errorMessage(error, 'Could not add the person'))
 	} finally {

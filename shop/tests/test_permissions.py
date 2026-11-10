@@ -37,7 +37,7 @@ class TestPermissions(IntegrationTestCase):
 			lambda: trade.make_trade_customer(customer="_Test"),
 			lambda: trade.end_trade(customer="_Test"),
 			lambda: trade.get_trade(),
-			lambda: orders.refund(name="_Test", credit_note="_Test"),
+			lambda: orders.refund(name="_Test", credit_note="_Test", method="card"),
 			lambda: orders.cancel_order(name="_Test"),
 			lambda: orders.mark_paid(name="_Test"),
 			lambda: settings.save_settings({"store_name": "Changed"}),

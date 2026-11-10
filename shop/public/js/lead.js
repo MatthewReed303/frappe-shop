@@ -11,7 +11,7 @@ frappe.ui.form.on("Lead", {
 async function approve(frm) {
 	const defaults = (await frappe.xcall("shop.storefront.accounts.trade_defaults", { lead: frm.doc.name })) || {};
 	const dialog = new frappe.ui.Dialog({
-		title: __("Approve Trade Account for {0}", [frm.doc.company_name || frm.doc.lead_name]),
+		title: __("Approve Trade Account for {0}", [frappe.utils.escape_html(frm.doc.company_name || frm.doc.lead_name)]),
 		fields: [
 			{
 				fieldtype: "HTML",
@@ -37,7 +37,7 @@ async function approve(frm) {
 				callback: (r) => {
 					dialog.hide();
 					frm.reload_doc();
-					frappe.show_alert({ message: __("Trade account approved: {0}", [r.message.customer]), indicator: "green" });
+					frappe.show_alert({ message: __("Trade account approved: {0}", [frappe.utils.escape_html(r.message.customer)]), indicator: "green" });
 				},
 			});
 		},

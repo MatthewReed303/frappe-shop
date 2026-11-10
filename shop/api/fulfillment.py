@@ -113,6 +113,8 @@ def lock(doc) -> None:
 	"""Two clicks at once can't book or buy twice: the second waits for the first."""
 	frappe.db.get_value("Shop Fulfillment", doc.name, "name", for_update=True)
 	doc.reload()
+	if doc.status not in service.OPEN_STATUSES:
+		frappe.throw(_("This fulfillment is {0} and can't be updated").format(_(doc.status).lower()))
 
 
 def keep(doc) -> None:

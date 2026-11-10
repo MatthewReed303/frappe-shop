@@ -69,7 +69,10 @@ def set_status(name: str, status: str, note: str | None = None) -> dict:
 	if status not in STATUSES:
 		frappe.throw(_("Unknown status: {0}").format(status))
 	from shop.storefront import returns
+	from shop.storefront.checkout import elevated
 
+	# a second click waits for the first, then finds the request already changed
+	frappe.db.get_value("Shop Return Request", name, "name", for_update=True)
 	request = frappe.get_doc("Shop Return Request", name)
 	if request.status == status:
 		frappe.throw(_("This request is {0} already").format(_(status)))
@@ -79,7 +82,8 @@ def set_status(name: str, status: str, note: str | None = None) -> dict:
 	if note is not None:
 		request.resolution_note = note
 	request.save(ignore_permissions=True)
-	returns.status_changed(request)
+	with elevated():
+		returns.status_changed(request)
 	return {
 		"name": request.name,
 		"status": request.status,

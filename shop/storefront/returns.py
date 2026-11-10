@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.rate_limiter import rate_limit
 from frappe.utils import add_days, cint, flt, get_datetime, now_datetime
 
 from shop.storefront import orders as orders_module
@@ -8,6 +9,7 @@ OPEN_STATUSES = ("Requested", "Approved")
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=10, seconds=60 * 60)
 def create_request(
 	order: str,
 	item_code: str,

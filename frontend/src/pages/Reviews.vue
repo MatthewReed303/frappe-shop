@@ -154,7 +154,7 @@ function formatDate(date: string) {
 function confirmDelete(row: ReviewRow) {
 	dialog.confirm({
 		title: 'Delete review',
-		message: `Delete this review by <b>${row.reviewer_name}</b>? This cannot be undone.`,
+		message: `Delete this review by ${row.reviewer_name}? This cannot be undone.`,
 		theme: 'red',
 		confirmLabel: 'Delete',
 		onConfirm: async () => {

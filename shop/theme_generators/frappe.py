@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from shop.theme_generators.blocks import (
 	block,
+	changed_scripts,
 	data_script,
 	dv,
 	repeater,
@@ -75,6 +76,7 @@ def generate(theme: Theme | None = None):
 
 
 def _generate():
+	changed_scripts.clear()
 	refs = upsert_variables(THEME.group, THEME.palette)
 	styles = upsert_client_script(f"{THEME.group}-styles", "CSS", theme_css(refs) + THEME.extra_css)
 	register_components(refs)
@@ -367,8 +369,8 @@ input::placeholder {{ color: {refs["muted"]}; }}
 	.drawer-close {{ padding: 10px; margin: -10px; }}
 	[data-shop="remove"], .drawer-remove {{ padding: 8px 6px; }}
 }}
-.pdp-buybar {{ transition: transform 0.25s ease; }}
-.pdp-buybar[data-visible="false"] {{ transform: translateY(110%); }}
+.pdp-buybar {{ transition: transform 0.25s ease, visibility 0.25s; }}
+.pdp-buybar[data-visible="false"] {{ transform: translateY(110%); visibility: hidden; }}
 @media (prefers-reduced-motion: reduce) {{
 	.pdp-buybar {{ transition: none; }}
 }}

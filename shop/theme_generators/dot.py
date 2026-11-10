@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from shop.theme_generators.blocks import (
 	block,
+	changed_scripts,
 	data_script,
 	dv,
 	repeater,
@@ -77,6 +78,7 @@ def generate(theme: Theme | None = None):
 
 
 def _generate():
+	changed_scripts.clear()
 	refs = upsert_variables(THEME.group, THEME.palette)
 	styles = upsert_client_script(f"{THEME.group}-styles", "CSS", theme_css(refs) + THEME.extra_css)
 	register_components(refs)

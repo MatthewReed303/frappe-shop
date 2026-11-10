@@ -56,6 +56,7 @@ after_migrate = "shop.install.after_migrate"
 before_uninstall = "shop.install.before_uninstall"
 
 on_session_creation = "shop.storefront.cart.merge_guest_cart"
+on_logout = "shop.storefront.cart.forget_cart"
 
 shop_fulfillment_providers = {
 	"manual": "shop.fulfillment.providers.manual.ManualProvider",

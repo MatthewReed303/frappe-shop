@@ -613,7 +613,7 @@ def browse_css(refs, radius: str = "2px"):
 	return f"""
 .catalog-menu-toggle {{ background:none; border:0; padding:0; cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }}
 .catalog-menu-toggle::before {{ content:"\\2630"; font-size:15px; line-height:1; }}
-.catalog-menu {{ position:absolute; left:0; right:0; top:100%; z-index:40; background:{paper}; border-bottom:1px solid {line}; box-shadow:0 18px 40px rgba(0,0,0,.08); }}
+.catalog-menu {{ position:absolute; left:0; right:0; top:100%; z-index:40; max-height:calc(100dvh - 120px); overflow-y:auto; overscroll-behavior:contain; background:{paper}; border-bottom:1px solid {line}; box-shadow:0 18px 40px rgba(0,0,0,.08); }}
 .catalog-menu-inner {{ display:grid; grid-template-columns:260px 1fr; max-width:1200px; margin:0 auto; min-height:320px; }}
 .catalog-menu-list {{ list-style:none; margin:0; padding:12px 0; border-right:1px solid {line}; }}
 .catalog-menu-list button, .catalog-menu-list a {{ display:flex; justify-content:space-between; width:100%; padding:10px 20px; background:none; border:0; font:inherit; font-size:14px; color:{ink}; text-align:left; text-decoration:none; cursor:pointer; }}

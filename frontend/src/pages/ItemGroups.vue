@@ -301,7 +301,7 @@ function confirmDelete() {
 	const name = selected.value
 	dialog.confirm({
 		title: 'Remove Item Group',
-		message: `Remove <b>${name}</b>?`,
+		message: `Remove ${name}?`,
 		theme: 'red',
 		confirmLabel: 'Remove',
 		onConfirm: async () => {

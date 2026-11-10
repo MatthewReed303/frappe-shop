@@ -135,7 +135,7 @@ function rowActions(row: CollectionRow) {
 function confirmDelete(row: CollectionRow) {
 	dialog.confirm({
 		title: 'Delete collection',
-		message: `Delete <b>${row.title}</b>? Products in it are kept.`,
+		message: `Delete ${row.title}? Products in it are kept.`,
 		theme: 'red',
 		confirmLabel: 'Delete',
 		onConfirm: async () => {

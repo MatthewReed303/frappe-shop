@@ -523,9 +523,19 @@ async function saveExisting() {
 
 async function createNew() {
 	const name = isLink.value ? await createFromItem() : await createFresh()
+	// the product exists now: whatever follows, saving again mustn't make a second one
+	let unsaved = ''
+	if (!isLink.value) {
+		try {
+			await finishCreate(name)
+		} catch (error) {
+			unsaved = (error as { messages?: string[] }).messages?.[0] || 'Some details were not saved'
+		}
+	}
 	baseline.value = snapshot()
 	leaving.value = true
-	toast.success('Product created')
+	if (unsaved) toast.warning(`Product created. ${unsaved}`)
+	else toast.success('Product created')
 	await router.replace(`/products/${encodeURIComponent(name)}`)
 }
 
@@ -551,7 +561,7 @@ async function createFresh() {
 			item_group: form.item_group,
 			track_stock: form.track_stock,
 		})
-		return finishCreate(doc.name)
+		return doc.name as string
 	}
 	const message = optionsError(options.value)
 	if (message) throw { messages: [message] }
@@ -568,7 +578,7 @@ async function createFresh() {
 		item_group: form.item_group,
 		track_stock: form.track_stock,
 	})
-	return finishCreate(result.product)
+	return result.product as string
 }
 
 // create_product and create_variant_product take neither highlights, ranking, weight, tax nor
