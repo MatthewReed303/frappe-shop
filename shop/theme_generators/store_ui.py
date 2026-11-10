@@ -37,6 +37,11 @@ def store_css(refs, radius: str = "2px"):
 .shop-select-search {{ display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:{ink}; background:{paper}; border:1px solid {line}; border-radius:min({radius}, 6px); outline:none; }}
 .shop-select-search:focus {{ border-color:{ink}; }}
 .shop-select-empty {{ margin:0; padding:8px 10px; color:{muted}; }}
+.shop-address-list [role="option"] {{ flex-direction:column; align-items:flex-start; gap:2px; white-space:normal; }}
+.shop-address-list [role="option"][aria-selected="true"] {{ font-weight:inherit; }}
+.shop-address-list [role="option"][aria-selected="true"]::after {{ content:none; }}
+.shop-address-list small {{ color:{muted}; font-size:12px; }}
+.shop-address-credit {{ margin:4px 10px 2px; font-size:11px; color:{muted}; }}
 [data-shop="stock-status"] {{ color:{ok}; }}
 [data-shop="stock-status"] .stock-dot {{ background:{ok}; }}
 [data-shop="stock-status"][data-stock-state="out"], [data-shop="stock-status"][data-stock-state="unavailable"] {{ color:{muted}; }}

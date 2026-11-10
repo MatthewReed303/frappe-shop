@@ -254,6 +254,11 @@ input::placeholder { color: var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A)
 .shop-select-search { display:block; width:100%; box-sizing:border-box; margin:0 0 4px; padding:8px 10px; font:inherit; color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); background:var(--5606e7cf-f76c-4598-b795-d92c7e39fa39, #FFFFFF); border:1px solid var(--faaf07da-6dd1-479e-b766-862cdabc746b, #E4E4E7); border-radius:min(2px, 6px); outline:none; }
 .shop-select-search:focus { border-color:var(--f32b020d-8d73-41c1-9d55-30c9ee4d15fc, #18181B); }
 .shop-select-empty { margin:0; padding:8px 10px; color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); }
+.shop-address-list [role="option"] { flex-direction:column; align-items:flex-start; gap:2px; white-space:normal; }
+.shop-address-list [role="option"][aria-selected="true"] { font-weight:inherit; }
+.shop-address-list [role="option"][aria-selected="true"]::after { content:none; }
+.shop-address-list small { color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); font-size:12px; }
+.shop-address-credit { margin:4px 10px 2px; font-size:11px; color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); }
 [data-shop="stock-status"] { color:var(--e3b29f6d-fd4d-401b-a990-65d4601bebd6, #15803D); }
 [data-shop="stock-status"] .stock-dot { background:var(--e3b29f6d-fd4d-401b-a990-65d4601bebd6, #15803D); }
 [data-shop="stock-status"][data-stock-state="out"], [data-shop="stock-status"][data-stock-state="unavailable"] { color:var(--756af8f6-3bcf-4030-b01b-4760b963e8c2, #71717A); }

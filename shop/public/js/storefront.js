@@ -1338,6 +1338,161 @@
 		);
 	}
 
+	// Addresses suggested as one is typed, when the store has a lookup service (Shop Settings). Any
+	// form with an address_line1 input gets them; picking one fills the form's address fields.
+	function initAddressLookup() {
+		let enabled = true;
+		let current = null;
+		const token = () =>
+			window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+		function fieldsOf(input) {
+			const scope = input.form || input.closest('[data-shop="checkout-form"]') || input.parentElement;
+			const field = (name) => scope.querySelector(`[name="${name}"]`);
+			return { scope, field };
+		}
+
+		function close() {
+			if (!current) return;
+			current.list.remove();
+			current.input.setAttribute("aria-expanded", "false");
+			current.input.removeAttribute("aria-activedescendant");
+			current = null;
+		}
+
+		function setField(element, value) {
+			if (!element || value == null) return;
+			if (element instanceof HTMLSelectElement && ![...element.options].some((option) => option.value === value)) return;
+			if (element.value === value) return;
+			element.value = value;
+			element.dispatchEvent(new Event("input", { bubbles: true }));
+			element.dispatchEvent(new Event("change", { bubbles: true }));
+		}
+
+		async function pick(state, suggestion) {
+			close();
+			let address = suggestion.address;
+			if (!address) {
+				try {
+					address = await call("shop.storefront.address_lookup.address", { id: suggestion.id, session: state.session });
+				} catch (e) {
+					return;
+				}
+			}
+			state.session = token();
+			const { field } = fieldsOf(state.input);
+			const line2 = field("address_line2");
+			setField(field("country"), address.country);
+			state.picking = true;
+			setField(state.input, line2 || !address.address_line2 ? address.address_line1 : `${address.address_line1}, ${address.address_line2}`);
+			state.picking = false;
+			setField(line2, address.address_line2);
+			setField(field("city"), address.city);
+			setField(field("state"), address.state);
+			setField(field("pincode"), address.pincode);
+			state.input.focus();
+		}
+
+		function show(state, result) {
+			close();
+			const suggestions = result.suggestions || [];
+			if (!suggestions.length || document.activeElement !== state.input) return;
+			const id = `shop-address-list-${Date.now()}`;
+			const list = document.createElement("div");
+			list.className = "shop-select-list shop-address-list";
+			list.innerHTML = `
+				<div role="listbox" id="${id}" aria-label="${esc(__("Suggested addresses"))}">
+					${suggestions
+						.map(
+							(row, index) =>
+								`<div role="option" id="${id}-${index}" data-index="${index}" aria-selected="false"><span>${esc(row.label)}</span>${row.detail ? `<small>${esc(row.detail)}</small>` : ""}</div>`
+						)
+						.join("")}
+				</div>
+				${result.attribution ? `<p class="shop-address-credit">${esc(result.attribution)}</p>` : ""}`;
+			document.body.appendChild(list);
+			const box = state.input.getBoundingClientRect();
+			list.style.width = `${Math.max(box.width, 260)}px`;
+			list.style.top = `${box.bottom + 4 + window.scrollY}px`;
+			list.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - list.offsetWidth - 8)) + window.scrollX}px`;
+			list.addEventListener("mousedown", (event) => event.preventDefault());
+			list.addEventListener("click", (event) => {
+				const row = event.target.closest('[role="option"]');
+				if (row) pick(state, suggestions[Number(row.dataset.index)]);
+			});
+			state.input.setAttribute("aria-expanded", "true");
+			state.input.setAttribute("aria-controls", id);
+			current = { input: state.input, list, suggestions, active: -1, state };
+		}
+
+		function activate(index) {
+			const rows = [...current.list.querySelectorAll('[role="option"]')];
+			current.active = (index + rows.length) % rows.length;
+			rows.forEach((row, at) => {
+				row.dataset.active = at === current.active ? "true" : "false";
+				row.setAttribute("aria-selected", at === current.active ? "true" : "false");
+			});
+			current.input.setAttribute("aria-activedescendant", rows[current.active].id);
+			rows[current.active].scrollIntoView({ block: "nearest" });
+		}
+
+		const states = new WeakMap();
+		function stateOf(input) {
+			if (!states.has(input)) {
+				input.setAttribute("role", "combobox");
+				input.setAttribute("aria-autocomplete", "list");
+				input.setAttribute("aria-expanded", "false");
+				states.set(input, { input, session: token(), timer: null, seq: 0, picking: false });
+			}
+			return states.get(input);
+		}
+
+		document.addEventListener("input", (event) => {
+			const input = event.target;
+			if (!enabled || !(input instanceof HTMLInputElement) || input.name !== "address_line1") return;
+			const state = stateOf(input);
+			if (state.picking) return;
+			clearTimeout(state.timer);
+			const text = input.value.trim();
+			if (text.length < 3) return close();
+			state.timer = setTimeout(async () => {
+				const seq = ++state.seq;
+				const country = fieldsOf(input).field("country");
+				let result;
+				try {
+					result = await call("shop.storefront.address_lookup.suggest", {
+						text,
+						country: country ? country.value : null,
+						session: state.session,
+					});
+				} catch (e) {
+					return;
+				}
+				if (!result.enabled) {
+					enabled = false;
+					return close();
+				}
+				if (seq === state.seq) show(state, result);
+			}, 250);
+		});
+		document.addEventListener("keydown", (event) => {
+			if (!current || event.target !== current.input) return;
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				activate(current.active + (event.key === "ArrowDown" ? 1 : -1));
+			} else if (event.key === "Enter" && current.active >= 0) {
+				event.preventDefault();
+				pick(current.state, current.suggestions[current.active]);
+			} else if (event.key === "Escape") {
+				close();
+			}
+		});
+		document.addEventListener("focusout", (event) => {
+			if (current && event.target === current.input) close();
+		});
+		window.addEventListener("resize", close);
+	}
+
 	function init() {
 		initCurrencyPicker();
 		initBuyingFor();
@@ -1352,6 +1507,7 @@
 		initLinkSelects();
 		initCatalogMenu();
 		initSelectLists();
+		initAddressLookup();
 		document
 			.querySelectorAll('[data-shop="checkout-form"] input[name="payment_method"]')
 			.forEach((radio) => radio.addEventListener("change", syncPaymentUI));
