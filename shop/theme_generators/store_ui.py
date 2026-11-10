@@ -340,6 +340,16 @@ def catalog_menu_button(refs, size="13px"):
 	)
 
 
+def structured_data():
+	"""The product for search engines (page data key `product.structured_data`, schema.org JSON)."""
+	return block(
+		"script",
+		name="Structured Data",
+		attrs={"type": "application/ld+json"},
+		dynamicValues=[dv("product.structured_data", "innerHTML")],
+	)
+
+
 def currency_picker(styles: dict | None = None):
 	"""The currencies prices can be shown in (store.currency_picker_html), looking like the links
 	beside it (styles); empty with one currency."""

@@ -27,7 +27,7 @@ LIST_PARAMS = ("search", "sort", "price", "stock", "per_page", "view", "collecti
 @frappe.whitelist(allow_guest=True)
 def listing() -> dict:
 	"""Every published product, narrowed by what the shopper picked."""
-	return browse(title=_("All Products"))
+	return {**browse(title=_("All Products")), **page_meta(_("All Products"))}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -45,6 +45,7 @@ def collection_page() -> dict:
 		or None,
 		"sub_collections": catalog.get_collections(parent=row.name) or None,
 		**browse(title=row.title, description=row.description, collection=row),
+		**page_meta(row.title, row.description, row.image),
 	}
 
 
@@ -166,7 +167,7 @@ def browse(title: str, description: str | None = None, collection=None) -> dict:
 		applied.insert(0, {"label": _("Price: {0}").format(label), "url": url({"price": None})})
 	return {
 		"store": store_details(),
-		"title": title,
+		"title": escape_html(title),
 		"description": description,
 		# page data is put into the page as HTML, so what the shopper typed is escaped
 		"search": escape_html(form.get("search") or ""),
@@ -324,12 +325,104 @@ def product_page() -> dict:
 	)
 	from shop.storefront import reviews
 
+	detail["structured_data"] = structured_data(detail)
 	return {
 		"store": store_details(),
 		"product": detail,
 		"related_products": related_products(detail),
 		"reviews": reviews.get_reviews(detail["name"], limit=6),
+		# Builder writes the page's <title> from this, as it is
+		"title": escape_html(detail["product_name"]),
+		**page_meta(
+			detail["product_name"],
+			detail.get("short_description") or detail["description_text"],
+			detail["image"],
+			kind="product",
+		),
 	}
+
+
+def page_meta(
+	title: str, description: str | None = None, image: str | None = None, kind: str = "website"
+) -> dict:
+	"""The page's title, and what search results and shared links show of it."""
+	from frappe.utils import get_url
+
+	store = frappe.get_cached_doc("Shop Settings").store_name
+	full_title = f"{title} | {store}" if store else title
+	description = " ".join(frappe.utils.strip_html(description or "").split())
+	if len(description) > 160:
+		description = description[:157].rsplit(" ", 1)[0] + "..."
+	return {
+		"metatags": {
+			"title": full_title,
+			"description": description or full_title,
+			"image": get_url(image) if image else None,
+			"og:type": kind,
+		},
+	}
+
+
+def structured_data(detail: dict) -> str:
+	"""The product for search engines (schema.org), so results can show its price, stock and rating."""
+	import json
+
+	from frappe.utils import get_url
+
+	currency = pricing.store_currency()
+	if detail.get("has_variants"):
+		sold = [v for v in detail.get("variants") or [] if v.get("price") is not None]
+		offers = {
+			"@type": "AggregateOffer",
+			"priceCurrency": currency,
+			"lowPrice": min((shown_price(v["price"], v["item_code"]) for v in sold), default=None),
+			"highPrice": max((shown_price(v["price"], v["item_code"]) for v in sold), default=None),
+			"offerCount": len(sold),
+			"availability": in_stock(any(v.get("purchasable") for v in sold)),
+		}
+	else:
+		offers = {
+			"@type": "Offer",
+			"priceCurrency": currency,
+			"price": shown_price(detail.get("price"), detail["item"]),
+			"availability": in_stock(detail.get("purchasable")),
+		}
+	offers["url"] = get_url(store_url(f"product/{detail['slug']}"))
+	data = {
+		"@context": "https://schema.org",
+		"@type": "Product",
+		"name": detail["product_name"],
+		"sku": detail.get("default_item_code") or detail["item"],
+		"description": " ".join(
+			frappe.utils.strip_html(
+				detail.get("short_description") or detail["description_text"] or ""
+			).split()
+		),
+		"image": [get_url(row["image"]) for row in detail.get("images") or [] if row.get("image")],
+		"offers": {key: value for key, value in offers.items() if value is not None},
+	}
+	brand = frappe.db.get_value("Item", detail["item"], "brand")
+	if brand:
+		data["brand"] = {"@type": "Brand", "name": brand}
+	rating = detail.get("rating") or {}
+	if rating.get("count"):
+		data["aggregateRating"] = {
+			"@type": "AggregateRating",
+			"ratingValue": rating["average"],
+			"reviewCount": rating["count"],
+		}
+	# inside a <script>, "</" could end it early
+	return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+def shown_price(rate: float | None, item_code: str) -> float | None:
+	if rate is None:
+		return None
+	return flt(pricing.shown_amount(rate, pricing.item_tax_rate(item_code)), 2)
+
+
+def in_stock(available) -> str:
+	return "https://schema.org/InStock" if available else "https://schema.org/OutOfStock"
 
 
 def related_products(detail: dict) -> list:

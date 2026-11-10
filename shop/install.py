@@ -36,7 +36,18 @@ def setup():
 	sync_customer_home_page()
 	sync_agent()
 	enable_customer_signup()
+	list_store_sitemap()
 	warn_if_server_scripts_disabled()
+
+
+def list_store_sitemap():
+	"""Point search engines to the store's sitemap (www/store_sitemap.py) from robots.txt, once:
+	what the site has there already is kept."""
+	robots = frappe.db.get_single_value("Website Settings", "robots_txt") or ""
+	if "store_sitemap.xml" in robots:
+		return
+	line = f"Sitemap: {frappe.utils.get_url('/store_sitemap.xml')}"
+	frappe.db.set_single_value("Website Settings", "robots_txt", f"{robots.rstrip()}\n{line}".strip())
 
 
 def sync_customer_home_page():

@@ -228,6 +228,7 @@ def place_order(
 		order_quote = totals.compute(cart, address, shipping_option, payment_method, currency)
 		validate_quote(order_quote, expected_total)
 		party = get_or_create_customer(customer)
+		limit_unpaid_orders(party, payment_method)
 		shipping_address = create_address(party, customer, order_quote.address or address)
 		sales_order = create_sales_order(
 			cart,
@@ -239,6 +240,7 @@ def place_order(
 			email=customer["email"].strip().lower(),
 		)
 		convert_cart(cart, sales_order)
+		count_unpaid_order(payment_method)
 		confirmation_url = store_url(f"order-confirmation/{sales_order.name}?token={cart.token}")
 		response = {
 			"sales_order": sales_order.name,
@@ -250,6 +252,49 @@ def place_order(
 		else:
 			send_confirmation_for(sales_order, confirmation_url)
 	return response
+
+
+# an order waiting for a bank transfer holds its stock, so no one can hold much of it unpaid
+UNPAID_ORDERS_PER_CUSTOMER = 2
+UNPAID_ORDERS_PER_VISITOR_A_DAY = 5
+
+
+def limit_unpaid_orders(party: str, payment_method: str) -> None:
+	if payment_method not in totals.BANK_METHODS or is_staff(pricing.shopper()):
+		return
+	waiting = frappe.db.count(
+		"Sales Order",
+		{
+			"customer": party,
+			"docstatus": 1,
+			"shop_payment_method": ["in", totals.BANK_METHODS],
+			"advance_paid": 0,
+			"per_billed": 0,
+			"status": ["not in", ["Closed", "Completed"]],
+		},
+	)
+	if waiting >= UNPAID_ORDERS_PER_CUSTOMER or unpaid_orders_today() >= UNPAID_ORDERS_PER_VISITOR_A_DAY:
+		frappe.throw(
+			_("You have orders waiting for a bank transfer. Please pay them, or choose another way to pay."),
+			title=_("Orders waiting for payment"),
+		)
+
+
+def unpaid_orders_key() -> str | None:
+	ip = getattr(frappe.local, "request_ip", None)
+	return ip and frappe.cache.make_key(f"shop:unpaid_orders:{ip}:{nowdate()}")
+
+
+def unpaid_orders_today() -> int:
+	key = unpaid_orders_key()
+	return int(frappe.cache.get(key) or 0) if key else 0
+
+
+def count_unpaid_order(payment_method: str) -> None:
+	key = unpaid_orders_key()
+	if key and payment_method in totals.BANK_METHODS:
+		frappe.cache.incrby(key, 1)
+		frappe.cache.expire(key, 2 * 24 * 60 * 60)
 
 
 def lock_cart(cart) -> None:
@@ -503,7 +548,9 @@ def get_or_create_customer(customer: dict) -> str:
 
 
 def is_staff(user: str) -> bool:
-	return bool({"Shop Manager", "System Manager", "Sales User", "Sales Manager"} & set(frappe.get_roles(user)))
+	return bool(
+		{"Shop Manager", "System Manager", "Sales User", "Sales Manager"} & set(frappe.get_roles(user))
+	)
 
 
 def earlier_guest(customer: str) -> bool:

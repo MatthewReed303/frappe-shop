@@ -165,6 +165,32 @@ class TestCheckout(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "Please sign in"):
 			checkout.place_order(customer=member, address=ADDRESS)
 
+	def test_a_guest_holds_stock_for_few_unpaid_bank_orders(self):
+		from shop.tests.utils import sellable
+
+		sellable("SHOP-DEMO-003", 5)
+		buyer = {"email": f"unpaid-{frappe.generate_hash(length=6)}@example.com", "full_name": "Una Paid"}
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+
+		def guest_cart():
+			fresh_request()
+			frappe.db.delete("Shop Cart", {"status": "Active"})
+			cart.add_item("SHOP-DEMO-003")
+			token = frappe.db.get_value("Shop Cart", {"status": "Active"}, "token")
+			frappe.local.request = frappe._dict(cookies={cart.CART_COOKIE: token})
+			frappe.local.request_ip = "203.0.113.9"
+
+		self.addCleanup(setattr, frappe.local, "request_ip", None)
+		frappe.local.request_ip = "203.0.113.9"
+		frappe.cache.delete(checkout.unpaid_orders_key())
+		for _order in range(checkout.UNPAID_ORDERS_PER_CUSTOMER):
+			guest_cart()
+			checkout.place_order(customer=buyer, address=ADDRESS, payment_method="bank")
+		guest_cart()
+		with self.assertRaisesRegex(frappe.ValidationError, "waiting for a bank transfer"):
+			checkout.place_order(customer=buyer, address=ADDRESS, payment_method="bank")
+
 	def test_owner_views_order_without_token(self):
 		from shop import personas
 

@@ -156,6 +156,7 @@ def upsert_page(
 		"page_data_script": data_script,
 		"body_html": '<script src="/assets/shop/js/storefront.js" defer></script>',
 		"authenticated_access": 1 if authenticated_access else 0,
+		"disable_indexing": 1 if private_route(route) else 0,
 		"meta_description": meta_description,
 		"client_scripts": [{"builder_script": script} for script in client_scripts or []],
 	}
@@ -163,6 +164,12 @@ def upsert_page(
 		values["page_name"] = page_name
 	save_if_changed(page, values, force=bool(changed_scripts & set(client_scripts or [])))
 	return page
+
+
+def private_route(route: str) -> bool:
+	"""A shopper's own pages, which search engines leave out (Builder marks them noindex and keeps
+	them out of its sitemap)."""
+	return route in ("cart", "checkout") or route.startswith(("account/", "order-confirmation/", "quote/"))
 
 
 def variable_doctype() -> tuple[str, str]:

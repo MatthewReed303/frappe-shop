@@ -31,6 +31,7 @@ from shop.theme_generators.store_ui import (
 	shown_with_form,
 	spec_table,
 	store_css,
+	structured_data,
 	sub_collections,
 	terms_box,
 )
@@ -2426,6 +2427,7 @@ def product_blocks(refs):
 			related_band(refs),
 			component_ref("shop-footer"),
 			buy_bar(refs),
+			structured_data(),
 		],
 	)
 	blocks[0]["baseStyles"]["paddingBottom"] = "64px"
